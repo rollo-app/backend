@@ -138,7 +138,7 @@ trips.openapi(getTripRoute, async (c) => {
        WHERE member_id = ? AND local_date = ? GROUP BY type`,
     ).bind(me.id, today).all<{ type: string; n: number }>(),
     c.env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded'`,
+      `SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL`,
     ).bind(trip.id).first<{ n: number }>(),
   ]);
 

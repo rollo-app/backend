@@ -55,6 +55,7 @@ export type MediaRow = {
   status: "pending" | "uploaded";
   created_at: number;
   uploaded_at: number | null;
+  deleted_at: number | null;
 };
 
 export type AppEnv = {

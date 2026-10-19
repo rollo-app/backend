@@ -296,29 +296,61 @@ describe("descargas", () => {
   });
 });
 
-describe("DELETE /media/:id", () => {
-  it("borra una foto propia y sus archivos antes del revelado", async () => {
-    const { tripId, adminToken } = await createTrip();
-    const id = await uploadMedia(tripId, adminToken);
+describe("DELETE /media/:id (solo admin)", () => {
+  it("el admin borra la foto de cualquiera y sus archivos antes del revelado", async () => {
+    const { tripId, code, adminToken } = await createTrip();
+    const fede = await join(code, "Fede");
+    const id = await uploadMedia(tripId, fede.token);
 
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(204);
     expect(await env.MEDIA.head(`trips/${tripId}/${id}/original.jpg`)).toBeNull();
     expect(await env.MEDIA.head(`trips/${tripId}/${id}/thumb.jpg`)).toBeNull();
     expect((await api("GET", `/trips/${tripId}/feed`, { token: adminToken })).body.items).toHaveLength(0);
+    const detail = await api("GET", `/trips/${tripId}`, { token: fede.token });
+    expect(detail.body.totalUploaded).toBe(0);
   });
 
-  it("devuelve el cupo del día", async () => {
-    const { tripId, adminToken } = await createTrip({ dailyPhotoLimit: 1 });
-    const id = await uploadMedia(tripId, adminToken);
+  it("un miembro no puede borrar, ni siquiera lo propio", async () => {
+    const { tripId, code } = await createTrip();
+    const fede = await join(code, "Fede");
+    const id = await uploadMedia(tripId, fede.token);
+    expect((await api("DELETE", `/media/${id}`, { token: fede.token })).status).toBe(403);
+  });
+
+  it("no devuelve el cupo: borrar no es repetir", async () => {
+    const { tripId, code, adminToken } = await createTrip({ dailyPhotoLimit: 1 });
+    const fede = await join(code, "Fede");
+    const id = await uploadMedia(tripId, fede.token);
     await api("DELETE", `/media/${id}`, { token: adminToken });
-    expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() })).status).toBe(201);
+
+    expect((await api("POST", `/trips/${tripId}/media`, { token: fede.token, body: photoBody() })).status).toBe(429);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).body.today.photosLeft).toBe(0);
   });
 
-  it("no se puede borrar la foto de otro", async () => {
+  it("reintentar registrar una foto borrada da 409 y no la revive", async () => {
     const { tripId, code, adminToken } = await createTrip();
     const fede = await join(code, "Fede");
+    const body = photoBody();
+    await api("POST", `/trips/${tripId}/media`, { token: fede.token, body });
+    await api("DELETE", `/media/${body.id}`, { token: adminToken });
+
+    const retry = await api("POST", `/trips/${tripId}/media`, { token: fede.token, body });
+    expect(retry.status).toBe(409);
+    expect((await api("POST", `/media/${body.id}/complete`, { token: fede.token })).status).toBe(404);
+  });
+
+  it("borrar dos veces da 404", async () => {
+    const { tripId, adminToken } = await createTrip();
     const id = await uploadMedia(tripId, adminToken);
-    expect((await api("DELETE", `/media/${id}`, { token: fede.token })).status).toBe(404);
+    expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(204);
+    expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(404);
+  });
+
+  it("el admin de otro viaje no puede borrar", async () => {
+    const a = await createTrip();
+    const b = await createTrip();
+    const id = await uploadMedia(a.tripId, a.adminToken);
+    expect((await api("DELETE", `/media/${id}`, { token: b.adminToken })).status).toBe(404);
   });
 
   it("no se puede borrar después del revelado", async () => {
