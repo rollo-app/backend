@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rollo-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+
+  // Base de datos (SQLite en Cloudflare). Pegá acá el id que te da
+  // `npx wrangler d1 create rollo`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rollo",
+      "database_id": "REEMPLAZAR_CON_EL_ID_DE_D1",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Storage de fotos y videos.
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "rollo-media"
+    }
+  ],
+
+  "vars": {
+    "R2_BUCKET_NAME": "rollo-media"
+  },
+
+  // Dominio propio. Un solo nivel de subdominio para que lo cubra el
+  // certificado gratis de Cloudflare (*.juanifraga.com).
+  "routes": [
+    { "pattern": "rollo-api.juanifraga.com", "custom_domain": true }
+  ]
+
+  // Secrets (no van acá; se cargan con `npx wrangler secret put <NOMBRE>`):
+  //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+}

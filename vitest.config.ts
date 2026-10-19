@@ -1,0 +1,23 @@
+import path from "node:path";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  plugins: [
+    cloudflareTest(async () => ({
+      // Usa los mismos bindings que producción (D1 y R2), pero locales y aislados.
+      wrangler: { configPath: "./wrangler.jsonc" },
+      miniflare: {
+        bindings: {
+          TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, "migrations")),
+          R2_ACCOUNT_ID: "test-account",
+          R2_ACCESS_KEY_ID: "test-access-key",
+          R2_SECRET_ACCESS_KEY: "test-secret",
+        },
+      },
+    })),
+  ],
+  test: {
+    setupFiles: ["./test/setup.ts"],
+  },
+});
