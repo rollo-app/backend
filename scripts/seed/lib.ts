@@ -33,8 +33,10 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
 
 // ---------- Local D1 (via wrangler) ----------
 
+/** `SEED_PERSIST_TO=<dir>` runs against an isolated local state (same dir as `wrangler dev --persist-to`). */
 export function d1<T = any>(sql: string): T[] {
-  const out = execFileSync("./node_modules/.bin/wrangler", ["d1", "execute", "rollo", "--local", "--json", "--command", sql], {
+  const persist = process.env.SEED_PERSIST_TO ? ["--persist-to", process.env.SEED_PERSIST_TO] : [];
+  const out = execFileSync("./node_modules/.bin/wrangler", ["d1", "execute", "rollo", "--local", ...persist, "--json", "--command", sql], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
     maxBuffer: 50 * 1024 * 1024,

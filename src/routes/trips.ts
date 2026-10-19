@@ -14,6 +14,7 @@ import {
   TripResponseSchema,
   UpdateMeSchema,
   UpdateTripSchema,
+  PAST_TOLERANCE_MS,
 } from "../schemas";
 import type { Role, TripRow } from "../types";
 
@@ -179,6 +180,10 @@ const updateTripRoute = createRoute({
 trips.openapi(updateTripRoute, async (c) => {
   const trip = c.get("trip");
   const b = c.req.valid("json");
+  // Only the fields being changed are checked, so a trip that already started can still be edited.
+  const earliest = Date.now() - PAST_TOLERANCE_MS;
+  if (b.endsAt !== undefined && b.endsAt < earliest) throw new HTTPException(400, { message: "El fin no puede ser en el pasado" });
+  if (b.revealAt !== undefined && b.revealAt < earliest) throw new HTTPException(400, { message: "El revelado no puede ser en el pasado" });
   const next = {
     name: b.name ?? trip.name,
     ends_at: b.endsAt ?? trip.ends_at,

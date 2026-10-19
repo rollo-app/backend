@@ -41,6 +41,9 @@ export const MemberSchema = z
 
 const personName = z.string().trim().min(1).max(30).openapi({ example: "Juani" });
 
+/** Clock-skew tolerance when validating that a date is not in the past. */
+export const PAST_TOLERANCE_MS = 5 * 60_000;
+
 export const CreateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).openapi({ example: "Viaje al sur" }),
@@ -55,6 +58,7 @@ export const CreateTripSchema = z
     dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
     dailyVideoLimit: z.number().int().min(0).max(20).default(3),
   })
+  .refine((d) => d.startsAt >= Date.now() - PAST_TOLERANCE_MS, { message: "El inicio no puede ser en el pasado", path: ["startsAt"] })
   .refine((d) => d.endsAt > d.startsAt, { message: "El rollo tiene que terminar después de empezar", path: ["endsAt"] })
   .refine((d) => d.revealAt >= d.endsAt, { message: "El revelado no puede ser antes del fin", path: ["revealAt"] })
   .openapi("CreateTripRequest");

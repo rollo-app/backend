@@ -145,7 +145,8 @@ export const SCENARIOS: Scenario[] = [
     name: "Bariloche 2025 (revelado)",
     tests: "Already revealed trip (Jan 2025): feed with files, download. Sign in with the Vos (prueba) token",
     members: ["Cami", "Tomi", "Fede", "Lu", "Nacho", "Vos (prueba)"],
-    // Created with a future reveal so media can be registered; the admin reveals it afterwards (see `after`).
+    // Backdated to Jan 2025 right after creating (the API rejects dates in the past). The reveal stays in
+    // the future so media can be registered; `after` moves it into the past and reveals it.
     trip: () => ({
       startsAt: fixedMidnight(2025, 1, 10),
       endsAt: fixedMidnight(2025, 1, 17) - 60_000,
@@ -168,8 +169,8 @@ export const SCENARIOS: Scenario[] = [
     },
     async after(ctx) {
       const admin = ctx.tokens[0]!;
-      // As if the trip had happened in 2025: the admin moves the reveal into the past and reveals it.
-      await api("PATCH", `/trips/${ctx.tripId}`, { endsAt: fixedMidnight(2025, 1, 17) - 60_000, revealAt: fixedMidnight(2025, 1, 17) + 12 * HOUR }, admin);
+      // As if the trip had happened in 2025: the reveal date goes straight to D1 (the API rejects the past) and the admin reveals it.
+      d1(`UPDATE trips SET reveal_at = ${fixedMidnight(2025, 1, 17) + 12 * HOUR} WHERE id = '${ctx.tripId}'`);
       await api("POST", `/trips/${ctx.tripId}/reveal`, undefined, admin);
       const feed = await api("GET", `/trips/${ctx.tripId}/feed`, undefined, admin);
       if (!feed.revealed || !feed.items.length || !feed.items.every((i: any) => i.files)) {
@@ -240,13 +241,22 @@ export async function runScenario(s: Scenario): Promise<Row> {
   }
 
   console.log(`+ ${s.name}`);
+  // The API rejects dates in the past: create with valid future dates, then write the scenario's dates to D1
+  // (before uploading, since `takenAt` can be at most 24 h before `starts_at`).
+  const dates = s.trip();
+  const now = Date.now();
   const created = await api("POST", "/trips", {
     name: s.name,
     adminName: s.members[0],
     timezone: TZ,
-    ...s.trip(),
+    startsAt: now + HOUR,
+    endsAt: now + 2 * HOUR,
+    revealAt: now + 3 * HOUR,
+    dailyPhotoLimit: dates.dailyPhotoLimit,
+    dailyVideoLimit: dates.dailyVideoLimit,
   });
   const tripId: string = created.trip.id;
+  d1(`UPDATE trips SET starts_at=${dates.startsAt}, ends_at=${dates.endsAt}, reveal_at=${dates.revealAt} WHERE id='${tripId}'`);
   const tokens: string[] = [created.token];
   for (const name of s.members.slice(1)) tokens.push((await api("POST", "/trips/join", { code: created.trip.joinCode, name })).token);
 

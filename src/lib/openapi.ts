@@ -9,7 +9,8 @@ export function createApp() {
       if (!result.success) {
         const issue = result.error.issues[0];
         const field = issue?.path.join(".");
-        const message = issue ? (field ? `${field}: ${issue.message}` : issue.message) : "Datos inválidos";
+        // Our own refines already carry a clear message: no field prefix.
+        const message = issue?.code === "custom" ? issue.message : issue ? (field ? `${field}: ${issue.message}` : issue.message) : "Datos inválidos";
         return c.json({ error: message }, 400);
       }
     },

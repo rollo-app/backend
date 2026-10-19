@@ -37,23 +37,35 @@ export type TripFixture = {
   adminId: string;
 };
 
-/** Creates an ongoing trip: started yesterday, ends in 9 days, reveals in 10. */
+/**
+ * Creates an ongoing trip: started yesterday, ends in 9 days, reveals in 10.
+ * The API rejects dates in the past, so it is created with valid future dates and
+ * the requested ones are then written straight to D1.
+ */
 export async function createTrip(overrides: Record<string, unknown> = {}): Promise<TripFixture> {
   const now = Date.now();
+  const { startsAt = now - DAY, endsAt = now + 9 * DAY, revealAt = now + 10 * DAY, ...rest } = overrides as {
+    startsAt?: number;
+    endsAt?: number;
+    revealAt?: number;
+  };
   const res = await api("POST", "/trips", {
     body: {
       name: "Viaje al sur",
       adminName: "Juani",
       timezone: TZ,
-      startsAt: now - DAY,
-      endsAt: now + 9 * DAY,
-      revealAt: now + 10 * DAY,
+      startsAt: now + HOUR,
+      endsAt: now + 2 * HOUR,
+      revealAt: now + 3 * HOUR,
       dailyPhotoLimit: 2,
       dailyVideoLimit: 1,
-      ...overrides,
+      ...rest,
     },
   });
   if (res.status !== 201) throw new Error(`createTrip failed: ${res.status} ${JSON.stringify(res.body)}`);
+  await env.DB.prepare("UPDATE trips SET starts_at = ?, ends_at = ?, reveal_at = ? WHERE id = ?")
+    .bind(startsAt, endsAt, revealAt, res.body.trip.id)
+    .run();
   return {
     tripId: res.body.trip.id,
     code: res.body.trip.joinCode,
