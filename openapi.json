@@ -169,13 +169,13 @@
           "endsAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Trip end",
+            "description": "Trip end; must be after startsAt",
             "example": 1767225600000
           },
           "revealAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "When the roll is revealed",
+            "description": "When the roll is revealed; must be >= endsAt",
             "example": 1767225600000
           },
           "dailyPhotoLimit": {
@@ -290,11 +290,13 @@
           },
           "endsAt": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "Trip end; must be after startsAt and <= the resulting revealAt"
           },
           "revealAt": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "Must be >= the resulting endsAt"
           },
           "dailyPhotoLimit": {
             "type": "integer",
