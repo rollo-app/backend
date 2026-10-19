@@ -418,6 +418,15 @@
             ],
             "maxLength": 280
           },
+          "thumbhash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "ThumbHash (https://evanw.github.io/thumbhash/) en base64 estándar, generado en el celular desde el thumbnail. Si un reintento trae otro valor, se conserva el primero.",
+            "example": "3OcRJYB4d3h/iIeHeEh3eIhw+j3A"
+          },
           "durationS": {
             "type": [
               "number",
@@ -515,6 +524,13 @@
               "null"
             ]
           },
+          "thumbhash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ThumbHash en base64. Se devuelve siempre, también antes del revelado, a propósito: solo codifica colores difusos (~25 bytes), no deja reconstruir la foto."
+          },
           "durationS": {
             "type": [
               "number",
@@ -576,6 +592,7 @@
           "lat",
           "lng",
           "caption",
+          "thumbhash",
           "durationS",
           "author"
         ]
@@ -1132,7 +1149,7 @@
           "Fotos y videos"
         ],
         "summary": "Feed del viaje",
-        "description": "Antes del revelado: solo metadata (autor, hora, lugar, epígrafe), sin archivos, ni siquiera los propios. Después: incluye dimensiones y los paths para descargar.",
+        "description": "Antes del revelado: solo metadata (autor, hora, lugar, epígrafe, thumbhash), sin archivos, ni siquiera los propios. Después: incluye dimensiones y los paths para descargar.",
         "security": [
           {
             "bearerAuth": []

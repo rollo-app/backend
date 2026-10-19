@@ -19,6 +19,17 @@ export function isValidTimeZone(tz: string): boolean {
   }
 }
 
+/** Base64 estándar decodificable (con o sin padding). */
+export function isBase64(s: string): boolean {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(s)) return false;
+  try {
+    atob(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isRevealed(trip: TripRow, now = Date.now()): boolean {
   return trip.revealed_at !== null || now >= trip.reveal_at;
 }

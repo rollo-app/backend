@@ -81,11 +81,11 @@ media.openapi(registerRoute, async (c) => {
   const keys = mediaKeys(trip.id, b.id, b.type as MediaType);
   await c.env.DB.prepare(
     `INSERT INTO media (id, trip_id, member_id, type, taken_at, local_date, lat, lng, accuracy_m,
-                        caption, duration_s, width, height, size_bytes, original_key, thumb_key, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        caption, thumbhash, duration_s, width, height, size_bytes, original_key, thumb_key, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     b.id, trip.id, me.id, b.type, b.takenAt, day, b.lat ?? null, b.lng ?? null, b.accuracyM ?? null,
-    b.caption || null, b.durationS ?? null, b.width ?? null, b.height ?? null, b.sizeBytes,
+    b.caption || null, b.thumbhash ?? null, b.durationS ?? null, b.width ?? null, b.height ?? null, b.sizeBytes,
     keys.original, keys.thumb, now,
   ).run();
 
@@ -134,7 +134,7 @@ const feedRoute = createRoute({
   tags,
   summary: "Feed del viaje",
   description:
-    "Antes del revelado: solo metadata (autor, hora, lugar, epígrafe), sin archivos, ni siquiera los propios. " +
+    "Antes del revelado: solo metadata (autor, hora, lugar, epígrafe, thumbhash), sin archivos, ni siquiera los propios. " +
     "Después: incluye dimensiones y los paths para descargar.",
   security: bearerAuth,
   middleware: [requireMember] as const,
@@ -147,14 +147,14 @@ media.openapi(feedRoute, async (c) => {
   const revealed = isRevealed(trip);
 
   const { results } = await c.env.DB.prepare(
-    `SELECT m.id, m.type, m.taken_at, m.local_date, m.lat, m.lng, m.caption, m.duration_s,
+    `SELECT m.id, m.type, m.taken_at, m.local_date, m.lat, m.lng, m.caption, m.thumbhash, m.duration_s,
             m.width, m.height, mem.id AS author_id, mem.name AS author_name
      FROM media m JOIN members mem ON mem.id = m.member_id
      WHERE m.trip_id = ? AND m.status = 'uploaded'
      ORDER BY m.taken_at`,
   ).bind(trip.id).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
-    caption: string | null; duration_s: number | null; width: number | null; height: number | null;
+    caption: string | null; thumbhash: string | null; duration_s: number | null; width: number | null; height: number | null;
     author_id: string; author_name: string;
   }>();
 
@@ -166,6 +166,7 @@ media.openapi(feedRoute, async (c) => {
     lat: r.lat,
     lng: r.lng,
     caption: r.caption,
+    thumbhash: r.thumbhash,
     durationS: r.duration_s,
     author: { id: r.author_id, name: r.author_name },
     ...(revealed && {
