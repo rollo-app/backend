@@ -56,15 +56,27 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
   vuelven por PR. `main` es producción. Reglas: PR + CI (`test`) para ambas; `main` además pide
   1 aprobación (el admin puede saltearla desde el PR). No hay push directo a `develop` ni `main`.
 - Mensajes de commit y PR en español.
+- **Modelos (para cuidar el usage):** planear con **Opus** (diseño, decisiones, partir el trabajo) y
+  ejecutar con **workers en paralelo con Sonnet** (subagentes o sesiones con `model: sonnet`), cada uno
+  con una tarea acotada y su brief completo (archivos, qué es "terminado", cómo testear). Opus revisa el
+  resultado; no implementa él mismo lo que puede hacer un worker.
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 82 tests
+npm test              # 91 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
-npm run dev -- --ip 0.0.0.0   # para que el iPhone lo vea por Wi-Fi
+npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
+npm run seed          # viaje "Sur (prueba)" con ~100 fotos reales; imprime el código para sumarte
 ```
+
+**Subidas en local:** con `DEV_LOCAL_UPLOADS=1` en `.dev.vars` (está en `.dev.vars.example`), las URLs
+de subida apuntan al propio worker (`PUT /dev/upload/<key>`, firmado con HMAC, fuera del contrato) y
+terminan en el R2 local; así `complete` funciona en `wrangler dev`. Apagado, la ruta no existe.
+Ojo: por el `routes` de `wrangler.jsonc`, `wrangler dev` reescribe el host del request al dominio de
+producción. `dev:lan` lo evita con `--local-upstream <ip>:8787`; con `npm run dev -- --ip 0.0.0.0` las
+URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
 
 ## Estado (octubre 2026)
 

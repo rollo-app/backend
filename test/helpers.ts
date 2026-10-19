@@ -1,4 +1,5 @@
 import { env, exports } from "cloudflare:workers";
+import app from "../src/index";
 
 export const MINUTE = 60_000;
 export const HOUR = 60 * MINUTE;
@@ -11,19 +12,19 @@ export type ApiResponse<T = any> = { status: number; body: T; headers: Headers }
 export async function api<T = any>(
   method: string,
   path: string,
-  opts: { body?: unknown; token?: string } = {},
+  opts: { body?: unknown; token?: string; env?: Record<string, unknown>; origin?: string } = {},
 ): Promise<ApiResponse<T>> {
   const headers: Record<string, string> = {};
   if (opts.body !== undefined) headers["content-type"] = "application/json";
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
 
-  const res = await exports.default.fetch(
-    new Request(`https://rollo.test${path}`, {
-      method,
-      headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    }),
-  );
+  const req = new Request(`${opts.origin ?? "https://rollo.test"}${path}`, {
+    method,
+    headers,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  // Con `env` se pisan bindings para este request (ej. variables solo de dev).
+  const res = opts.env ? await app.request(req, undefined, { ...env, ...opts.env }) : await exports.default.fetch(req);
   const ct = res.headers.get("content-type") ?? "";
   const body = ct.includes("json") ? await res.json() : new TextDecoder().decode(await res.arrayBuffer());
   return { status: res.status, body: body as T, headers: res.headers };

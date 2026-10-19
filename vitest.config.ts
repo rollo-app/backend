@@ -13,6 +13,8 @@ export default defineConfig({
           R2_ACCOUNT_ID: "test-account",
           R2_ACCESS_KEY_ID: "test-access-key",
           R2_SECRET_ACCESS_KEY: "test-secret",
+          // Apagado aunque esté en tu .dev.vars; los tests que lo necesitan lo prenden por request.
+          DEV_LOCAL_UPLOADS: "",
         },
       },
     })),
