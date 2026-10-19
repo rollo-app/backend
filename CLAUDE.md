@@ -68,7 +68,8 @@ npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
-npm run seed          # viaje "Sur (prueba)" con ~100 fotos reales; imprime el código para sumarte
+npm run seed          # 7 viajes de prueba (en curso, revelado, futuro...); imprime tabla de códigos
+npm run seed -- --reset   # los borra de D1 local y los recrea (cambian los códigos)
 ```
 
 **Subidas en local:** con `DEV_LOCAL_UPLOADS=1` en `.dev.vars` (está en `.dev.vars.example`), las URLs
