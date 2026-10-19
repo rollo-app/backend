@@ -48,14 +48,19 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 
 ## Cómo trabajamos
 
-- **TDD siempre:** primero el test (descripciones en español), verlo fallar, código mínimo, refactor.
+- **TDD siempre:** primero el test, verlo fallar, código mínimo, refactor.
   Escenarios con los helpers de `test/helpers.ts` (`createTrip`, `join`, `uploadMedia`...).
 - **Si tocás la API:** `npm run openapi` y commiteá `openapi.json`. Hay un test que falla si quedó
   desactualizado. Después la app corre `npm run api:generate`.
 - **Ramas:** `develop` es la default. Features en `feature/*` (o `fix/*`, `chore/*`) desde `develop`,
   vuelven por PR. `main` es producción. Reglas: PR + CI (`test`) para ambas; `main` además pide
   1 aprobación (el admin puede saltearla desde el PR). No hay push directo a `develop` ni `main`.
-- Mensajes de commit y PR en español.
+- **Idioma:** todo el código en **inglés**: identificadores, comentarios, descripciones de tests
+  (`describe`/`it`), nombres de archivos y carpetas, scripts y textos del OpenAPI (summary/description,
+  porque terminan como comentarios en el cliente de la app). En **español** quedan solo los mensajes que
+  ve el usuario (los `{ error }` de la API y los de validación), los datos de prueba (nombres de viajes,
+  epígrafes), los **commits** y los **PRs**. Tablas, columnas de D1 y keys de R2 no se renombran sin una
+  migración explícita.
 - **Modelos (para cuidar el usage):** planear con **Opus** (diseño, decisiones, partir el trabajo) y
   ejecutar con **workers en paralelo con Sonnet** (subagentes o sesiones con `model: sonnet`), cada uno
   con una tarea acotada y su brief completo (archivos, qué es "terminado", cómo testear). Opus revisa el

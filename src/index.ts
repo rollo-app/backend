@@ -12,27 +12,27 @@ app.get("/", (c) => c.json({ ok: true, service: "rollo-api" }));
 app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
   type: "http",
   scheme: "bearer",
-  description: "Token que devuelven crear o unirse a un viaje",
+  description: "Token returned when creating or joining a trip",
 });
 
 app.route("/trips", trips);
 app.route("/", media);
 
-// Contrato: de acá la app mobile genera su cliente tipado.
+// Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {
   openapi: "3.1.0",
   info: {
     title: "Rollo API",
     version: "0.2.0",
-    description: "Backend de Rollo: viajes, rollos compartidos y revelado al final.",
+    description: "Rollo backend: trips, shared rolls and the reveal at the end.",
   },
   servers: [{ url: "https://rollo-api.juanifraga.com" }],
 });
 
 app.get("/docs", swaggerUI({ url: "/openapi.json", title: "Rollo API" }));
 
-// Solo en desarrollo (DEV_LOCAL_UPLOADS=1): recibe los PUT que en producción van directo a R2.
-// No es parte del contrato; apagado, la ruta no existe.
+// Development only (DEV_LOCAL_UPLOADS=1): receives the PUTs that go straight to R2 in production.
+// Not part of the contract; when disabled, the route does not exist.
 app.put(`${DEV_UPLOAD_PREFIX}*`, async (c, next) => {
   if (!devUploadsEnabled(c.env)) return next();
   const key = decodeURIComponent(new URL(c.req.url).pathname.slice(DEV_UPLOAD_PREFIX.length));

@@ -2,14 +2,14 @@ import { z } from "@hono/zod-openapi";
 import { isBase64, isValidTimeZone } from "./lib/util";
 
 /**
- * Contrato de la API. Estos esquemas validan los requests, tipan las respuestas
- * y generan /openapi.json, del que la app mobile genera su cliente.
+ * API contract. These schemas validate requests, type responses
+ * and generate /openapi.json, from which the mobile app generates its client.
  */
 
 const epochMs = (description: string) => z.number().int().positive().openapi({ description, example: 1_767_225_600_000 });
 const nullableNumber = z.number().nullable();
 
-// ---------- Comunes ----------
+// ---------- Common ----------
 
 export const ErrorSchema = z
   .object({ error: z.string().openapi({ example: "Código inválido" }) })
@@ -22,11 +22,11 @@ export const TripSchema = z
   .object({
     id: z.string().uuid(),
     name: z.string().openapi({ example: "Viaje al sur" }),
-    joinCode: z.string().openapi({ example: "HUB5FT", description: "Código de 6 caracteres para unirse" }),
+    joinCode: z.string().openapi({ example: "HUB5FT", description: "6-character code to join" }),
     timezone: z.string().openapi({ example: "America/Argentina/Buenos_Aires" }),
-    startsAt: epochMs("Inicio del viaje"),
-    endsAt: epochMs("Fin del viaje"),
-    revealAt: epochMs("Revelado automático"),
+    startsAt: epochMs("Trip start"),
+    endsAt: epochMs("Trip end"),
+    revealAt: epochMs("Automatic reveal"),
     revealed: z.boolean(),
     dailyPhotoLimit: z.number().int(),
     dailyVideoLimit: z.number().int(),
@@ -37,7 +37,7 @@ export const MemberSchema = z
   .object({ id: z.string().uuid(), name: z.string().openapi({ example: "Fede" }), role: RoleSchema })
   .openapi("Member");
 
-// ---------- Viajes ----------
+// ---------- Trips ----------
 
 const personName = z.string().trim().min(1).max(30).openapi({ example: "Juani" });
 
@@ -48,10 +48,10 @@ export const CreateTripSchema = z
     timezone: z
       .string()
       .refine(isValidTimeZone, "zona horaria inválida")
-      .openapi({ example: "America/Argentina/Buenos_Aires", description: "Zona IANA del destino" }),
-    startsAt: epochMs("Inicio del viaje"),
-    endsAt: epochMs("Fin del viaje"),
-    revealAt: epochMs("Cuándo se revela el rollo"),
+      .openapi({ example: "America/Argentina/Buenos_Aires", description: "IANA time zone of the destination" }),
+    startsAt: epochMs("Trip start"),
+    endsAt: epochMs("Trip end"),
+    revealAt: epochMs("When the roll is revealed"),
     dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
     dailyVideoLimit: z.number().int().min(0).max(20).default(3),
   })
@@ -82,7 +82,7 @@ export const TripCreatedSchema = z
   .object({
     trip: TripSchema,
     member: MemberSchema,
-    token: z.string().openapi({ description: "Guardalo en el celular: es la única vez que se devuelve" }),
+    token: z.string().openapi({ description: "Store it on the phone: it is only returned once" }),
   })
   .openapi("TripCreated");
 
@@ -92,7 +92,7 @@ export const TripDetailSchema = z
     me: MemberSchema,
     members: z.array(MemberSchema),
     today: z.object({
-      date: z.string().openapi({ example: "2027-01-12", description: "Fecha local del viaje" }),
+      date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),
       photosLeft: z.number().int(),
       videosLeft: z.number().int(),
     }),
@@ -104,15 +104,15 @@ export const TripResponseSchema = z.object({ trip: TripSchema }).openapi("TripRe
 
 // ---------- Media ----------
 
-export const MAX_VIDEO_SECONDS = 15.5; // 15 s + margen de redondeo
+export const MAX_VIDEO_SECONDS = 15.5; // 15 s + rounding margin
 const MB = 1024 * 1024;
 export const MAX_SIZE = { photo: 25 * MB, video: 60 * MB } as const;
 
 export const RegisterMediaSchema = z
   .object({
-    id: z.string().uuid().openapi({ description: "UUID generado en el celular; reintentar con el mismo id es seguro" }),
+    id: z.string().uuid().openapi({ description: "UUID generated on the phone; retrying with the same id is safe" }),
     type: MediaTypeSchema,
-    takenAt: epochMs("Hora del celular al disparar"),
+    takenAt: epochMs("Phone time when the shot was taken"),
     lat: z.number().min(-90).max(90).nullish(),
     lng: z.number().min(-180).max(180).nullish(),
     accuracyM: z.number().nonnegative().nullish(),
@@ -124,8 +124,8 @@ export const RegisterMediaSchema = z
       .nullish()
       .openapi({
         description:
-          "ThumbHash (https://evanw.github.io/thumbhash/) en base64 estándar, generado en el celular desde el thumbnail. " +
-          "Si un reintento trae otro valor, se conserva el primero.",
+          "ThumbHash (https://evanw.github.io/thumbhash/) in standard base64, generated on the phone from the thumbnail. " +
+          "If a retry brings a different value, the first one is kept.",
         example: "3OcRJYB4d3h/iIeHeEh3eIhw+j3A",
       }),
     durationS: z.number().positive().nullish(),
@@ -145,10 +145,10 @@ export const MediaRegisteredSchema = z
     id: z.string().uuid(),
     status: z.literal("pending"),
     upload: z.object({
-      original: z.string().url().openapi({ description: "PUT del archivo original" }),
-      thumb: z.string().url().openapi({ description: "PUT del thumbnail JPEG (~800px)" }),
+      original: z.string().url().openapi({ description: "PUT of the original file" }),
+      thumb: z.string().url().openapi({ description: "PUT of the JPEG thumbnail (~800px)" }),
     }),
-    expiresIn: z.number().int().openapi({ description: "Segundos de validez de las URLs" }),
+    expiresIn: z.number().int().openapi({ description: "Seconds the URLs stay valid" }),
   })
   .openapi("MediaRegistered");
 
@@ -167,17 +167,17 @@ export const FeedItemSchema = z
     caption: z.string().nullable(),
     thumbhash: z.string().nullable().openapi({
       description:
-        "ThumbHash en base64. Se devuelve siempre, también antes del revelado, a propósito: " +
-        "solo codifica colores difusos (~25 bytes), no deja reconstruir la foto.",
+        "ThumbHash in base64. Always returned, also before the reveal, on purpose: " +
+        "it only encodes blurry colors (~25 bytes), the photo cannot be reconstructed from it.",
     }),
     durationS: nullableNumber,
     author: z.object({ id: z.string().uuid(), name: z.string() }),
-    width: nullableNumber.optional().openapi({ description: "Solo después del revelado" }),
-    height: nullableNumber.optional().openapi({ description: "Solo después del revelado" }),
+    width: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
+    height: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
     files: z
       .object({ thumb: z.string(), original: z.string() })
       .optional()
-      .openapi({ description: "Paths de descarga; solo después del revelado" }),
+      .openapi({ description: "Download paths; only after the reveal" }),
   })
   .openapi("FeedItem");
 

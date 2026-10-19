@@ -1,7 +1,7 @@
 import { DAY, HOUR, Planner, type Shot, type Spot, api, d1, fixedMidnight, jitter, localMidnight, pick, pool, rand, uploadShot, POOL_SIZE } from "./lib";
 import { TZ } from "./lib";
 
-/** Escenarios de prueba. Cada uno tiene nombre de viaje fijo (así el seed es idempotente). */
+/** Test scenarios. Each has a fixed trip name (that's what makes the seed idempotent). */
 
 const CAPTIONS = [
   "no puedo creer este viento",
@@ -21,7 +21,7 @@ const CAPTIONS = [
   "selfie grupal fallida número 4",
 ];
 
-// ~140 caracteres, para probar epígrafes largos en el feed.
+// ~140 characters, to test long captions in the feed.
 const LONG_CAPTIONS = [
   "Veníamos recontra cansados pero cuando se abrió la nube y apareció el Fitz Roy entero, nos olvidamos de todo y nos quedamos mudos un rato largo",
   "Dato para el fotolibro: esta fue la vez que Tomi juró que sabía leer el mapa y terminamos dando una vuelta de dos horas por el mismo sendero",
@@ -49,7 +49,7 @@ const lerp = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, 
   lat: a.lat + (b.lat - a.lat) * t,
   lng: a.lng + (b.lng - a.lng) * t,
 });
-const lastDays = (n: number) => Array.from({ length: n }, (_, i) => localMidnight(n - 1 - i)); // n días, hoy incluido
+const lastDays = (n: number) => Array.from({ length: n }, (_, i) => localMidnight(n - 1 - i)); // n days, today included
 
 type Ctx = { tripId: string; tokens: string[]; names: string[] };
 type Scenario = {
@@ -58,7 +58,7 @@ type Scenario = {
   members: string[];
   trip: () => { startsAt: number; endsAt: number; revealAt: number; dailyPhotoLimit?: number; dailyVideoLimit?: number };
   shots?: () => Shot[];
-  /** Pasos extra después de subir (`ids` va alineado con los shots). Devuelve tokens a imprimir. */
+  /** Extra steps after uploading (`ids` is aligned with `shots`). Returns tokens to print. */
   after?: (ctx: Ctx, shots: Shot[], ids: string[]) => Promise<Record<string, string>>;
 };
 
@@ -67,7 +67,7 @@ const SOUTH = ["Cami", "Tomi", "Fede"];
 export const SCENARIOS: Scenario[] = [
   {
     name: "Sur (prueba)",
-    tests: "Caso base: 3 personas, 5 días, ~5-8 fotos por día",
+    tests: "Base case: 3 people, 5 days, ~5-8 photos per day",
     members: SOUTH,
     trip: () => ({ startsAt: localMidnight(4), endsAt: Date.now() + 8 * DAY, revealAt: Date.now() + 8 * DAY }),
     shots() {
@@ -83,15 +83,15 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Mismo lugar",
-    tests: "Fotos agrupadas: 15 en el mismo punto exacto y 10 a <20 m (mirador Laguna de los Tres)",
+    tests: "Clustered photos: 15 at the exact same point and 10 within <20 m (Laguna de los Tres viewpoint)",
     members: ["Cami", "Tomi", "Fede", "Lu"],
     trip: () => ({ startsAt: localMidnight(2), endsAt: Date.now() + 5 * DAY, revealAt: Date.now() + 5 * DAY }),
     shots() {
-      const MIRADOR = { lat: -49.2717, lng: -73.0045 };
+      const VIEWPOINT = { lat: -49.2717, lng: -73.0045 };
       const p = new Planner(lastDays(3));
       for (let i = 0; i < 25; i++) {
-        // ±0.0001° ≈ 11 m de latitud y 7 m de longitud: holgadamente dentro de 20 m
-        const spot = i < 15 ? { ...MIRADOR } : near(MIRADOR, 0.0001);
+        // ±0.0001° ≈ 11 m of latitude and 7 m of longitude: comfortably within 20 m
+        const spot = i < 15 ? { ...VIEWPOINT } : near(VIEWPOINT, 0.0001);
         p.add(i % 4, i % 3, "photo", spot, cap(0.5));
       }
       return p.shots;
@@ -99,7 +99,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Grupo grande",
-    tests: "10 miembros, 6 días, videos, epígrafes largos (~140) y ~20% de fotos sin GPS",
+    tests: "10 members, 6 days, videos, long captions (~140) and ~20% of photos without GPS",
     members: ["Cami", "Tomi", "Fede", "María Florencia", "Juan Cruz", "Sofi", "Nacho", "Agus", "Valentina", "Mateo"],
     trip: () => ({ startsAt: localMidnight(5), endsAt: Date.now() + 6 * DAY, revealAt: Date.now() + 6 * DAY }),
     shots() {
@@ -119,18 +119,18 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Cruce a Chile",
-    tests: "Recorrido día a día: El Calafate → Ruta 40 → frontera → Torres del Paine → Puerto Natales",
+    tests: "Day-by-day route: El Calafate → Ruta 40 → border → Torres del Paine → Puerto Natales",
     members: ["Cami", "Tomi", "Fede", "Lu"],
     trip: () => ({ startsAt: localMidnight(4), endsAt: Date.now() + 3 * DAY, revealAt: Date.now() + 3 * DAY }),
     shots() {
       const CALAFATE = { lat: -50.3379, lng: -72.2648 };
-      const FRONTERA = { lat: -51.5833, lng: -72.3333 }; // Cerro Castillo / paso, Ruta 40 hacia Chile
+      const BORDER = { lat: -51.5833, lng: -72.3333 }; // Cerro Castillo / border crossing, Ruta 40 towards Chile
       const TORRES = { lat: -50.9423, lng: -73.4068 };
       const NATALES = { lat: -51.7236, lng: -72.4875 };
       const byDay = (d: number): Spot => {
         if (d === 0) return near(CALAFATE, 0.01);
-        if (d === 1) return near(lerp(CALAFATE, FRONTERA, rand(0, 0.5)), 0.003); // Ruta 40, primera mitad
-        if (d === 2) return near(lerp(CALAFATE, FRONTERA, rand(0.5, 1)), 0.003); // Ruta 40 hasta la frontera
+        if (d === 1) return near(lerp(CALAFATE, BORDER, rand(0, 0.5)), 0.003); // Ruta 40, first half
+        if (d === 2) return near(lerp(CALAFATE, BORDER, rand(0.5, 1)), 0.003); // Ruta 40 up to the border
         if (d === 3) return near(TORRES, 0.03);
         return near(NATALES, 0.01);
       };
@@ -143,9 +143,9 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Bariloche 2025 (revelado)",
-    tests: "Viaje ya revelado (ene 2025): feed con files, descarga. Entrá con el token de Vos (prueba)",
+    tests: "Already revealed trip (Jan 2025): feed with files, download. Sign in with the Vos (prueba) token",
     members: ["Cami", "Tomi", "Fede", "Lu", "Nacho", "Vos (prueba)"],
-    // Se crea con revelado futuro para poder registrar; después el admin lo revela (ver `after`).
+    // Created with a future reveal so media can be registered; the admin reveals it afterwards (see `after`).
     trip: () => ({
       startsAt: fixedMidnight(2025, 1, 10),
       endsAt: fixedMidnight(2025, 1, 17) - 60_000,
@@ -156,7 +156,7 @@ export const SCENARIOS: Scenario[] = [
         { lat: -41.0806, lng: -71.495 }, // Cerro Campanario
         { lat: -41.0545, lng: -71.53 }, // Llao Llao
         { lat: -41.17, lng: -71.44 }, // Cerro Catedral
-        { lat: -41.1335, lng: -71.3103 }, // centro
+        { lat: -41.1335, lng: -71.3103 }, // downtown
       ];
       const days = Array.from({ length: 7 }, (_, i) => fixedMidnight(2025, 1, 10 + i));
       const p = new Planner(days);
@@ -168,25 +168,25 @@ export const SCENARIOS: Scenario[] = [
     },
     async after(ctx) {
       const admin = ctx.tokens[0]!;
-      // Como pasó el viaje en 2025: el admin mueve el revelado al pasado y lo revela.
+      // As if the trip had happened in 2025: the admin moves the reveal into the past and reveals it.
       await api("PATCH", `/trips/${ctx.tripId}`, { endsAt: fixedMidnight(2025, 1, 17) - 60_000, revealAt: fixedMidnight(2025, 1, 17) + 12 * HOUR }, admin);
       await api("POST", `/trips/${ctx.tripId}/reveal`, undefined, admin);
       const feed = await api("GET", `/trips/${ctx.tripId}/feed`, undefined, admin);
       if (!feed.revealed || !feed.items.length || !feed.items.every((i: any) => i.files)) {
-        throw new Error("Bariloche: el feed no quedó revelado con files");
+        throw new Error("Bariloche: the feed was not left revealed with files");
       }
       return { "Vos (prueba) @ Bariloche 2025": ctx.tokens[5]! };
     },
   },
   {
     name: "Mendoza (por empezar)",
-    tests: "Viaje futuro sin fotos (empieza en 10 días, dura 7)",
+    tests: "Future trip without photos (starts in 10 days, lasts 7)",
     members: SOUTH,
     trip: () => ({ startsAt: localMidnight(-10), endsAt: localMidnight(-17), revealAt: localMidnight(-17) }),
   },
   {
     name: "Borradas por el admin",
-    tests: "12 fotos, el admin borra 3 ajenas: el feed y totalUploaded dan 9",
+    tests: "12 photos, the admin deletes 3 from others: feed and totalUploaded give 9",
     members: SOUTH,
     trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 5 * DAY, revealAt: Date.now() + 5 * DAY }),
     shots() {
@@ -201,20 +201,20 @@ export const SCENARIOS: Scenario[] = [
       const feed = await api("GET", `/trips/${ctx.tripId}/feed`, undefined, admin);
       const detail = await api("GET", `/trips/${ctx.tripId}`, undefined, admin);
       if (feed.items.length !== 9 || detail.totalUploaded !== 9) {
-        throw new Error(`Borradas: feed=${feed.items.length}, totalUploaded=${detail.totalUploaded} (se esperaba 9)`);
+        throw new Error(`Deleted: feed=${feed.items.length}, totalUploaded=${detail.totalUploaded} (expected 9)`);
       }
       return {};
     },
   },
 ];
 
-// ---------- Ejecución ----------
+// ---------- Execution ----------
 
 export type Row = { name: string; code: string; photos: number; videos: number; tests: string; adminToken: string | null; extra: Record<string, string> };
 
 const sqlNames = () => SCENARIOS.map((s) => `'${s.name.replace(/'/g, "''")}'`).join(",");
 
-/** Borra de D1 local los viajes de los escenarios (media → members → trips). Los objetos de R2 quedan. */
+/** Deletes the scenario trips from local D1 (media → members → trips). R2 objects are left behind. */
 export function resetScenarios() {
   const ids = `SELECT id FROM trips WHERE name IN (${sqlNames()})`;
   d1(`DELETE FROM media WHERE trip_id IN (${ids})`);
@@ -224,7 +224,7 @@ export function resetScenarios() {
 
 function stats(name: string) {
   const [t] = d1<{ id: string; join_code: string }>(`SELECT id, join_code FROM trips WHERE name = '${name.replace(/'/g, "''")}'`);
-  if (!t) throw new Error(`No encontré el viaje "${name}" en D1`);
+  if (!t) throw new Error(`Trip "${name}" not found in D1`);
   const rows = d1<{ type: string; n: number }>(
     `SELECT type, COUNT(*) AS n FROM media WHERE trip_id = '${t.id}' AND status = 'uploaded' AND deleted_at IS NULL GROUP BY type`,
   );
@@ -235,7 +235,7 @@ function stats(name: string) {
 export async function runScenario(s: Scenario): Promise<Row> {
   const exists = d1(`SELECT id FROM trips WHERE name = '${s.name.replace(/'/g, "''")}'`).length > 0;
   if (exists) {
-    console.log(`= ${s.name}: ya existe, no se recrea`);
+    console.log(`= ${s.name}: already exists, not recreated`);
     return { name: s.name, ...stats(s.name), tests: s.tests, adminToken: null, extra: {} };
   }
 
@@ -253,7 +253,7 @@ export async function runScenario(s: Scenario): Promise<Row> {
   const shots = s.shots?.() ?? [];
   let ids: string[] = [];
   if (shots.length) {
-    console.log(`  subiendo ${shots.length} tomas (${shots.filter((x) => x.type === "video").length} videos)...`);
+    console.log(`  uploading ${shots.length} shots (${shots.filter((x) => x.type === "video").length} videos)...`);
     ids = await pool(
       shots.map((shot, i) => () => uploadShot(tripId, tokens[shot.member]!, shot, Math.floor(Math.random() * POOL_SIZE) + i)),
       6,

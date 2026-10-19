@@ -5,7 +5,7 @@ export type Env = {
   R2_ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string;
-  /** Solo en `.dev.vars`: "1" hace que las subidas vayan al propio worker y al R2 local. */
+  /** Only in `.dev.vars`: "1" sends uploads to the worker itself and the local R2. */
   DEV_LOCAL_UPLOADS?: string;
 };
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "Rollo API",
     "version": "0.2.0",
-    "description": "Backend de Rollo: viajes, rollos compartidos y revelado al final."
+    "description": "Rollo backend: trips, shared rolls and the reveal at the end."
   },
   "servers": [
     {
@@ -15,7 +15,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Token que devuelven crear o unirse a un viaje"
+        "description": "Token returned when creating or joining a trip"
       }
     },
     "schemas": {
@@ -30,7 +30,7 @@
           },
           "token": {
             "type": "string",
-            "description": "Guardalo en el celular: es la única vez que se devuelve"
+            "description": "Store it on the phone: it is only returned once"
           }
         },
         "required": [
@@ -53,7 +53,7 @@
           "joinCode": {
             "type": "string",
             "example": "HUB5FT",
-            "description": "Código de 6 caracteres para unirse"
+            "description": "6-character code to join"
           },
           "timezone": {
             "type": "string",
@@ -62,19 +62,19 @@
           "startsAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Inicio del viaje",
+            "description": "Trip start",
             "example": 1767225600000
           },
           "endsAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Fin del viaje",
+            "description": "Trip end",
             "example": 1767225600000
           },
           "revealAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Revelado automático",
+            "description": "Automatic reveal",
             "example": 1767225600000
           },
           "revealed": {
@@ -158,24 +158,24 @@
           "timezone": {
             "type": "string",
             "example": "America/Argentina/Buenos_Aires",
-            "description": "Zona IANA del destino"
+            "description": "IANA time zone of the destination"
           },
           "startsAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Inicio del viaje",
+            "description": "Trip start",
             "example": 1767225600000
           },
           "endsAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Fin del viaje",
+            "description": "Trip end",
             "example": 1767225600000
           },
           "revealAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Cuándo se revela el rollo",
+            "description": "When the roll is revealed",
             "example": 1767225600000
           },
           "dailyPhotoLimit": {
@@ -242,7 +242,7 @@
               "date": {
                 "type": "string",
                 "example": "2027-01-12",
-                "description": "Fecha local del viaje"
+                "description": "Trip's local date"
               },
               "photosLeft": {
                 "type": "integer"
@@ -341,12 +341,12 @@
               "original": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT del archivo original"
+                "description": "PUT of the original file"
               },
               "thumb": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT del thumbnail JPEG (~800px)"
+                "description": "PUT of the JPEG thumbnail (~800px)"
               }
             },
             "required": [
@@ -356,7 +356,7 @@
           },
           "expiresIn": {
             "type": "integer",
-            "description": "Segundos de validez de las URLs"
+            "description": "Seconds the URLs stay valid"
           }
         },
         "required": [
@@ -391,7 +391,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID generado en el celular; reintentar con el mismo id es seguro"
+            "description": "UUID generated on the phone; retrying with the same id is safe"
           },
           "type": {
             "$ref": "#/components/schemas/MediaType"
@@ -399,7 +399,7 @@
           "takenAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Hora del celular al disparar",
+            "description": "Phone time when the shot was taken",
             "example": 1767225600000
           },
           "lat": {
@@ -438,7 +438,7 @@
               "null"
             ],
             "maxLength": 64,
-            "description": "ThumbHash (https://evanw.github.io/thumbhash/) en base64 estándar, generado en el celular desde el thumbnail. Si un reintento trae otro valor, se conserva el primero.",
+            "description": "ThumbHash (https://evanw.github.io/thumbhash/) in standard base64, generated on the phone from the thumbnail. If a retry brings a different value, the first one is kept.",
             "example": "3OcRJYB4d3h/iIeHeEh3eIhw+j3A"
           },
           "durationS": {
@@ -543,7 +543,7 @@
               "string",
               "null"
             ],
-            "description": "ThumbHash en base64. Se devuelve siempre, también antes del revelado, a propósito: solo codifica colores difusos (~25 bytes), no deja reconstruir la foto."
+            "description": "ThumbHash in base64. Always returned, also before the reveal, on purpose: it only encodes blurry colors (~25 bytes), the photo cannot be reconstructed from it."
           },
           "durationS": {
             "type": [
@@ -572,14 +572,14 @@
               "number",
               "null"
             ],
-            "description": "Solo después del revelado"
+            "description": "Only after the reveal"
           },
           "height": {
             "type": [
               "number",
               "null"
             ],
-            "description": "Solo después del revelado"
+            "description": "Only after the reveal"
           },
           "files": {
             "type": "object",
@@ -595,7 +595,7 @@
               "thumb",
               "original"
             ],
-            "description": "Paths de descarga; solo después del revelado"
+            "description": "Download paths; only after the reveal"
           }
         },
         "required": [
@@ -618,10 +618,10 @@
     "/trips": {
       "post": {
         "tags": [
-          "Viajes"
+          "Trips"
         ],
-        "summary": "Crear un viaje",
-        "description": "Quien lo crea queda como admin. Devuelve el código para invitar y el token del admin.",
+        "summary": "Create a trip",
+        "description": "Whoever creates it becomes the admin. Returns the invite code and the admin token.",
         "requestBody": {
           "required": true,
           "content": {
@@ -634,7 +634,7 @@
         },
         "responses": {
           "201": {
-            "description": "Viaje creado",
+            "description": "Trip created",
             "content": {
               "application/json": {
                 "schema": {
@@ -644,7 +644,7 @@
             }
           },
           "400": {
-            "description": "Datos inválidos",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -659,10 +659,10 @@
     "/trips/join": {
       "post": {
         "tags": [
-          "Viajes"
+          "Trips"
         ],
-        "summary": "Unirse a un viaje",
-        "description": "Con el código y un nombre. El nombre es único por viaje (sin distinguir mayúsculas).",
+        "summary": "Join a trip",
+        "description": "With the code and a name. The name is unique per trip (case-insensitive).",
         "requestBody": {
           "required": true,
           "content": {
@@ -675,7 +675,7 @@
         },
         "responses": {
           "201": {
-            "description": "Te uniste al viaje",
+            "description": "Joined the trip",
             "content": {
               "application/json": {
                 "schema": {
@@ -685,7 +685,7 @@
             }
           },
           "400": {
-            "description": "Datos inválidos",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -695,7 +695,7 @@
             }
           },
           "404": {
-            "description": "No encontrado",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -705,7 +705,7 @@
             }
           },
           "409": {
-            "description": "Conflicto con el estado actual",
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {
@@ -720,10 +720,10 @@
     "/trips/{tripId}": {
       "get": {
         "tags": [
-          "Viajes"
+          "Trips"
         ],
-        "summary": "Info del viaje",
-        "description": "Viaje, miembros y cuántas fotos y videos te quedan hoy.",
+        "summary": "Trip info",
+        "description": "Trip, members and how many photos and videos you have left today.",
         "security": [
           {
             "bearerAuth": []
@@ -741,7 +741,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Detalle del viaje",
+            "description": "Trip detail",
             "content": {
               "application/json": {
                 "schema": {
@@ -751,7 +751,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -761,7 +761,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -774,9 +774,9 @@
       },
       "patch": {
         "tags": [
-          "Viajes"
+          "Trips"
         ],
-        "summary": "Editar el viaje (admin)",
+        "summary": "Edit the trip (admin)",
         "security": [
           {
             "bearerAuth": []
@@ -804,7 +804,7 @@
         },
         "responses": {
           "200": {
-            "description": "Viaje actualizado",
+            "description": "Trip updated",
             "content": {
               "application/json": {
                 "schema": {
@@ -814,7 +814,7 @@
             }
           },
           "400": {
-            "description": "Datos inválidos",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -824,7 +824,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -834,7 +834,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -849,9 +849,9 @@
     "/trips/{tripId}/reveal": {
       "post": {
         "tags": [
-          "Viajes"
+          "Trips"
         ],
-        "summary": "Revelar el rollo ya (admin)",
+        "summary": "Reveal the roll now (admin)",
         "security": [
           {
             "bearerAuth": []
@@ -869,7 +869,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Rollo revelado",
+            "description": "Roll revealed",
             "content": {
               "application/json": {
                 "schema": {
@@ -879,7 +879,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -889,7 +889,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -904,10 +904,10 @@
     "/trips/{tripId}/members/me": {
       "patch": {
         "tags": [
-          "Viajes"
+          "Trips"
         ],
-        "summary": "Cambiar tu nombre en el viaje",
-        "description": "Mismas reglas que al unirse: único por viaje, sin distinguir mayúsculas.",
+        "summary": "Change your name in the trip",
+        "description": "Same rules as when joining: unique per trip, case-insensitive.",
         "security": [
           {
             "bearerAuth": []
@@ -935,7 +935,7 @@
         },
         "responses": {
           "200": {
-            "description": "Nombre actualizado",
+            "description": "Name updated",
             "content": {
               "application/json": {
                 "schema": {
@@ -945,7 +945,7 @@
             }
           },
           "400": {
-            "description": "Datos inválidos",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -955,7 +955,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -965,7 +965,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -975,7 +975,7 @@
             }
           },
           "409": {
-            "description": "Conflicto con el estado actual",
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {
@@ -990,10 +990,10 @@
     "/trips/{tripId}/members/{memberId}": {
       "delete": {
         "tags": [
-          "Viajes"
+          "Trips"
         ],
-        "summary": "Sacar a alguien del viaje (admin)",
-        "description": "Su token deja de servir y su nombre queda libre. Sus fotos quedan en el rollo.",
+        "summary": "Remove someone from the trip (admin)",
+        "description": "Their token stops working and their name is freed. Their photos stay in the roll.",
         "security": [
           {
             "bearerAuth": []
@@ -1019,10 +1019,10 @@
         ],
         "responses": {
           "204": {
-            "description": "Miembro removido"
+            "description": "Member removed"
           },
           "400": {
-            "description": "Datos inválidos",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -1032,7 +1032,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1042,7 +1042,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1052,7 +1052,7 @@
             }
           },
           "404": {
-            "description": "No encontrado",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1067,10 +1067,10 @@
     "/trips/{tripId}/media": {
       "post": {
         "tags": [
-          "Fotos y videos"
+          "Media"
         ],
-        "summary": "Registrar una foto o video",
-        "description": "Devuelve URLs firmadas para subir el original y el thumbnail directo a R2. Idempotente por `id`: reintentar desde la cola offline no duplica ni gasta cupo.",
+        "summary": "Register a photo or video",
+        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2. Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
         "security": [
           {
             "bearerAuth": []
@@ -1098,7 +1098,7 @@
         },
         "responses": {
           "200": {
-            "description": "Reintento: URLs nuevas, o ya estaba subida",
+            "description": "Retry: new URLs, or it was already uploaded",
             "content": {
               "application/json": {
                 "schema": {
@@ -1115,7 +1115,7 @@
             }
           },
           "201": {
-            "description": "Registrada; subí los archivos",
+            "description": "Registered; upload the files",
             "content": {
               "application/json": {
                 "schema": {
@@ -1125,7 +1125,7 @@
             }
           },
           "400": {
-            "description": "Datos inválidos",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -1135,7 +1135,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1145,7 +1145,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1155,7 +1155,7 @@
             }
           },
           "409": {
-            "description": "Conflicto con el estado actual",
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {
@@ -1165,7 +1165,7 @@
             }
           },
           "429": {
-            "description": "Se alcanzó el límite del día",
+            "description": "Daily limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -1180,10 +1180,10 @@
     "/media/{mediaId}/complete": {
       "post": {
         "tags": [
-          "Fotos y videos"
+          "Media"
         ],
-        "summary": "Confirmar que se subieron los archivos",
-        "description": "Verifica que original y thumbnail estén en R2. Recién ahí la foto aparece en el feed.",
+        "summary": "Confirm the files were uploaded",
+        "description": "Checks that the original and the thumbnail are in R2. Only then does the photo show up in the feed.",
         "security": [
           {
             "bearerAuth": []
@@ -1201,7 +1201,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Subida confirmada",
+            "description": "Upload confirmed",
             "content": {
               "application/json": {
                 "schema": {
@@ -1211,7 +1211,7 @@
             }
           },
           "400": {
-            "description": "Datos inválidos",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -1221,7 +1221,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1231,7 +1231,7 @@
             }
           },
           "404": {
-            "description": "No encontrado",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1246,10 +1246,10 @@
     "/trips/{tripId}/feed": {
       "get": {
         "tags": [
-          "Fotos y videos"
+          "Media"
         ],
-        "summary": "Feed del viaje",
-        "description": "Antes del revelado: solo metadata (autor, hora, lugar, epígrafe, thumbhash), sin archivos, ni siquiera los propios. Después: incluye dimensiones y los paths para descargar.",
+        "summary": "Trip feed",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions and the download paths.",
         "security": [
           {
             "bearerAuth": []
@@ -1267,7 +1267,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Feed ordenado por hora en que se sacó",
+            "description": "Feed ordered by the time the shot was taken",
             "content": {
               "application/json": {
                 "schema": {
@@ -1277,7 +1277,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1287,7 +1287,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1302,10 +1302,10 @@
     "/trips/{tripId}/media/{mediaId}/{variant}": {
       "get": {
         "tags": [
-          "Fotos y videos"
+          "Media"
         ],
-        "summary": "Descargar un archivo (solo después del revelado)",
-        "description": "Streaming desde R2 con el mismo Bearer token.",
+        "summary": "Download a file (only after the reveal)",
+        "description": "Streamed from R2 with the same Bearer token.",
         "security": [
           {
             "bearerAuth": []
@@ -1343,7 +1343,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Archivo",
+            "description": "File",
             "content": {
               "image/jpeg": {
                 "schema": {
@@ -1360,7 +1360,7 @@
             }
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1370,7 +1370,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1380,7 +1380,7 @@
             }
           },
           "404": {
-            "description": "No encontrado",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1395,10 +1395,10 @@
     "/media/{mediaId}": {
       "delete": {
         "tags": [
-          "Fotos y videos"
+          "Media"
         ],
-        "summary": "Borrar una foto o video del viaje (admin, antes del revelado)",
-        "description": "Una vez mandada, una foto no se puede borrar ni repetir. La excepción es el admin, por si alguien manda algo que no corresponde: puede borrar cualquier foto del viaje antes del revelado. Se borran los archivos pero **no se devuelve el cupo** a nadie, y el id no se puede volver a registrar.",
+        "summary": "Delete a photo or video from the trip (admin, before the reveal)",
+        "description": "Once sent, a photo can be neither deleted nor retaken. The exception is the admin, in case someone sends something inappropriate: they can delete any photo of the trip before the reveal. The files are deleted but the quota is **not given back** to anyone, and the id cannot be registered again.",
         "security": [
           {
             "bearerAuth": []
@@ -1416,10 +1416,10 @@
         ],
         "responses": {
           "204": {
-            "description": "Borrada"
+            "description": "Deleted"
           },
           "401": {
-            "description": "Falta el token o es inválido",
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1429,7 +1429,7 @@
             }
           },
           "403": {
-            "description": "Sin permiso",
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1439,7 +1439,7 @@
             }
           },
           "404": {
-            "description": "No encontrado",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1449,7 +1449,7 @@
             }
           },
           "409": {
-            "description": "Conflicto con el estado actual",
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {

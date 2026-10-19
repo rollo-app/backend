@@ -1,3 +1,3 @@
--- Borrado lógico: el admin puede borrar una foto, pero la fila queda para que siga
--- contando en el cupo del día (borrar no es "repetir") y el id no se pueda reusar.
+-- Soft delete: the admin can delete a photo, but the row stays so it keeps
+-- counting toward the day's quota (deleting is not "retrying") and the id can't be reused.
 ALTER TABLE media ADD COLUMN deleted_at INTEGER;

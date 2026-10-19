@@ -2,7 +2,7 @@ import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv, MemberRow, TripRow } from "../types";
 
-/** Token aleatorio de 256 bits en base64url. Se le da al celular una sola vez. */
+/** Random 256-bit token in base64url. Handed to the phone only once. */
 export function generateToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -11,15 +11,15 @@ export function generateToken(): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** En la base solo guardamos el hash: si se filtra la DB, los tokens no sirven. */
+/** Only the hash is stored in the DB: if it leaks, the tokens are useless. */
 export async function hashToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
- * Exige `Authorization: Bearer <token>`. Carga el miembro y su viaje en el contexto.
- * Si la ruta tiene `:tripId`, valida que el token sea de ese viaje.
+ * Requires `Authorization: Bearer <token>`. Loads the member and their trip into the context.
+ * If the route has `:tripId`, checks that the token belongs to that trip.
  */
 export const requireMember = createMiddleware<AppEnv>(async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
@@ -49,7 +49,7 @@ export const requireMember = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
-/** Usar después de requireMember. */
+/** Use after requireMember. */
 export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   if (c.get("member").role !== "admin") {
     throw new HTTPException(403, { message: "Solo el admin del viaje puede hacer esto" });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { api, createTrip, DAY, join, TZ, uploadMedia } from "./helpers";
 
 describe("POST /trips", () => {
-  it("crea el viaje y devuelve código y token de admin", async () => {
+  it("creates the trip and returns the code and admin token", async () => {
     const now = Date.now();
     const res = await api("POST", "/trips", {
       body: {
@@ -27,7 +27,7 @@ describe("POST /trips", () => {
     expect(res.body.token).toEqual(expect.any(String));
   });
 
-  it("rechaza una zona horaria inválida", async () => {
+  it("rejects an invalid time zone", async () => {
     const res = await api("POST", "/trips", {
       body: { name: "x", adminName: "a", timezone: "Mars/Base", startsAt: 1, endsAt: 2, revealAt: 2 },
     });
@@ -35,14 +35,14 @@ describe("POST /trips", () => {
     expect(res.body.error).toMatch(/zona horaria/);
   });
 
-  it("rechaza un viaje que termina antes de empezar", async () => {
+  it("rejects a trip that ends before it starts", async () => {
     const res = await api("POST", "/trips", {
       body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 5, revealAt: 10 },
     });
     expect(res.status).toBe(400);
   });
 
-  it("rechaza un revelado anterior al inicio", async () => {
+  it("rejects a reveal before the start", async () => {
     const res = await api("POST", "/trips", {
       body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 20, revealAt: 5 },
     });
@@ -51,27 +51,27 @@ describe("POST /trips", () => {
 });
 
 describe("POST /trips/join", () => {
-  it("se une con el código, sin importar mayúsculas", async () => {
+  it("joins with the code, case-insensitively", async () => {
     const { code } = await createTrip();
     const res = await api("POST", "/trips/join", { body: { code: code.toLowerCase(), name: "Fede" } });
     expect(res.status).toBe(201);
     expect(res.body.member).toMatchObject({ name: "Fede", role: "member" });
   });
 
-  it("rechaza un código inexistente", async () => {
+  it("rejects a nonexistent code", async () => {
     await createTrip();
     const res = await api("POST", "/trips/join", { body: { code: "ZZZZZZ", name: "Fede" } });
     expect(res.status).toBe(404);
   });
 
-  it("no permite dos personas con el mismo nombre (ignora mayúsculas)", async () => {
+  it("doesn't allow two people with the same name (case-insensitive)", async () => {
     const { code } = await createTrip();
     await join(code, "Fede");
     const res = await api("POST", "/trips/join", { body: { code, name: "fede" } });
     expect(res.status).toBe(409);
   });
 
-  it("no deja unirse a un rollo ya revelado", async () => {
+  it("doesn't allow joining an already revealed roll", async () => {
     const { code, tripId, adminToken } = await createTrip();
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     const res = await api("POST", "/trips/join", { body: { code, name: "Tarde" } });
@@ -79,18 +79,18 @@ describe("POST /trips/join", () => {
   });
 });
 
-describe("autenticación", () => {
-  it("pide token", async () => {
+describe("authentication", () => {
+  it("requires a token", async () => {
     const { tripId } = await createTrip();
     expect((await api("GET", `/trips/${tripId}`)).status).toBe(401);
   });
 
-  it("rechaza tokens inválidos", async () => {
+  it("rejects invalid tokens", async () => {
     const { tripId } = await createTrip();
     expect((await api("GET", `/trips/${tripId}`, { token: "inventado" })).status).toBe(401);
   });
 
-  it("un token de otro viaje no sirve", async () => {
+  it("a token from another trip doesn't work", async () => {
     const a = await createTrip();
     const b = await createTrip();
     expect((await api("GET", `/trips/${a.tripId}`, { token: b.adminToken })).status).toBe(403);
@@ -98,7 +98,7 @@ describe("autenticación", () => {
 });
 
 describe("GET /trips/:id", () => {
-  it("devuelve miembros y lo que queda del rollo hoy", async () => {
+  it("returns members and what is left of the roll today", async () => {
     const { tripId, code } = await createTrip();
     const fede = await join(code, "Fede");
     await uploadMedia(tripId, fede.token);
@@ -113,7 +113,7 @@ describe("GET /trips/:id", () => {
 });
 
 describe("PATCH /trips/:id", () => {
-  it("el admin cambia límites y fecha de revelado", async () => {
+  it("the admin changes limits and reveal date", async () => {
     const { tripId, adminToken } = await createTrip();
     const revealAt = Date.now() + 20 * DAY;
     const res = await api("PATCH", `/trips/${tripId}`, {
@@ -124,7 +124,7 @@ describe("PATCH /trips/:id", () => {
     expect(res.body.trip).toMatchObject({ dailyPhotoLimit: 24, revealAt });
   });
 
-  it("un miembro no puede editar", async () => {
+  it("a member can't edit", async () => {
     const { tripId, code } = await createTrip();
     const fede = await join(code, "Fede");
     const res = await api("PATCH", `/trips/${tripId}`, { token: fede.token, body: { dailyPhotoLimit: 99 } });
@@ -132,21 +132,21 @@ describe("PATCH /trips/:id", () => {
   });
 });
 
-describe("revelado", () => {
-  it("solo el admin puede revelar", async () => {
+describe("reveal", () => {
+  it("only the admin can reveal", async () => {
     const { tripId, code } = await createTrip();
     const fede = await join(code, "Fede");
     expect((await api("POST", `/trips/${tripId}/reveal`, { token: fede.token })).status).toBe(403);
   });
 
-  it("el admin revela antes de tiempo", async () => {
+  it("the admin reveals early", async () => {
     const { tripId, adminToken } = await createTrip();
     const res = await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     expect(res.status).toBe(200);
     expect(res.body.trip.revealed).toBe(true);
   });
 
-  it("se revela solo cuando pasa revealAt", async () => {
+  it("reveals on its own once revealAt passes", async () => {
     const now = Date.now();
     const { tripId, adminToken } = await createTrip({
       startsAt: now - 3 * DAY,
@@ -159,7 +159,7 @@ describe("revelado", () => {
 });
 
 describe("DELETE /trips/:id/members/:memberId", () => {
-  it("el admin saca a alguien y su token deja de servir", async () => {
+  it("the admin removes someone and their token stops working", async () => {
     const { tripId, code, adminToken } = await createTrip();
     const fede = await join(code, "Fede");
 
@@ -168,21 +168,21 @@ describe("DELETE /trips/:id/members/:memberId", () => {
     expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(401);
   });
 
-  it("libera el nombre para que vuelva a entrar", async () => {
+  it("frees the name so they can join again", async () => {
     const { tripId, code, adminToken } = await createTrip();
     const fede = await join(code, "Fede");
     await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
     expect((await api("POST", "/trips/join", { body: { code, name: "Fede" } })).status).toBe(201);
   });
 
-  it("el admin no se puede sacar a sí mismo", async () => {
+  it("the admin can't remove themselves", async () => {
     const { tripId, adminToken, adminId } = await createTrip();
     expect((await api("DELETE", `/trips/${tripId}/members/${adminId}`, { token: adminToken })).status).toBe(400);
   });
 });
 
 describe("PATCH /trips/:id/members/me", () => {
-  it("cambia tu propio nombre y devuelve el miembro", async () => {
+  it("changes your own name and returns the member", async () => {
     const { tripId, code } = await createTrip();
     const fede = await join(code, "Fede");
     const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: fede.token, body: { name: "  Fede G  " } });
@@ -193,7 +193,7 @@ describe("PATCH /trips/:id/members/me", () => {
     expect(detail.body.me.name).toBe("Fede G");
   });
 
-  it("409 si el nombre ya lo usa otro (sin distinguir mayúsculas)", async () => {
+  it("409 if the name is already taken by someone else (case-insensitive)", async () => {
     const { tripId, code } = await createTrip();
     const fede = await join(code, "Fede");
     const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: fede.token, body: { name: "juani" } });
@@ -201,7 +201,7 @@ describe("PATCH /trips/:id/members/me", () => {
     expect(res.body.error).toBe("Ya hay alguien con ese nombre en el viaje");
   });
 
-  it("deja cambiar solo mayúsculas de tu propio nombre", async () => {
+  it("lets you change only the case of your own name", async () => {
     const { tripId, adminToken } = await createTrip();
     const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: adminToken, body: { name: "JUANI" } });
     expect(res.status).toBe(200);
@@ -209,7 +209,7 @@ describe("PATCH /trips/:id/members/me", () => {
     expect(res.body.role).toBe("admin");
   });
 
-  it("400 si el nombre es inválido", async () => {
+  it("400 if the name is invalid", async () => {
     const { tripId, adminToken } = await createTrip();
     for (const name of ["   ", "x".repeat(31)]) {
       const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: adminToken, body: { name } });
@@ -217,7 +217,7 @@ describe("PATCH /trips/:id/members/me", () => {
     }
   });
 
-  it("no podés editar en un viaje que no es tuyo", async () => {
+  it("you can't edit in a trip that isn't yours", async () => {
     const a = await createTrip();
     const b = await createTrip();
     const res = await api("PATCH", `/trips/${b.tripId}/members/me`, { token: a.adminToken, body: { name: "Otro" } });
