@@ -1,0 +1,1339 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Rollo API",
+    "version": "0.2.0",
+    "description": "Backend de Rollo: viajes, rollos compartidos y revelado al final."
+  },
+  "servers": [
+    {
+      "url": "https://rollo-api.juanifraga.com"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Token que devuelven crear o unirse a un viaje"
+      }
+    },
+    "schemas": {
+      "TripCreated": {
+        "type": "object",
+        "properties": {
+          "trip": {
+            "$ref": "#/components/schemas/Trip"
+          },
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "token": {
+            "type": "string",
+            "description": "Guardalo en el celular: es la única vez que se devuelve"
+          }
+        },
+        "required": [
+          "trip",
+          "member",
+          "token"
+        ]
+      },
+      "Trip": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Viaje al sur"
+          },
+          "joinCode": {
+            "type": "string",
+            "example": "HUB5FT",
+            "description": "Código de 6 caracteres para unirse"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "America/Argentina/Buenos_Aires"
+          },
+          "startsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Inicio del viaje",
+            "example": 1767225600000
+          },
+          "endsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Fin del viaje",
+            "example": 1767225600000
+          },
+          "revealAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Revelado automático",
+            "example": 1767225600000
+          },
+          "revealed": {
+            "type": "boolean"
+          },
+          "dailyPhotoLimit": {
+            "type": "integer"
+          },
+          "dailyVideoLimit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "joinCode",
+          "timezone",
+          "startsAt",
+          "endsAt",
+          "revealAt",
+          "revealed",
+          "dailyPhotoLimit",
+          "dailyVideoLimit"
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Fede"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role"
+        ]
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "member"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "Código inválido"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "CreateTripRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "example": "Viaje al sur"
+          },
+          "adminName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "Juani"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "America/Argentina/Buenos_Aires",
+            "description": "Zona IANA del destino"
+          },
+          "startsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Inicio del viaje",
+            "example": 1767225600000
+          },
+          "endsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Fin del viaje",
+            "example": 1767225600000
+          },
+          "revealAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Cuándo se revela el rollo",
+            "example": 1767225600000
+          },
+          "dailyPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10
+          },
+          "dailyVideoLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20,
+            "default": 3
+          }
+        },
+        "required": [
+          "name",
+          "adminName",
+          "timezone",
+          "startsAt",
+          "endsAt",
+          "revealAt"
+        ]
+      },
+      "JoinTripRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 6,
+            "example": "HUB5FT"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "Juani"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      },
+      "TripDetail": {
+        "type": "object",
+        "properties": {
+          "trip": {
+            "$ref": "#/components/schemas/Trip"
+          },
+          "me": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            }
+          },
+          "today": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "example": "2027-01-12",
+                "description": "Fecha local del viaje"
+              },
+              "photosLeft": {
+                "type": "integer"
+              },
+              "videosLeft": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "date",
+              "photosLeft",
+              "videosLeft"
+            ]
+          },
+          "totalUploaded": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "trip",
+          "me",
+          "members",
+          "today",
+          "totalUploaded"
+        ]
+      },
+      "TripResponse": {
+        "type": "object",
+        "properties": {
+          "trip": {
+            "$ref": "#/components/schemas/Trip"
+          }
+        },
+        "required": [
+          "trip"
+        ]
+      },
+      "UpdateTripRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "endsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "revealAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "dailyPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "dailyVideoLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          }
+        }
+      },
+      "MediaRegistered": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending"
+            ]
+          },
+          "upload": {
+            "type": "object",
+            "properties": {
+              "original": {
+                "type": "string",
+                "format": "uri",
+                "description": "PUT del archivo original"
+              },
+              "thumb": {
+                "type": "string",
+                "format": "uri",
+                "description": "PUT del thumbnail JPEG (~800px)"
+              }
+            },
+            "required": [
+              "original",
+              "thumb"
+            ]
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "Segundos de validez de las URLs"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "upload",
+          "expiresIn"
+        ]
+      },
+      "MediaStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "uploaded"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ]
+      },
+      "RegisterMediaRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID generado en el celular; reintentar con el mismo id es seguro"
+          },
+          "type": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "takenAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Hora del celular al disparar",
+            "example": 1767225600000
+          },
+          "lat": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lng": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -180,
+            "maximum": 180
+          },
+          "accuracyM": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "caption": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 280
+          },
+          "durationS": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "takenAt",
+          "sizeBytes"
+        ]
+      },
+      "MediaType": {
+        "type": "string",
+        "enum": [
+          "photo",
+          "video"
+        ]
+      },
+      "Feed": {
+        "type": "object",
+        "properties": {
+          "revealed": {
+            "type": "boolean"
+          },
+          "revealAt": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeedItem"
+            }
+          }
+        },
+        "required": [
+          "revealed",
+          "revealAt",
+          "items"
+        ]
+      },
+      "FeedItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/MediaType"
+          },
+          "takenAt": {
+            "type": "integer"
+          },
+          "day": {
+            "type": "string",
+            "example": "2027-01-12"
+          },
+          "lat": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lng": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "caption": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "durationS": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Solo después del revelado"
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Solo después del revelado"
+          },
+          "files": {
+            "type": "object",
+            "properties": {
+              "thumb": {
+                "type": "string"
+              },
+              "original": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "thumb",
+              "original"
+            ],
+            "description": "Paths de descarga; solo después del revelado"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "takenAt",
+          "day",
+          "lat",
+          "lng",
+          "caption",
+          "durationS",
+          "author"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/trips": {
+      "post": {
+        "tags": [
+          "Viajes"
+        ],
+        "summary": "Crear un viaje",
+        "description": "Quien lo crea queda como admin. Devuelve el código para invitar y el token del admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTripRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Viaje creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/join": {
+      "post": {
+        "tags": [
+          "Viajes"
+        ],
+        "summary": "Unirse a un viaje",
+        "description": "Con el código y un nombre. El nombre es único por viaje (sin distinguir mayúsculas).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinTripRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Te uniste al viaje",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto con el estado actual",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}": {
+      "get": {
+        "tags": [
+          "Viajes"
+        ],
+        "summary": "Info del viaje",
+        "description": "Viaje, miembros y cuántas fotos y videos te quedan hoy.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalle del viaje",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Viajes"
+        ],
+        "summary": "Editar el viaje (admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTripRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Viaje actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/reveal": {
+      "post": {
+        "tags": [
+          "Viajes"
+        ],
+        "summary": "Revelar el rollo ya (admin)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rollo revelado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/members/{memberId}": {
+      "delete": {
+        "tags": [
+          "Viajes"
+        ],
+        "summary": "Sacar a alguien del viaje (admin)",
+        "description": "Su token deja de servir y su nombre queda libre. Sus fotos quedan en el rollo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Miembro removido"
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/media": {
+      "post": {
+        "tags": [
+          "Fotos y videos"
+        ],
+        "summary": "Registrar una foto o video",
+        "description": "Devuelve URLs firmadas para subir el original y el thumbnail directo a R2. Idempotente por `id`: reintentar desde la cola offline no duplica ni gasta cupo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterMediaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reintento: URLs nuevas, o ya estaba subida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MediaRegistered"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MediaStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Registrada; subí los archivos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaRegistered"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto con el estado actual",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Se alcanzó el límite del día",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{mediaId}/complete": {
+      "post": {
+        "tags": [
+          "Fotos y videos"
+        ],
+        "summary": "Confirmar que se subieron los archivos",
+        "description": "Verifica que original y thumbnail estén en R2. Recién ahí la foto aparece en el feed.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subida confirmada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/feed": {
+      "get": {
+        "tags": [
+          "Fotos y videos"
+        ],
+        "summary": "Feed del viaje",
+        "description": "Antes del revelado: solo metadata (autor, hora, lugar, epígrafe), sin archivos, ni siquiera los propios. Después: incluye dimensiones y los paths para descargar.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feed ordenado por hora en que se sacó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Feed"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/media/{mediaId}/{variant}": {
+      "get": {
+        "tags": [
+          "Fotos y videos"
+        ],
+        "summary": "Descargar un archivo (solo después del revelado)",
+        "description": "Streaming desde R2 con el mismo Bearer token.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "thumb",
+                "original"
+              ]
+            },
+            "required": true,
+            "name": "variant",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{mediaId}": {
+      "delete": {
+        "tags": [
+          "Fotos y videos"
+        ],
+        "summary": "Borrar una foto propia (antes del revelado)",
+        "description": "Borra los archivos y devuelve el cupo del día.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Borrada"
+          },
+          "401": {
+            "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto con el estado actual",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}
