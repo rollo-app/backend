@@ -32,7 +32,7 @@ describe("POST /trips", () => {
       body: { name: "x", adminName: "a", timezone: "Mars/Base", startsAt: 1, endsAt: 2, revealAt: 2 },
     });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/zona horaria/);
+    expect(res.body.error).toMatch(/Zona horaria inválida/);
   });
 
   it("rejects a trip that ends before it starts", async () => {
@@ -229,7 +229,7 @@ describe("PATCH /trips/:id/members/me", () => {
     const fede = await join(code, "Fede");
     const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: fede.token, body: { name: "juani" } });
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe("Ya hay alguien con ese nombre en el viaje");
+    expect(res.body.error).toBe("Ya hay alguien con ese nombre en el rollo");
   });
 
   it("lets you change only the case of your own name", async () => {

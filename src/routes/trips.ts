@@ -94,7 +94,7 @@ trips.openapi(joinTripRoute, async (c) => {
   const taken = await c.env.DB.prepare(
     "SELECT 1 FROM members WHERE trip_id = ? AND name = ? AND removed_at IS NULL",
   ).bind(trip.id, memberName).first();
-  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el viaje" });
+  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el rollo" });
 
   const memberId = crypto.randomUUID();
   const token = generateToken();
@@ -186,7 +186,7 @@ trips.openapi(updateTripRoute, async (c) => {
     daily_photo_limit: b.dailyPhotoLimit ?? trip.daily_photo_limit,
     daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
   };
-  if (next.ends_at <= trip.starts_at) throw new HTTPException(400, { message: "endsAt inválido" });
+  if (next.ends_at <= trip.starts_at) throw new HTTPException(400, { message: "El rollo tiene que terminar después de empezar" });
   if (next.reveal_at < next.ends_at) throw new HTTPException(400, { message: "El revelado no puede ser antes del fin" });
 
   await c.env.DB.prepare(
@@ -243,7 +243,7 @@ trips.openapi(updateMeRoute, async (c) => {
   const taken = await c.env.DB.prepare(
     "SELECT 1 FROM members WHERE trip_id = ? AND name = ? AND id != ? AND removed_at IS NULL",
   ).bind(me.trip_id, name, me.id).first();
-  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el viaje" });
+  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el rollo" });
 
   await c.env.DB.prepare("UPDATE members SET name = ? WHERE id = ?").bind(name, me.id).run();
   return c.json({ id: me.id, name, role: me.role }, 200);

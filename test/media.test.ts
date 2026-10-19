@@ -66,7 +66,7 @@ describe("POST /trips/:id/media (register)", () => {
       body: videoBody({ durationS: 22 }),
     });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/15 segundos/);
+    expect(res.body.error).toMatch(/Los videos tienen que durar 15 segundos/);
   });
 
   it("accepts a video of exactly 15 seconds", async () => {

@@ -65,7 +65,7 @@ media.openapi(registerRoute, async (c) => {
   if (isRevealed(trip, now)) throw new HTTPException(409, { message: "El rollo ya se reveló" });
   if (b.takenAt > now + 5 * 60_000) throw new HTTPException(400, { message: "La hora de la foto está en el futuro" });
   if (b.takenAt < trip.starts_at - 24 * 3600_000) {
-    throw new HTTPException(400, { message: "La foto es de antes del viaje" });
+    throw new HTTPException(400, { message: "La foto es de antes de que empiece el rollo" });
   }
 
   const existing = await c.env.DB.prepare("SELECT * FROM media WHERE id = ?").bind(b.id).first<MediaRow>();
