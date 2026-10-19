@@ -18,25 +18,25 @@ import {
 import type { Role, TripRow } from "../types";
 
 const trips = createApp();
-const tags = ["Viajes"];
+const tags = ["Trips"];
 
-// ---------- Crear ----------
+// ---------- Create ----------
 
 const createTripRoute = createRoute({
   method: "post",
   path: "/",
   tags,
-  summary: "Crear un viaje",
-  description: "Quien lo crea queda como admin. Devuelve el código para invitar y el token del admin.",
+  summary: "Create a trip",
+  description: "Whoever creates it becomes the admin. Returns the invite code and the admin token.",
   request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },
-  responses: { 201: json(TripCreatedSchema, "Viaje creado"), ...errors(400) },
+  responses: { 201: json(TripCreatedSchema, "Trip created"), ...errors(400) },
 });
 
 trips.openapi(createTripRoute, async (c) => {
   const body = c.req.valid("json");
   const now = Date.now();
 
-  // Código único (colisiones muy improbables, pero reintentamos por las dudas).
+  // Unique code (collisions are very unlikely, but we retry just in case).
   let joinCode = "";
   for (let i = 0; i < 5 && !joinCode; i++) {
     const candidate = generateJoinCode();
@@ -71,16 +71,16 @@ trips.openapi(createTripRoute, async (c) => {
   );
 });
 
-// ---------- Unirse ----------
+// ---------- Join ----------
 
 const joinTripRoute = createRoute({
   method: "post",
   path: "/join",
   tags,
-  summary: "Unirse a un viaje",
-  description: "Con el código y un nombre. El nombre es único por viaje (sin distinguir mayúsculas).",
+  summary: "Join a trip",
+  description: "With the code and a name. The name is unique per trip (case-insensitive).",
   request: { body: { content: { "application/json": { schema: JoinTripSchema } }, required: true } },
-  responses: { 201: json(TripCreatedSchema, "Te uniste al viaje"), ...errors(400, 404, 409) },
+  responses: { 201: json(TripCreatedSchema, "Joined the trip"), ...errors(400, 404, 409) },
 });
 
 trips.openapi(joinTripRoute, async (c) => {
@@ -109,18 +109,18 @@ trips.openapi(joinTripRoute, async (c) => {
   );
 });
 
-// ---------- Detalle ----------
+// ---------- Detail ----------
 
 const getTripRoute = createRoute({
   method: "get",
   path: "/{tripId}",
   tags,
-  summary: "Info del viaje",
-  description: "Viaje, miembros y cuántas fotos y videos te quedan hoy.",
+  summary: "Trip info",
+  description: "Trip, members and how many photos and videos you have left today.",
   security: bearerAuth,
   middleware: [requireMember] as const,
   request: { params: TripParams },
-  responses: { 200: json(TripDetailSchema, "Detalle del viaje"), ...errors(401, 403) },
+  responses: { 200: json(TripDetailSchema, "Trip detail"), ...errors(401, 403) },
 });
 
 trips.openapi(getTripRoute, async (c) => {
@@ -160,20 +160,20 @@ trips.openapi(getTripRoute, async (c) => {
   );
 });
 
-// ---------- Editar (admin) ----------
+// ---------- Edit (admin) ----------
 
 const updateTripRoute = createRoute({
   method: "patch",
   path: "/{tripId}",
   tags,
-  summary: "Editar el viaje (admin)",
+  summary: "Edit the trip (admin)",
   security: bearerAuth,
   middleware: [requireMember, requireAdmin] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateTripSchema } }, required: true },
   },
-  responses: { 200: json(TripResponseSchema, "Viaje actualizado"), ...errors(400, 401, 403) },
+  responses: { 200: json(TripResponseSchema, "Trip updated"), ...errors(400, 401, 403) },
 });
 
 trips.openapi(updateTripRoute, async (c) => {
@@ -196,17 +196,17 @@ trips.openapi(updateTripRoute, async (c) => {
   return c.json({ trip: publicTrip({ ...trip, ...next }) }, 200);
 });
 
-// ---------- Revelar (admin) ----------
+// ---------- Reveal (admin) ----------
 
 const revealRoute = createRoute({
   method: "post",
   path: "/{tripId}/reveal",
   tags,
-  summary: "Revelar el rollo ya (admin)",
+  summary: "Reveal the roll now (admin)",
   security: bearerAuth,
   middleware: [requireMember, requireAdmin] as const,
   request: { params: TripParams },
-  responses: { 200: json(TripResponseSchema, "Rollo revelado"), ...errors(401, 403) },
+  responses: { 200: json(TripResponseSchema, "Roll revealed"), ...errors(401, 403) },
 });
 
 trips.openapi(revealRoute, async (c) => {
@@ -218,21 +218,21 @@ trips.openapi(revealRoute, async (c) => {
   return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) }, 200);
 });
 
-// ---------- Editar mi nombre ----------
+// ---------- Edit my name ----------
 
 const updateMeRoute = createRoute({
   method: "patch",
   path: "/{tripId}/members/me",
   tags,
-  summary: "Cambiar tu nombre en el viaje",
-  description: "Mismas reglas que al unirse: único por viaje, sin distinguir mayúsculas.",
+  summary: "Change your name in the trip",
+  description: "Same rules as when joining: unique per trip, case-insensitive.",
   security: bearerAuth,
   middleware: [requireMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateMeSchema } }, required: true },
   },
-  responses: { 200: json(MemberSchema, "Nombre actualizado"), ...errors(400, 401, 403, 409) },
+  responses: { 200: json(MemberSchema, "Name updated"), ...errors(400, 401, 403, 409) },
 });
 
 trips.openapi(updateMeRoute, async (c) => {
@@ -248,18 +248,18 @@ trips.openapi(updateMeRoute, async (c) => {
   return c.json({ id: me.id, name, role: me.role }, 200);
 });
 
-// ---------- Sacar miembro (admin) ----------
+// ---------- Remove member (admin) ----------
 
 const removeMemberRoute = createRoute({
   method: "delete",
   path: "/{tripId}/members/{memberId}",
   tags,
-  summary: "Sacar a alguien del viaje (admin)",
-  description: "Su token deja de servir y su nombre queda libre. Sus fotos quedan en el rollo.",
+  summary: "Remove someone from the trip (admin)",
+  description: "Their token stops working and their name is freed. Their photos stay in the roll.",
   security: bearerAuth,
   middleware: [requireMember, requireAdmin] as const,
   request: { params: TripMemberParams },
-  responses: { 204: { description: "Miembro removido" }, ...errors(400, 401, 403, 404) },
+  responses: { 204: { description: "Member removed" }, ...errors(400, 401, 403, 404) },
 });
 
 trips.openapi(removeMemberRoute, async (c) => {

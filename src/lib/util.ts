@@ -1,6 +1,6 @@
 import type { TripRow } from "../types";
 
-/** Fecha YYYY-MM-DD de un instante, en la zona horaria del viaje. */
+/** YYYY-MM-DD date of an instant, in the trip's time zone. */
 export function localDate(ms: number, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -19,7 +19,7 @@ export function isValidTimeZone(tz: string): boolean {
   }
 }
 
-/** Base64 estándar decodificable (con o sin padding). */
+/** Decodable standard base64 (with or without padding). */
 export function isBase64(s: string): boolean {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(s)) return false;
   try {
@@ -34,7 +34,7 @@ export function isRevealed(trip: TripRow, now = Date.now()): boolean {
   return trip.revealed_at !== null || now >= trip.reveal_at;
 }
 
-// Sin 0/O ni 1/I/L para que se pueda dictar en voz alta.
+// No 0/O or 1/I/L so it can be read out loud.
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 export function generateJoinCode(length = 6): string {
@@ -45,7 +45,7 @@ export function generateJoinCode(length = 6): string {
   return code;
 }
 
-/** Forma pública de un viaje (lo que ve la app). */
+/** Public shape of a trip (what the app sees). */
 export function publicTrip(trip: TripRow, now = Date.now()) {
   return {
     id: trip.id,

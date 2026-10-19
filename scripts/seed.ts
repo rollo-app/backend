@@ -1,18 +1,18 @@
 import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenarios";
 
 /**
- * Viajes de prueba con fotos reales contra el server local: `npm run seed`.
- * Necesita `npm run dev:lan` corriendo con DEV_LOCAL_UPLOADS=1 en `.dev.vars`
- * (si no, las URLs de subida apuntan al R2 real).
+ * Test trips with real photos against the local server: `npm run seed`.
+ * Needs `npm run dev:lan` running with DEV_LOCAL_UPLOADS=1 in `.dev.vars`
+ * (otherwise the upload URLs point at the real R2).
  *
- * Es idempotente: si el viaje de un escenario ya existe en D1 local, no se recrea.
- * `npm run seed -- --reset` borra esos viajes (media, members, trips) y los recrea.
- * Los videos son placeholders: no hay ffmpeg, el original es un jpeg subido como video/mp4.
+ * Idempotent: if a scenario's trip already exists in local D1, it is not recreated.
+ * `npm run seed -- --reset` deletes those trips (media, members, trips) and recreates them.
+ * Videos are placeholders: there is no ffmpeg, the original is a jpeg uploaded as video/mp4.
  */
 
 async function main() {
   if (process.argv.includes("--reset")) {
-    console.log("--reset: borrando los viajes de los escenarios de D1 local...");
+    console.log("--reset: deleting the scenario trips from local D1...");
     resetScenarios();
   }
 
@@ -20,16 +20,16 @@ async function main() {
   for (const s of SCENARIOS) rows.push(await runScenario(s));
 
   const pad = (v: string | number, n: number) => String(v).padEnd(n);
-  console.log("\n" + [pad("Viaje", 28), pad("Código", 8), pad("Fotos", 6), pad("Videos", 7), "Qué se prueba"].join(" "));
+  console.log("\n" + [pad("Trip", 28), pad("Code", 8), pad("Photos", 6), pad("Videos", 7), "What it tests"].join(" "));
   for (const r of rows) console.log([pad(r.name, 28), pad(r.code, 8), pad(r.photos, 6), pad(r.videos, 7), r.tests].join(" "));
 
-  console.log("\nTokens (solo de los viajes creados en esta corrida):");
+  console.log("\nTokens (only for trips created in this run):");
   for (const r of rows) {
     if (r.adminToken) console.log(`  admin (Cami) @ ${r.name}: ${r.adminToken}`);
     for (const [k, v] of Object.entries(r.extra)) console.log(`  ${k}: ${v}`);
   }
-  if (rows.some((r) => !r.adminToken)) console.log("  (los viajes que ya existían no muestran token: usá --reset para recrearlos)");
-  console.log("\nNota: los videos son placeholders (original = bytes de un jpeg como video/mp4; thumb y thumbhash de picsum).");
+  if (rows.some((r) => !r.adminToken)) console.log("  (trips that already existed show no token: use --reset to recreate them)");
+  console.log("\nNote: videos are placeholders (original = jpeg bytes as video/mp4; thumb and thumbhash from picsum).");
 }
 
 main().catch((err) => {

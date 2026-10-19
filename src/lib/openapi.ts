@@ -2,7 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../schemas";
 import type { AppEnv } from "../types";
 
-/** App de Hono con validación por contrato. Los errores de validación responden `{ error }`. */
+/** Hono app with contract-based validation. Validation errors respond `{ error }`. */
 export function createApp() {
   return new OpenAPIHono<AppEnv>({
     defaultHook: (result, c) => {
@@ -19,15 +19,15 @@ export function createApp() {
 export const bearerAuth = [{ bearerAuth: [] }];
 
 const ERROR_DESCRIPTIONS: Record<number, string> = {
-  400: "Datos inválidos",
-  401: "Falta el token o es inválido",
-  403: "Sin permiso",
-  404: "No encontrado",
-  409: "Conflicto con el estado actual",
-  429: "Se alcanzó el límite del día",
+  400: "Invalid data",
+  401: "Missing or invalid token",
+  403: "Forbidden",
+  404: "Not found",
+  409: "Conflict with the current state",
+  429: "Daily limit reached",
 };
 
-/** Respuestas de error documentadas para un endpoint. */
+/** Documented error responses for an endpoint. */
 export function errors(...codes: (keyof typeof ERROR_DESCRIPTIONS)[]) {
   return Object.fromEntries(
     codes.map((code) => [

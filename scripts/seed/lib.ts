@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
 
-/** Helpers del seed: API, D1 local, imágenes (con cache en disco), horarios y cupo. */
+/** Seed helpers: API, local D1, images (disk-cached), times and daily quota. */
 
 export const API = process.env.SEED_API_URL ?? "http://localhost:8787";
 export const TZ = "America/Argentina/Buenos_Aires";
-const TZ_OFFSET_H = -3; // Argentina no tiene horario de verano
+const TZ_OFFSET_H = -3; // Argentina has no daylight saving time
 export const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
 
@@ -31,7 +31,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   return data as T;
 }
 
-// ---------- D1 local (vía wrangler) ----------
+// ---------- Local D1 (via wrangler) ----------
 
 export function d1<T = any>(sql: string): T[] {
   const out = execFileSync("./node_modules/.bin/wrangler", ["d1", "execute", "rollo", "--local", "--json", "--command", sql], {
@@ -43,31 +43,31 @@ export function d1<T = any>(sql: string): T[] {
   return (parsed[0]?.results ?? []) as T[];
 }
 
-// ---------- Fechas (zona del viaje: Buenos Aires) ----------
+// ---------- Dates (trip time zone: Buenos Aires) ----------
 
-/** Medianoche local del día `daysAgo` atrás (negativo = en el futuro), en epoch ms. */
+/** Local midnight of the day `daysAgo` days back (negative = in the future), in epoch ms. */
 export function localMidnight(daysAgo: number): number {
   const local = new Date(Date.now() + TZ_OFFSET_H * HOUR);
   local.setUTCHours(0, 0, 0, 0);
   return local.getTime() - TZ_OFFSET_H * HOUR - daysAgo * DAY;
 }
 
-/** Medianoche local de una fecha fija (mes 1-12). */
+/** Local midnight of a fixed date (month 1-12). */
 export const fixedMidnight = (y: number, m: number, d: number) => Date.UTC(y, m - 1, d) - TZ_OFFSET_H * HOUR;
 
 export const localDate = (t: number) => new Date(t + TZ_OFFSET_H * HOUR).toISOString().slice(0, 10);
 
-/** Hora al azar entre las 8 y las 22 h locales de ese día (hoy, solo hasta ahora). null si no hay ventana. */
+/** Random time between 08:00 and 22:00 local on that day (today: only up to now). null if there is no window. */
 export function randomTime(midnight: number): number | null {
   const from = midnight + 8 * HOUR;
   const to = Math.min(midnight + 22 * HOUR, Date.now() - 60_000);
   return to - from < 5 * 60_000 ? null : Math.round(rand(from, to));
 }
 
-// ---------- Plan de fotos ----------
+// ---------- Shot plan ----------
 
 export type Shot = {
-  member: number; // índice en la lista de miembros del escenario
+  member: number; // index into the scenario's member list
   type: "photo" | "video";
   takenAt: number;
   lat: number | null;
@@ -77,16 +77,16 @@ export type Shot = {
 };
 
 export type Spot = { lat: number; lng: number } | null;
-/** Lugar fijo, o función del índice de día en que terminó cayendo la toma (para recorridos). */
+/** Fixed spot, or a function of the day index the shot ended up on (for routes). */
 export type SpotArg = Spot | ((dayIdx: number) => Spot);
 
-/** Arma las tomas respetando el cupo diario por persona y tipo (si un día no da, prueba los otros). */
+/** Builds the shots respecting the daily quota per person and type (if a day doesn't fit, tries the others). */
 export class Planner {
   shots: Shot[] = [];
   private used = new Map<string, number>();
   constructor(private days: number[], private photoLimit = 10, private videoLimit = 3) {}
 
-  /** Agrega una toma preferentemente el día `dayIdx`; si no hay cupo u hora, prueba los demás. */
+  /** Adds a shot, preferably on day `dayIdx`; if there is no quota or time, tries the other days. */
   add(member: number, dayIdx: number, type: "photo" | "video", spotArg: SpotArg, caption: string | null): boolean {
     const limit = type === "photo" ? this.photoLimit : this.videoLimit;
     for (let k = 0; k < this.days.length; k++) {
@@ -112,14 +112,14 @@ export class Planner {
   }
 }
 
-// ---------- Imágenes ----------
+// ---------- Images ----------
 
 const CACHE_DIR = ".wrangler/seed-cache";
 export const POOL_SIZE = 80;
 type Img = { original: Buffer; thumb: Buffer; width: number; height: number; thumbhash: string };
 const imgCache = new Map<string, Promise<Img>>();
 
-/** Baja (o lee del cache en disco) la imagen del pool `n` y arma thumb de 800 px + thumbhash. */
+/** Downloads (or reads from the disk cache) image `n` of the pool and builds an 800 px thumb + thumbhash. */
 export function getImage(n: number): Promise<Img> {
   const seed = `rollo-pool-${n % POOL_SIZE}`;
   let p = imgCache.get(seed);
@@ -149,16 +149,16 @@ export function getImage(n: number): Promise<Img> {
 
 async function put(url: string, data: Buffer, contentType: string) {
   if (url.includes("r2.cloudflarestorage.com")) {
-    throw new Error("Las URLs apuntan al R2 real: poné DEV_LOCAL_UPLOADS=1 en .dev.vars y reiniciá `npm run dev`.");
+    throw new Error("URLs point at the real R2: set DEV_LOCAL_UPLOADS=1 in .dev.vars and restart `npm run dev`.");
   }
   const res = await fetch(url, { method: "PUT", headers: { "content-type": contentType }, body: data });
   if (!res.ok) throw new Error(`PUT ${res.status}`);
 }
 
 /**
- * Registra, sube y confirma una toma.
- * VIDEOS: no hay ffmpeg, así que el "original" es un placeholder (los bytes del jpeg) subido como video/mp4;
- * el thumb y el thumbhash salen de una imagen de picsum. Sirven para probar el flujo, no para reproducir.
+ * Registers, uploads and confirms a shot.
+ * VIDEOS: there is no ffmpeg, so the "original" is a placeholder (the jpeg bytes) uploaded as video/mp4;
+ * the thumb and thumbhash come from a picsum image. They exercise the flow, they don't play.
  */
 export async function uploadShot(tripId: string, token: string, shot: Shot, imgIdx: number) {
   const img = await getImage(imgIdx);
@@ -189,7 +189,7 @@ export async function uploadShot(tripId: string, token: string, shot: Shot, imgI
   return id;
 }
 
-/** Corre las tareas con `n` workers en paralelo. */
+/** Runs the jobs with `n` parallel workers. */
 export async function pool<T>(jobs: (() => Promise<T>)[], n = 6, onProgress?: (done: number) => void): Promise<T[]> {
   const queue = jobs.map((job, i) => ({ job, i }));
   const results: T[] = new Array(jobs.length);
