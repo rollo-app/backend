@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { api, createTrip, DAY, join, MINUTE, TZ, uploadMedia } from "./helpers";
+import { api, createTrip, DAY, HOUR, join, MINUTE, TZ, uploadMedia } from "./helpers";
 
 describe("POST /trips", () => {
   it("creates the trip and returns the code and admin token", async () => {
@@ -142,6 +142,29 @@ describe("GET /trips/:id", () => {
     expect(res.body.members.map((m: { name: string }) => m.name)).toEqual(["Juani", "Fede"]);
     expect(res.body.today).toMatchObject({ photosLeft: 1, videosLeft: 1 });
     expect(res.body.totalUploaded).toBe(1);
+  });
+
+  it("has nothing left today before the rollo starts", async () => {
+    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() + DAY, endsAt: Date.now() + 5 * DAY });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.today).toMatchObject({ photosLeft: 0, videosLeft: 0 });
+  });
+
+  it("has nothing left today after the rollo ended", async () => {
+    const { tripId, adminToken } = await createTrip({
+      startsAt: Date.now() - 3 * DAY,
+      endsAt: Date.now() - HOUR,
+      revealAt: Date.now() + DAY,
+    });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.today).toMatchObject({ photosLeft: 0, videosLeft: 0 });
+  });
+
+  it("has nothing left today once revealed", async () => {
+    const { tripId, adminToken } = await createTrip();
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.today).toMatchObject({ photosLeft: 0, videosLeft: 0 });
   });
 });
 

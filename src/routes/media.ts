@@ -10,6 +10,7 @@ import {
   MediaParams,
   MediaRegisteredSchema,
   MediaStatusSchema,
+  PAST_TOLERANCE_MS,
   RegisterMediaSchema,
   TripParams,
 } from "../schemas";
@@ -63,10 +64,7 @@ media.openapi(registerRoute, async (c) => {
   const now = Date.now();
 
   if (isRevealed(trip, now)) throw new HTTPException(409, { message: "El rollo ya se reveló" });
-  if (b.takenAt > now + 5 * 60_000) throw new HTTPException(400, { message: "La hora de la foto está en el futuro" });
-  if (b.takenAt < trip.starts_at - 24 * 3600_000) {
-    throw new HTTPException(400, { message: "La foto es de antes de que empiece el rollo" });
-  }
+  if (b.takenAt > now + PAST_TOLERANCE_MS) throw new HTTPException(400, { message: "La hora de la foto está en el futuro" });
 
   const existing = await c.env.DB.prepare("SELECT * FROM media WHERE id = ?").bind(b.id).first<MediaRow>();
   if (existing) {
@@ -74,6 +72,16 @@ media.openapi(registerRoute, async (c) => {
     if (existing.deleted_at !== null) throw new HTTPException(409, { message: "El admin borró esta foto" });
     if (existing.status === "uploaded") return c.json({ id: existing.id, status: "uploaded" as const }, 200);
     return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, existing.id, existing.original_key, existing.thumb_key), 200);
+  }
+
+  // Validated against when the photo was taken, not against the upload time: the offline queue
+  // may register photos taken during the rollo after it ended (as long as it isn't revealed).
+  // Placed after the existing-id branch so a retry is never newly rejected (e.g. if the admin edited the dates).
+  if (b.takenAt < trip.starts_at - PAST_TOLERANCE_MS) {
+    throw new HTTPException(400, { message: "Este rollo todavía no empezó" });
+  }
+  if (b.takenAt > trip.ends_at + PAST_TOLERANCE_MS) {
+    throw new HTTPException(400, { message: "Este rollo ya terminó" });
   }
 
   // Daily limit by the trip's local date. Also counts pending ones

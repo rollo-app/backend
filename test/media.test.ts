@@ -97,13 +97,56 @@ describe("POST /trips/:id/media (register)", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects photos from before the trip", async () => {
-    const { tripId, adminToken } = await createTrip();
+  it("rejects photos taken before the rollo starts", async () => {
+    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() - HOUR });
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
-      body: photoBody({ takenAt: Date.now() - 5 * DAY }),
+      body: photoBody({ takenAt: Date.now() - HOUR - 10 * MINUTE }),
     });
     expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Este rollo todavía no empezó");
+  });
+
+  it("accepts a photo taken a few minutes before the start (clock skew tolerance)", async () => {
+    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() - HOUR });
+    const res = await api("POST", `/trips/${tripId}/media`, {
+      token: adminToken,
+      body: photoBody({ takenAt: Date.now() - HOUR - 2 * MINUTE }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects photos taken after the rollo ends", async () => {
+    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() - 2 * DAY, endsAt: Date.now() - HOUR });
+    const res = await api("POST", `/trips/${tripId}/media`, {
+      token: adminToken,
+      body: photoBody({ takenAt: Date.now() - 10 * MINUTE }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Este rollo ya terminó");
+  });
+
+  it("accepts a photo taken during the rollo and registered after it ended (offline queue)", async () => {
+    const { tripId, adminToken } = await createTrip({
+      startsAt: Date.now() - 3 * DAY,
+      endsAt: Date.now() - HOUR,
+      revealAt: Date.now() + DAY,
+    });
+    const body = photoBody({ takenAt: Date.now() - 2 * DAY });
+    const reg = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
+    expect(reg.status).toBe(201);
+    await putFiles(tripId, body.id);
+    const done = await api("POST", `/media/${body.id}/complete`, { token: adminToken });
+    expect(done.status).toBe(200);
+  });
+
+  it("a retry of an already registered photo still works after the admin moves the end earlier", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const body = photoBody();
+    expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(201);
+    await env.DB.prepare("UPDATE trips SET ends_at = ? WHERE id = ?").bind(Date.now() - HOUR, tripId).run();
+    const retry = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
+    expect(retry.status).toBe(200);
   });
 
   it("accepts photos without GPS", async () => {

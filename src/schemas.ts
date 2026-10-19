@@ -97,8 +97,8 @@ export const TripDetailSchema = z
     members: z.array(MemberSchema),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),
-      photosLeft: z.number().int(),
-      videosLeft: z.number().int(),
+      photosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
+      videosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
     }),
     totalUploaded: z.number().int(),
   })

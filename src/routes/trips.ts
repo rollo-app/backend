@@ -2,7 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { generateToken, hashToken, requireAdmin, requireMember } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
-import { generateJoinCode, localDate, publicTrip } from "../lib/util";
+import { generateJoinCode, isRevealed, localDate, publicTrip } from "../lib/util";
 import {
   CreateTripSchema,
   JoinTripSchema,
@@ -143,6 +143,8 @@ trips.openapi(getTripRoute, async (c) => {
     ).bind(trip.id).first<{ n: number }>(),
   ]);
 
+  // Outside the rollo's dates (or once revealed) nothing can be shot.
+  const active = now >= trip.starts_at && now <= trip.ends_at && !isRevealed(trip, now);
   const used = (type: string) => usage.results.find((r) => r.type === type)?.n ?? 0;
 
   return c.json(
@@ -152,8 +154,8 @@ trips.openapi(getTripRoute, async (c) => {
       members: members.results,
       today: {
         date: today,
-        photosLeft: Math.max(0, trip.daily_photo_limit - used("photo")),
-        videosLeft: Math.max(0, trip.daily_video_limit - used("video")),
+        photosLeft: !active ? 0 : Math.max(0, trip.daily_photo_limit - used("photo")),
+        videosLeft: !active ? 0 : Math.max(0, trip.daily_video_limit - used("video")),
       },
       totalUploaded: totals?.n ?? 0,
     },
