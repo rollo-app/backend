@@ -1,3 +1,6 @@
 R2_ACCOUNT_ID=tu_account_id
 R2_ACCESS_KEY_ID=tu_access_key
 R2_SECRET_ACCESS_KEY=tu_secret
+
+# Subidas al R2 local en `npm run dev` (nunca en producción)
+DEV_LOCAL_UPLOADS=1

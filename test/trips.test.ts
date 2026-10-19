@@ -180,3 +180,47 @@ describe("DELETE /trips/:id/members/:memberId", () => {
     expect((await api("DELETE", `/trips/${tripId}/members/${adminId}`, { token: adminToken })).status).toBe(400);
   });
 });
+
+describe("PATCH /trips/:id/members/me", () => {
+  it("cambia tu propio nombre y devuelve el miembro", async () => {
+    const { tripId, code } = await createTrip();
+    const fede = await join(code, "Fede");
+    const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: fede.token, body: { name: "  Fede G  " } });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: fede.memberId, name: "Fede G", role: "member" });
+
+    const detail = await api("GET", `/trips/${tripId}`, { token: fede.token });
+    expect(detail.body.me.name).toBe("Fede G");
+  });
+
+  it("409 si el nombre ya lo usa otro (sin distinguir mayúsculas)", async () => {
+    const { tripId, code } = await createTrip();
+    const fede = await join(code, "Fede");
+    const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: fede.token, body: { name: "juani" } });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("Ya hay alguien con ese nombre en el viaje");
+  });
+
+  it("deja cambiar solo mayúsculas de tu propio nombre", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: adminToken, body: { name: "JUANI" } });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("JUANI");
+    expect(res.body.role).toBe("admin");
+  });
+
+  it("400 si el nombre es inválido", async () => {
+    const { tripId, adminToken } = await createTrip();
+    for (const name of ["   ", "x".repeat(31)]) {
+      const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: adminToken, body: { name } });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("no podés editar en un viaje que no es tuyo", async () => {
+    const a = await createTrip();
+    const b = await createTrip();
+    const res = await api("PATCH", `/trips/${b.tripId}/members/me`, { token: a.adminToken, body: { name: "Otro" } });
+    expect(res.status).toBe(403);
+  });
+});

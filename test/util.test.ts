@@ -115,7 +115,7 @@ describe("R2", () => {
       R2_SECRET_ACCESS_KEY: "secret",
       R2_BUCKET_NAME: "rollo-media",
     } as Env;
-    const url = new URL(await presignPut(env, "trips/t1/m1/original.jpg"));
+    const url = new URL(await presignPut(env, "trips/t1/m1/original.jpg", "https://rollo.test"));
     expect(url.host).toBe("acc.r2.cloudflarestorage.com");
     expect(url.pathname).toBe("/rollo-media/trips/t1/m1/original.jpg");
     expect(url.searchParams.get("X-Amz-Expires")).toBe("900");

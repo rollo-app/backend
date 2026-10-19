@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import app from "../src/index";
 import { describe, expect, it } from "vitest";
 import {
   api,
@@ -388,5 +389,61 @@ describe("thumbhash", () => {
     await api("POST", `/media/${body.id}/complete`, { token: adminToken });
     const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
     expect(feed.body.items[0].thumbhash).toBe(HASH);
+  });
+});
+
+describe("subidas locales (DEV_LOCAL_UPLOADS)", () => {
+  const workerEnv = env;
+  const DEV = { DEV_LOCAL_UPLOADS: "1" };
+  const ORIGIN = "http://192.168.1.5:8787";
+
+  async function register(tripId: string, token: string, body = photoBody()) {
+    const res = await api("POST", `/trips/${tripId}/media`, { token, body, env: DEV, origin: ORIGIN });
+    expect(res.status).toBe(201);
+    return { body, upload: res.body.upload as { original: string; thumb: string } };
+  }
+
+  async function put(url: string, content: string, env: Record<string, unknown> = DEV) {
+    const req = new Request(url, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: content });
+    return app.request(req, undefined, { ...workerEnv, ...env });
+  }
+
+  it("las URLs apuntan al propio worker, con el host del request", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const { body, upload } = await register(tripId, adminToken);
+    expect(upload.original.startsWith(`${ORIGIN}/dev/upload/trips/${tripId}/${body.id}/original.jpg?`)).toBe(true);
+    expect(upload.thumb.startsWith(`${ORIGIN}/dev/upload/trips/${tripId}/${body.id}/thumb.jpg?`)).toBe(true);
+  });
+
+  it("el PUT guarda en R2 local y después complete funciona", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const { body, upload } = await register(tripId, adminToken);
+    expect((await put(upload.original, "foto")).status).toBe(200);
+    expect((await put(upload.thumb, "mini")).status).toBe(200);
+
+    const stored = await workerEnv.MEDIA.get(`trips/${tripId}/${body.id}/original.jpg`);
+    expect(await stored!.text()).toBe("foto");
+    expect(stored!.httpMetadata?.contentType).toBe("image/jpeg");
+
+    const done = await api("POST", `/media/${body.id}/complete`, { token: adminToken });
+    expect(done.status).toBe(200);
+  });
+
+  it("rechaza una firma tocada o usada para otra key", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const { upload } = await register(tripId, adminToken);
+    const otherKey = upload.original.replace("original.jpg", "otra.jpg");
+    expect((await put(otherKey, "x")).status).toBe(403);
+    const tampered = upload.original.replace(/exp=\d+/, "exp=99999999999999");
+    expect((await put(tampered, "x")).status).toBe(403);
+  });
+
+  it("sin la variable la ruta no existe y las URLs son de R2", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const { upload } = await register(tripId, adminToken);
+    expect((await put(upload.original, "x", { DEV_LOCAL_UPLOADS: undefined })).status).toBe(404);
+
+    const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
+    expect(res.body.upload.original).toContain("r2.cloudflarestorage.com");
   });
 });

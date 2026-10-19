@@ -1,6 +1,7 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
+import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import media from "./routes/media";
 import trips from "./routes/trips";
 
@@ -29,6 +30,19 @@ app.doc31("/openapi.json", {
 });
 
 app.get("/docs", swaggerUI({ url: "/openapi.json", title: "Rollo API" }));
+
+// Solo en desarrollo (DEV_LOCAL_UPLOADS=1): recibe los PUT que en producción van directo a R2.
+// No es parte del contrato; apagado, la ruta no existe.
+app.put(`${DEV_UPLOAD_PREFIX}*`, async (c, next) => {
+  if (!devUploadsEnabled(c.env)) return next();
+  const key = decodeURIComponent(new URL(c.req.url).pathname.slice(DEV_UPLOAD_PREFIX.length));
+  if (!(await verifyDevUpload(c.env, key, c.req.query("exp"), c.req.query("sig")))) {
+    return c.json({ error: "Firma inválida o vencida" }, 403);
+  }
+  const contentType = c.req.header("content-type");
+  await c.env.MEDIA.put(key, await c.req.arrayBuffer(), contentType ? { httpMetadata: { contentType } } : undefined);
+  return c.body(null, 200);
+});
 
 app.notFound((c) => c.json({ error: "No encontrado" }, 404));
 

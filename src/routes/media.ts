@@ -19,8 +19,17 @@ const media = createApp();
 const tags = ["Fotos y videos"];
 const UPLOAD_URL_TTL = 15 * 60;
 
-async function uploadResponse(env: AppEnv["Bindings"], id: string, originalKey: string, thumbKey: string) {
-  const [original, thumb] = await Promise.all([presignPut(env, originalKey), presignPut(env, thumbKey)]);
+async function uploadResponse(
+  env: AppEnv["Bindings"],
+  origin: string,
+  id: string,
+  originalKey: string,
+  thumbKey: string,
+) {
+  const [original, thumb] = await Promise.all([
+    presignPut(env, originalKey, origin),
+    presignPut(env, thumbKey, origin),
+  ]);
   return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
 }
 
@@ -63,7 +72,7 @@ media.openapi(registerRoute, async (c) => {
   if (existing) {
     if (existing.member_id !== me.id) throw new HTTPException(409, { message: "Ese id ya existe" });
     if (existing.status === "uploaded") return c.json({ id: existing.id, status: "uploaded" as const }, 200);
-    return c.json(await uploadResponse(c.env, existing.id, existing.original_key, existing.thumb_key), 200);
+    return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, existing.id, existing.original_key, existing.thumb_key), 200);
   }
 
   // Límite diario según la fecha local del viaje. Cuenta también las pendientes,
@@ -89,7 +98,7 @@ media.openapi(registerRoute, async (c) => {
     keys.original, keys.thumb, now,
   ).run();
 
-  return c.json(await uploadResponse(c.env, b.id, keys.original, keys.thumb), 201);
+  return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, b.id, keys.original, keys.thumb), 201);
 });
 
 // ---------- Confirmar subida ----------

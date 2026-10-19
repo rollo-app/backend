@@ -6,11 +6,13 @@ import { generateJoinCode, localDate, publicTrip } from "../lib/util";
 import {
   CreateTripSchema,
   JoinTripSchema,
+  MemberSchema,
   TripCreatedSchema,
   TripDetailSchema,
   TripMemberParams,
   TripParams,
   TripResponseSchema,
+  UpdateMeSchema,
   UpdateTripSchema,
 } from "../schemas";
 import type { Role, TripRow } from "../types";
@@ -214,6 +216,36 @@ trips.openapi(revealRoute, async (c) => {
     await c.env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(now, trip.id).run();
   }
   return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) }, 200);
+});
+
+// ---------- Editar mi nombre ----------
+
+const updateMeRoute = createRoute({
+  method: "patch",
+  path: "/{tripId}/members/me",
+  tags,
+  summary: "Cambiar tu nombre en el viaje",
+  description: "Mismas reglas que al unirse: único por viaje, sin distinguir mayúsculas.",
+  security: bearerAuth,
+  middleware: [requireMember] as const,
+  request: {
+    params: TripParams,
+    body: { content: { "application/json": { schema: UpdateMeSchema } }, required: true },
+  },
+  responses: { 200: json(MemberSchema, "Nombre actualizado"), ...errors(400, 401, 403, 409) },
+});
+
+trips.openapi(updateMeRoute, async (c) => {
+  const me = c.get("member");
+  const { name } = c.req.valid("json");
+
+  const taken = await c.env.DB.prepare(
+    "SELECT 1 FROM members WHERE trip_id = ? AND name = ? AND id != ? AND removed_at IS NULL",
+  ).bind(me.trip_id, name, me.id).first();
+  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el viaje" });
+
+  await c.env.DB.prepare("UPDATE members SET name = ? WHERE id = ?").bind(name, me.id).run();
+  return c.json({ id: me.id, name, role: me.role }, 200);
 });
 
 // ---------- Sacar miembro (admin) ----------

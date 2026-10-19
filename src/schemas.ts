@@ -66,6 +66,8 @@ export const JoinTripSchema = z
   })
   .openapi("JoinTripRequest");
 
+export const UpdateMeSchema = z.object({ name: personName }).openapi("UpdateMeRequest");
+
 export const UpdateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
