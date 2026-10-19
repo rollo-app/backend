@@ -42,11 +42,19 @@ describe("POST /trips", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects a reveal before the start", async () => {
+  it("rejects a reveal before the end", async () => {
     const res = await api("POST", "/trips", {
-      body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 20, revealAt: 5 },
+      body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 20, revealAt: 15 },
     });
     expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/El revelado no puede ser antes del fin/);
+  });
+
+  it("accepts a reveal exactly at the end", async () => {
+    const res = await api("POST", "/trips", {
+      body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 20, revealAt: 20 },
+    });
+    expect(res.status).toBe(201);
   });
 });
 
@@ -122,6 +130,29 @@ describe("PATCH /trips/:id", () => {
     });
     expect(res.status).toBe(200);
     expect(res.body.trip).toMatchObject({ dailyPhotoLimit: 24, revealAt });
+  });
+
+  it("rejects moving the reveal before the existing end", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const res = await api("PATCH", `/trips/${tripId}`, { token: adminToken, body: { revealAt: Date.now() + 2 * DAY } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/El revelado no puede ser antes del fin/);
+  });
+
+  it("rejects moving the end after the existing reveal", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const res = await api("PATCH", `/trips/${tripId}`, { token: adminToken, body: { endsAt: Date.now() + 15 * DAY } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/El revelado no puede ser antes del fin/);
+  });
+
+  it("moves the end and the reveal together further out", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const endsAt = Date.now() + 15 * DAY;
+    const revealAt = Date.now() + 16 * DAY;
+    const res = await api("PATCH", `/trips/${tripId}`, { token: adminToken, body: { endsAt, revealAt } });
+    expect(res.status).toBe(200);
+    expect(res.body.trip).toMatchObject({ endsAt, revealAt });
   });
 
   it("a member can't edit", async () => {

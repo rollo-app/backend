@@ -50,13 +50,13 @@ export const CreateTripSchema = z
       .refine(isValidTimeZone, "zona horaria inválida")
       .openapi({ example: "America/Argentina/Buenos_Aires", description: "IANA time zone of the destination" }),
     startsAt: epochMs("Trip start"),
-    endsAt: epochMs("Trip end"),
-    revealAt: epochMs("When the roll is revealed"),
+    endsAt: epochMs("Trip end; must be after startsAt"),
+    revealAt: epochMs("When the roll is revealed; must be >= endsAt"),
     dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
     dailyVideoLimit: z.number().int().min(0).max(20).default(3),
   })
   .refine((d) => d.endsAt > d.startsAt, { message: "el viaje tiene que terminar después de empezar", path: ["endsAt"] })
-  .refine((d) => d.revealAt >= d.startsAt, { message: "el revelado no puede ser antes del inicio", path: ["revealAt"] })
+  .refine((d) => d.revealAt >= d.endsAt, { message: "El revelado no puede ser antes del fin", path: ["revealAt"] })
   .openapi("CreateTripRequest");
 
 export const JoinTripSchema = z
@@ -71,8 +71,8 @@ export const UpdateMeSchema = z.object({ name: personName }).openapi("UpdateMeRe
 export const UpdateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
-    endsAt: z.number().int().positive().optional(),
-    revealAt: z.number().int().positive().optional(),
+    endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt and <= the resulting revealAt" }),
+    revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),
     dailyPhotoLimit: z.number().int().min(1).max(100).optional(),
     dailyVideoLimit: z.number().int().min(0).max(20).optional(),
   })

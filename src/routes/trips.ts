@@ -187,6 +187,7 @@ trips.openapi(updateTripRoute, async (c) => {
     daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
   };
   if (next.ends_at <= trip.starts_at) throw new HTTPException(400, { message: "endsAt inválido" });
+  if (next.reveal_at < next.ends_at) throw new HTTPException(400, { message: "El revelado no puede ser antes del fin" });
 
   await c.env.DB.prepare(
     `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?
