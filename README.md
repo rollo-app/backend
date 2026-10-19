@@ -4,22 +4,27 @@ Backend de **Rollo**: Cloudflare Workers + Hono + D1 (SQLite) + R2.
 
 ```
 src/
-  index.ts          app, errores, montaje de rutas
+  index.ts          app, errores, montaje de rutas, /openapi.json y /docs
+  schemas.ts        contrato de la API (zod → validación, tipos y OpenAPI)
   types.ts          tipos de Env y filas de la base
   lib/auth.ts       tokens (solo se guarda el hash) y middlewares member/admin
   lib/r2.ts         URLs prefirmadas para subir directo a R2
   lib/util.ts       fecha local del viaje, revelado, códigos
-  lib/validate.ts   validación con zod y errores simples
+  lib/openapi.ts    app con validación por contrato y helpers de respuestas
   routes/trips.ts   crear, unirse, info, editar, revelar, sacar miembros
   routes/media.ts   registrar, confirmar subida, feed, descargar, borrar
 migrations/
   0001_init.sql     trips, members, media
+scripts/
+  export-openapi.ts genera openapi.json
+openapi.json        contrato versionado (lo consume la app mobile)
 test/
   setup.ts          base y bucket vacíos + migraciones antes de cada test
   helpers.ts        api(), createTrip(), join(), uploadMedia()...
   util.test.ts      unitarios: fechas, revelado, tokens, URLs firmadas
   trips.test.ts     integración: viajes, auth, admin, revelado
   media.test.ts     integración: registro, límites, subida, feed, descargas
+  openapi.test.ts   contrato: endpoints, auth, modelos y respuestas reales
 ```
 
 ## Tests
@@ -90,6 +95,18 @@ local con `npx wrangler r2 object put rollo-media/<key> --file foto.jpg --local`
 npm run db:migrate:remote
 npm run deploy                   # queda en https://rollo-api.juanifraga.com
 ```
+
+## Contrato (OpenAPI)
+
+La API se define con esquemas de zod en `src/schemas.ts` y rutas de `@hono/zod-openapi`.
+De ahí salen la validación de requests, los tipos de las respuestas y el contrato:
+
+- `GET /openapi.json`: el contrato OpenAPI 3.1.
+- `GET /docs`: documentación interactiva para probar los endpoints.
+- `openapi.json` en la raíz: el mismo contrato versionado. La app mobile genera su cliente desde acá.
+
+**Si cambiás la API, corré `npm run openapi` y commiteá el archivo.** Hay un test que falla si el
+`openapi.json` versionado no coincide con el código, así que el CI no te deja olvidarlo.
 
 ## API
 

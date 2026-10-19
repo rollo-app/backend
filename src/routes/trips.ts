@@ -1,31 +1,36 @@
-import { Hono } from "hono";
+import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
-import { z } from "zod";
 import { generateToken, hashToken, requireAdmin, requireMember } from "../lib/auth";
-import { generateJoinCode, isValidTimeZone, localDate, publicTrip } from "../lib/util";
-import { validate } from "../lib/validate";
-import type { AppEnv, TripRow } from "../types";
+import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { generateJoinCode, localDate, publicTrip } from "../lib/util";
+import {
+  CreateTripSchema,
+  JoinTripSchema,
+  TripCreatedSchema,
+  TripDetailSchema,
+  TripMemberParams,
+  TripParams,
+  TripResponseSchema,
+  UpdateTripSchema,
+} from "../schemas";
+import type { Role, TripRow } from "../types";
 
-const trips = new Hono<AppEnv>();
+const trips = createApp();
+const tags = ["Viajes"];
 
-const name = z.string().trim().min(1).max(30);
+// ---------- Crear ----------
 
-const createTripSchema = z
-  .object({
-    name: z.string().trim().min(1).max(60),
-    adminName: name,
-    timezone: z.string().refine(isValidTimeZone, "zona horaria inválida"),
-    startsAt: z.number().int().positive(),
-    endsAt: z.number().int().positive(),
-    revealAt: z.number().int().positive(),
-    dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
-    dailyVideoLimit: z.number().int().min(0).max(20).default(3),
-  })
-  .refine((d) => d.endsAt > d.startsAt, { message: "el viaje tiene que terminar después de empezar", path: ["endsAt"] })
-  .refine((d) => d.revealAt >= d.startsAt, { message: "el revelado no puede ser antes del inicio", path: ["revealAt"] });
+const createTripRoute = createRoute({
+  method: "post",
+  path: "/",
+  tags,
+  summary: "Crear un viaje",
+  description: "Quien lo crea queda como admin. Devuelve el código para invitar y el token del admin.",
+  request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },
+  responses: { 201: json(TripCreatedSchema, "Viaje creado"), ...errors(400) },
+});
 
-/** Crear un viaje. Quien lo crea queda como admin. */
-trips.post("/", validate("json", createTripSchema), async (c) => {
+trips.openapi(createTripRoute, async (c) => {
   const body = c.req.valid("json");
   const now = Date.now();
 
@@ -59,41 +64,64 @@ trips.post("/", validate("json", createTripSchema), async (c) => {
 
   const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>();
   return c.json(
-    { trip: publicTrip(trip!, now), member: { id: memberId, name: body.adminName, role: "admin" }, token },
+    { trip: publicTrip(trip!, now), member: { id: memberId, name: body.adminName, role: "admin" as Role }, token },
     201,
   );
 });
 
-/** Unirse con código + nombre. */
-trips.post(
-  "/join",
-  validate("json", z.object({ code: z.string().trim().toUpperCase().length(6), name })),
-  async (c) => {
-    const { code, name: memberName } = c.req.valid("json");
-    const now = Date.now();
+// ---------- Unirse ----------
 
-    const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE join_code = ?").bind(code).first<TripRow>();
-    if (!trip) throw new HTTPException(404, { message: "Código inválido" });
-    if (publicTrip(trip, now).revealed) throw new HTTPException(409, { message: "Este rollo ya se reveló" });
+const joinTripRoute = createRoute({
+  method: "post",
+  path: "/join",
+  tags,
+  summary: "Unirse a un viaje",
+  description: "Con el código y un nombre. El nombre es único por viaje (sin distinguir mayúsculas).",
+  request: { body: { content: { "application/json": { schema: JoinTripSchema } }, required: true } },
+  responses: { 201: json(TripCreatedSchema, "Te uniste al viaje"), ...errors(400, 404, 409) },
+});
 
-    const taken = await c.env.DB.prepare(
-      "SELECT 1 FROM members WHERE trip_id = ? AND name = ? AND removed_at IS NULL",
-    ).bind(trip.id, memberName).first();
-    if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el viaje" });
+trips.openapi(joinTripRoute, async (c) => {
+  const { code, name: memberName } = c.req.valid("json");
+  const now = Date.now();
 
-    const memberId = crypto.randomUUID();
-    const token = generateToken();
-    await c.env.DB.prepare(
-      `INSERT INTO members (id, trip_id, name, role, token_hash, created_at)
-       VALUES (?, ?, ?, 'member', ?, ?)`,
-    ).bind(memberId, trip.id, memberName, await hashToken(token), now).run();
+  const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE join_code = ?").bind(code).first<TripRow>();
+  if (!trip) throw new HTTPException(404, { message: "Código inválido" });
+  if (publicTrip(trip, now).revealed) throw new HTTPException(409, { message: "Este rollo ya se reveló" });
 
-    return c.json({ trip: publicTrip(trip, now), member: { id: memberId, name: memberName, role: "member" }, token }, 201);
-  },
-);
+  const taken = await c.env.DB.prepare(
+    "SELECT 1 FROM members WHERE trip_id = ? AND name = ? AND removed_at IS NULL",
+  ).bind(trip.id, memberName).first();
+  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el viaje" });
 
-/** Info del viaje, miembros y cuánto te queda del rollo hoy. */
-trips.get("/:tripId", requireMember, async (c) => {
+  const memberId = crypto.randomUUID();
+  const token = generateToken();
+  await c.env.DB.prepare(
+    `INSERT INTO members (id, trip_id, name, role, token_hash, created_at)
+     VALUES (?, ?, ?, 'member', ?, ?)`,
+  ).bind(memberId, trip.id, memberName, await hashToken(token), now).run();
+
+  return c.json(
+    { trip: publicTrip(trip, now), member: { id: memberId, name: memberName, role: "member" as Role }, token },
+    201,
+  );
+});
+
+// ---------- Detalle ----------
+
+const getTripRoute = createRoute({
+  method: "get",
+  path: "/{tripId}",
+  tags,
+  summary: "Info del viaje",
+  description: "Viaje, miembros y cuántas fotos y videos te quedan hoy.",
+  security: bearerAuth,
+  middleware: [requireMember] as const,
+  request: { params: TripParams },
+  responses: { 200: json(TripDetailSchema, "Detalle del viaje"), ...errors(401, 403) },
+});
+
+trips.openapi(getTripRoute, async (c) => {
   const trip = c.get("trip");
   const me = c.get("member");
   const now = Date.now();
@@ -102,7 +130,7 @@ trips.get("/:tripId", requireMember, async (c) => {
   const [members, usage, totals] = await Promise.all([
     c.env.DB.prepare(
       "SELECT id, name, role FROM members WHERE trip_id = ? AND removed_at IS NULL ORDER BY created_at",
-    ).bind(trip.id).all<{ id: string; name: string; role: string }>(),
+    ).bind(trip.id).all<{ id: string; name: string; role: Role }>(),
     c.env.DB.prepare(
       `SELECT type, COUNT(*) AS n FROM media
        WHERE member_id = ? AND local_date = ? GROUP BY type`,
@@ -114,68 +142,96 @@ trips.get("/:tripId", requireMember, async (c) => {
 
   const used = (type: string) => usage.results.find((r) => r.type === type)?.n ?? 0;
 
-  return c.json({
-    trip: publicTrip(trip, now),
-    me: { id: me.id, name: me.name, role: me.role },
-    members: members.results,
-    today: {
-      date: today,
-      photosLeft: Math.max(0, trip.daily_photo_limit - used("photo")),
-      videosLeft: Math.max(0, trip.daily_video_limit - used("video")),
+  return c.json(
+    {
+      trip: publicTrip(trip, now),
+      me: { id: me.id, name: me.name, role: me.role },
+      members: members.results,
+      today: {
+        date: today,
+        photosLeft: Math.max(0, trip.daily_photo_limit - used("photo")),
+        videosLeft: Math.max(0, trip.daily_video_limit - used("video")),
+      },
+      totalUploaded: totals?.n ?? 0,
     },
-    totalUploaded: totals?.n ?? 0,
-  });
+    200,
+  );
 });
 
-/** Editar el viaje (admin). */
-trips.patch(
-  "/:tripId",
-  requireMember,
-  requireAdmin,
-  validate(
-    "json",
-    z.object({
-      name: z.string().trim().min(1).max(60).optional(),
-      endsAt: z.number().int().positive().optional(),
-      revealAt: z.number().int().positive().optional(),
-      dailyPhotoLimit: z.number().int().min(1).max(100).optional(),
-      dailyVideoLimit: z.number().int().min(0).max(20).optional(),
-    }),
-  ),
-  async (c) => {
-    const trip = c.get("trip");
-    const b = c.req.valid("json");
-    const next = {
-      name: b.name ?? trip.name,
-      ends_at: b.endsAt ?? trip.ends_at,
-      reveal_at: b.revealAt ?? trip.reveal_at,
-      daily_photo_limit: b.dailyPhotoLimit ?? trip.daily_photo_limit,
-      daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
-    };
-    if (next.ends_at <= trip.starts_at) throw new HTTPException(400, { message: "endsAt inválido" });
+// ---------- Editar (admin) ----------
 
-    await c.env.DB.prepare(
-      `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?
-       WHERE id = ?`,
-    ).bind(next.name, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, trip.id).run();
-
-    return c.json({ trip: publicTrip({ ...trip, ...next }) });
+const updateTripRoute = createRoute({
+  method: "patch",
+  path: "/{tripId}",
+  tags,
+  summary: "Editar el viaje (admin)",
+  security: bearerAuth,
+  middleware: [requireMember, requireAdmin] as const,
+  request: {
+    params: TripParams,
+    body: { content: { "application/json": { schema: UpdateTripSchema } }, required: true },
   },
-);
+  responses: { 200: json(TripResponseSchema, "Viaje actualizado"), ...errors(400, 401, 403) },
+});
 
-/** Revelar el rollo ya (admin). */
-trips.post("/:tripId/reveal", requireMember, requireAdmin, async (c) => {
+trips.openapi(updateTripRoute, async (c) => {
+  const trip = c.get("trip");
+  const b = c.req.valid("json");
+  const next = {
+    name: b.name ?? trip.name,
+    ends_at: b.endsAt ?? trip.ends_at,
+    reveal_at: b.revealAt ?? trip.reveal_at,
+    daily_photo_limit: b.dailyPhotoLimit ?? trip.daily_photo_limit,
+    daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
+  };
+  if (next.ends_at <= trip.starts_at) throw new HTTPException(400, { message: "endsAt inválido" });
+
+  await c.env.DB.prepare(
+    `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?
+     WHERE id = ?`,
+  ).bind(next.name, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, trip.id).run();
+
+  return c.json({ trip: publicTrip({ ...trip, ...next }) }, 200);
+});
+
+// ---------- Revelar (admin) ----------
+
+const revealRoute = createRoute({
+  method: "post",
+  path: "/{tripId}/reveal",
+  tags,
+  summary: "Revelar el rollo ya (admin)",
+  security: bearerAuth,
+  middleware: [requireMember, requireAdmin] as const,
+  request: { params: TripParams },
+  responses: { 200: json(TripResponseSchema, "Rollo revelado"), ...errors(401, 403) },
+});
+
+trips.openapi(revealRoute, async (c) => {
   const trip = c.get("trip");
   const now = Date.now();
   if (trip.revealed_at === null) {
     await c.env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(now, trip.id).run();
   }
-  return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) });
+  return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) }, 200);
 });
 
-/** Sacar a alguien del viaje (admin). Sus fotos quedan. */
-trips.delete("/:tripId/members/:memberId", requireMember, requireAdmin, async (c) => {
-  const memberId = c.req.param("memberId");
+// ---------- Sacar miembro (admin) ----------
+
+const removeMemberRoute = createRoute({
+  method: "delete",
+  path: "/{tripId}/members/{memberId}",
+  tags,
+  summary: "Sacar a alguien del viaje (admin)",
+  description: "Su token deja de servir y su nombre queda libre. Sus fotos quedan en el rollo.",
+  security: bearerAuth,
+  middleware: [requireMember, requireAdmin] as const,
+  request: { params: TripMemberParams },
+  responses: { 204: { description: "Miembro removido" }, ...errors(400, 401, 403, 404) },
+});
+
+trips.openapi(removeMemberRoute, async (c) => {
+  const { memberId } = c.req.valid("param");
   if (memberId === c.get("member").id) {
     throw new HTTPException(400, { message: "No te podés sacar a vos mismo" });
   }

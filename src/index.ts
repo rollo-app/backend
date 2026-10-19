@@ -1,15 +1,34 @@
-import { Hono } from "hono";
+import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
+import { createApp } from "./lib/openapi";
 import media from "./routes/media";
 import trips from "./routes/trips";
-import type { AppEnv } from "./types";
 
-const app = new Hono<AppEnv>();
+const app = createApp();
 
 app.get("/", (c) => c.json({ ok: true, service: "rollo-api" }));
 
+app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
+  type: "http",
+  scheme: "bearer",
+  description: "Token que devuelven crear o unirse a un viaje",
+});
+
 app.route("/trips", trips);
 app.route("/", media);
+
+// Contrato: de acá la app mobile genera su cliente tipado.
+app.doc31("/openapi.json", {
+  openapi: "3.1.0",
+  info: {
+    title: "Rollo API",
+    version: "0.2.0",
+    description: "Backend de Rollo: viajes, rollos compartidos y revelado al final.",
+  },
+  servers: [{ url: "https://rollo-api.juanifraga.com" }],
+});
+
+app.get("/docs", swaggerUI({ url: "/openapi.json", title: "Rollo API" }));
 
 app.notFound((c) => c.json({ error: "No encontrado" }, 404));
 
