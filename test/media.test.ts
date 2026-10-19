@@ -327,3 +327,66 @@ describe("DELETE /media/:id", () => {
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(409);
   });
 });
+
+describe("thumbhash", () => {
+  // ThumbHash real de ~25 bytes en base64 estándar
+  const HASH = "3OcRJYB4d3h/iIeHeEh3eIhw+j3A";
+
+  it("se guarda al registrar y aparece en el feed antes del revelado", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const id = await uploadMedia(tripId, adminToken, { thumbhash: HASH });
+    const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
+    expect(feed.body.revealed).toBe(false);
+    const item = feed.body.items.find((i: any) => i.id === id);
+    expect(item.thumbhash).toBe(HASH);
+    expect(item.files).toBeUndefined();
+  });
+
+  it("también sigue después del revelado", async () => {
+    const { tripId, adminToken } = await createTrip();
+    await uploadMedia(tripId, adminToken, { type: "video", thumbhash: HASH });
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+    const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
+    expect(feed.body.items[0].thumbhash).toBe(HASH);
+  });
+
+  it("es opcional: sin thumbhash el feed devuelve null", async () => {
+    const { tripId, adminToken } = await createTrip();
+    await uploadMedia(tripId, adminToken);
+    const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
+    expect(feed.body.items[0].thumbhash).toBeNull();
+  });
+
+  it("rechaza algo que no es base64", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const res = await api("POST", `/trips/${tripId}/media`, {
+      token: adminToken,
+      body: photoBody({ thumbhash: "no es base64!" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rechaza thumbhash de más de 64 caracteres", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const res = await api("POST", `/trips/${tripId}/media`, {
+      token: adminToken,
+      body: photoBody({ thumbhash: "A".repeat(68) }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("un reintento con otro thumbhash no falla y se queda con el primero", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const body = photoBody({ thumbhash: HASH });
+    expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(201);
+    const retry = await api("POST", `/trips/${tripId}/media`, {
+      token: adminToken,
+      body: { ...body, thumbhash: "AAAAAAAAAAAA" },
+    });
+    expect(retry.status).toBe(200);
+    await putFiles(tripId, body.id);
+    await api("POST", `/media/${body.id}/complete`, { token: adminToken });
+    const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
+    expect(feed.body.items[0].thumbhash).toBe(HASH);
+  });
+});

@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { isValidTimeZone } from "./lib/util";
+import { isBase64, isValidTimeZone } from "./lib/util";
 
 /**
  * Contrato de la API. Estos esquemas validan los requests, tipan las respuestas
@@ -115,6 +115,17 @@ export const RegisterMediaSchema = z
     lng: z.number().min(-180).max(180).nullish(),
     accuracyM: z.number().nonnegative().nullish(),
     caption: z.string().trim().max(280).nullish(),
+    thumbhash: z
+      .string()
+      .max(64)
+      .refine(isBase64, "thumbhash tiene que ser base64")
+      .nullish()
+      .openapi({
+        description:
+          "ThumbHash (https://evanw.github.io/thumbhash/) en base64 estándar, generado en el celular desde el thumbnail. " +
+          "Si un reintento trae otro valor, se conserva el primero.",
+        example: "3OcRJYB4d3h/iIeHeEh3eIhw+j3A",
+      }),
     durationS: z.number().positive().nullish(),
     width: z.number().int().positive().nullish(),
     height: z.number().int().positive().nullish(),
@@ -152,6 +163,11 @@ export const FeedItemSchema = z
     lat: nullableNumber,
     lng: nullableNumber,
     caption: z.string().nullable(),
+    thumbhash: z.string().nullable().openapi({
+      description:
+        "ThumbHash en base64. Se devuelve siempre, también antes del revelado, a propósito: " +
+        "solo codifica colores difusos (~25 bytes), no deja reconstruir la foto.",
+    }),
     durationS: nullableNumber,
     author: z.object({ id: z.string().uuid(), name: z.string() }),
     width: nullableNumber.optional().openapi({ description: "Solo después del revelado" }),

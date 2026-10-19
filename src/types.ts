@@ -43,6 +43,7 @@ export type MediaRow = {
   lng: number | null;
   accuracy_m: number | null;
   caption: string | null;
+  thumbhash: string | null;
   duration_s: number | null;
   width: number | null;
   height: number | null;
