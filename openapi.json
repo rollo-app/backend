@@ -1397,8 +1397,8 @@
         "tags": [
           "Fotos y videos"
         ],
-        "summary": "Borrar una foto propia (antes del revelado)",
-        "description": "Borra los archivos y devuelve el cupo del día.",
+        "summary": "Borrar una foto o video del viaje (admin, antes del revelado)",
+        "description": "Una vez mandada, una foto no se puede borrar ni repetir. La excepción es el admin, por si alguien manda algo que no corresponde: puede borrar cualquier foto del viaje antes del revelado. Se borran los archivos pero **no se devuelve el cupo** a nadie, y el id no se puede volver a registrar.",
         "security": [
           {
             "bearerAuth": []
@@ -1420,6 +1420,16 @@
           },
           "401": {
             "description": "Falta el token o es inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sin permiso",
             "content": {
               "application/json": {
                 "schema": {

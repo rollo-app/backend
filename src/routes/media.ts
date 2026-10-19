@@ -1,6 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
-import { requireMember } from "../lib/auth";
+import { requireAdmin, requireMember } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { mediaKeys, presignPut } from "../lib/r2";
 import { isRevealed, localDate } from "../lib/util";
@@ -71,12 +71,13 @@ media.openapi(registerRoute, async (c) => {
   const existing = await c.env.DB.prepare("SELECT * FROM media WHERE id = ?").bind(b.id).first<MediaRow>();
   if (existing) {
     if (existing.member_id !== me.id) throw new HTTPException(409, { message: "Ese id ya existe" });
+    if (existing.deleted_at !== null) throw new HTTPException(409, { message: "El admin borró esta foto" });
     if (existing.status === "uploaded") return c.json({ id: existing.id, status: "uploaded" as const }, 200);
     return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, existing.id, existing.original_key, existing.thumb_key), 200);
   }
 
-  // Límite diario según la fecha local del viaje. Cuenta también las pendientes,
-  // así no se puede "reservar" más de la cuenta.
+  // Límite diario según la fecha local del viaje. Cuenta también las pendientes
+  // (así no se puede "reservar" más de la cuenta) y las borradas por el admin.
   const day = localDate(b.takenAt, trip.timezone);
   const limit = b.type === "photo" ? trip.daily_photo_limit : trip.daily_video_limit;
   const count = await c.env.DB.prepare(
@@ -118,7 +119,7 @@ const completeRoute = createRoute({
 media.openapi(completeRoute, async (c) => {
   const me = c.get("member");
   const { mediaId } = c.req.valid("param");
-  const row = await c.env.DB.prepare("SELECT * FROM media WHERE id = ? AND member_id = ?")
+  const row = await c.env.DB.prepare("SELECT * FROM media WHERE id = ? AND member_id = ? AND deleted_at IS NULL")
     .bind(mediaId, me.id)
     .first<MediaRow>();
   if (!row) throw new HTTPException(404, { message: "No encontrado" });
@@ -159,7 +160,7 @@ media.openapi(feedRoute, async (c) => {
     `SELECT m.id, m.type, m.taken_at, m.local_date, m.lat, m.lng, m.caption, m.thumbhash, m.duration_s,
             m.width, m.height, mem.id AS author_id, mem.name AS author_name
      FROM media m JOIN members mem ON mem.id = m.member_id
-     WHERE m.trip_id = ? AND m.status = 'uploaded'
+     WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL
      ORDER BY m.taken_at`,
   ).bind(trip.id).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
@@ -220,7 +221,7 @@ media.openapi(downloadRoute, async (c) => {
 
   const { mediaId, variant } = c.req.valid("param");
   const row = await c.env.DB.prepare(
-    "SELECT original_key, thumb_key FROM media WHERE id = ? AND trip_id = ? AND status = 'uploaded'",
+    "SELECT original_key, thumb_key FROM media WHERE id = ? AND trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL",
   ).bind(mediaId, trip.id).first<Pick<MediaRow, "original_key" | "thumb_key">>();
   if (!row) throw new HTTPException(404, { message: "No encontrado" });
 
@@ -244,27 +245,29 @@ const deleteRoute = createRoute({
   method: "delete",
   path: "/media/{mediaId}",
   tags,
-  summary: "Borrar una foto propia (antes del revelado)",
-  description: "Borra los archivos y devuelve el cupo del día.",
+  summary: "Borrar una foto o video del viaje (admin, antes del revelado)",
+  description:
+    "Una vez mandada, una foto no se puede borrar ni repetir. La excepción es el admin, por si alguien " +
+    "manda algo que no corresponde: puede borrar cualquier foto del viaje antes del revelado. " +
+    "Se borran los archivos pero **no se devuelve el cupo** a nadie, y el id no se puede volver a registrar.",
   security: bearerAuth,
-  middleware: [requireMember] as const,
+  middleware: [requireMember, requireAdmin] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Borrada" }, ...errors(401, 404, 409) },
+  responses: { 204: { description: "Borrada" }, ...errors(401, 403, 404, 409) },
 });
 
 media.openapi(deleteRoute, async (c) => {
-  const me = c.get("member");
   const trip = c.get("trip");
   if (isRevealed(trip)) throw new HTTPException(409, { message: "El rollo ya se reveló" });
 
   const { mediaId } = c.req.valid("param");
-  const row = await c.env.DB.prepare("SELECT * FROM media WHERE id = ? AND member_id = ?")
-    .bind(mediaId, me.id)
+  const row = await c.env.DB.prepare("SELECT * FROM media WHERE id = ? AND trip_id = ? AND deleted_at IS NULL")
+    .bind(mediaId, trip.id)
     .first<MediaRow>();
   if (!row) throw new HTTPException(404, { message: "No encontrado" });
 
   await c.env.MEDIA.delete([row.original_key, row.thumb_key]);
-  await c.env.DB.prepare("DELETE FROM media WHERE id = ?").bind(row.id).run();
+  await c.env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), row.id).run();
   return c.body(null, 204);
 });
 
