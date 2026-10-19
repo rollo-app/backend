@@ -41,13 +41,16 @@ export const MemberSchema = z
 
 const personName = z.string().trim().min(1).max(30).openapi({ example: "Juani" });
 
+/** Clock-skew tolerance when validating that a date is not in the past. */
+export const PAST_TOLERANCE_MS = 5 * 60_000;
+
 export const CreateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).openapi({ example: "Viaje al sur" }),
     adminName: personName,
     timezone: z
       .string()
-      .refine(isValidTimeZone, "zona horaria inválida")
+      .refine(isValidTimeZone, "Zona horaria inválida")
       .openapi({ example: "America/Argentina/Buenos_Aires", description: "IANA time zone of the destination" }),
     startsAt: epochMs("Trip start"),
     endsAt: epochMs("Trip end; must be after startsAt"),
@@ -55,7 +58,8 @@ export const CreateTripSchema = z
     dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
     dailyVideoLimit: z.number().int().min(0).max(20).default(3),
   })
-  .refine((d) => d.endsAt > d.startsAt, { message: "el viaje tiene que terminar después de empezar", path: ["endsAt"] })
+  .refine((d) => d.startsAt >= Date.now() - PAST_TOLERANCE_MS, { message: "El inicio no puede ser en el pasado", path: ["startsAt"] })
+  .refine((d) => d.endsAt > d.startsAt, { message: "El rollo tiene que terminar después de empezar", path: ["endsAt"] })
   .refine((d) => d.revealAt >= d.endsAt, { message: "El revelado no puede ser antes del fin", path: ["revealAt"] })
   .openapi("CreateTripRequest");
 
@@ -93,8 +97,8 @@ export const TripDetailSchema = z
     members: z.array(MemberSchema),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),
-      photosLeft: z.number().int(),
-      videosLeft: z.number().int(),
+      photosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
+      videosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
     }),
     totalUploaded: z.number().int(),
   })
@@ -120,7 +124,7 @@ export const RegisterMediaSchema = z
     thumbhash: z
       .string()
       .max(64)
-      .refine(isBase64, "thumbhash tiene que ser base64")
+      .refine(isBase64, "El thumbhash tiene que ser base64")
       .nullish()
       .openapi({
         description:
@@ -134,10 +138,10 @@ export const RegisterMediaSchema = z
     sizeBytes: z.number().int().positive(),
   })
   .refine((d) => d.type !== "video" || (d.durationS != null && d.durationS <= MAX_VIDEO_SECONDS), {
-    message: "los videos tienen que durar 15 segundos o menos",
+    message: "Los videos tienen que durar 15 segundos o menos",
     path: ["durationS"],
   })
-  .refine((d) => d.sizeBytes <= MAX_SIZE[d.type], { message: "archivo demasiado grande", path: ["sizeBytes"] })
+  .refine((d) => d.sizeBytes <= MAX_SIZE[d.type], { message: "El archivo es demasiado grande", path: ["sizeBytes"] })
   .openapi("RegisterMediaRequest");
 
 export const MediaRegisteredSchema = z

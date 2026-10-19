@@ -36,13 +36,13 @@ export const requireMember = createMiddleware<AppEnv>(async (c, next) => {
 
   const tripId = c.req.param("tripId");
   if (tripId && tripId !== member.trip_id) {
-    throw new HTTPException(403, { message: "No sos parte de este viaje" });
+    throw new HTTPException(403, { message: "No sos parte de este rollo" });
   }
 
   const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE id = ?")
     .bind(member.trip_id)
     .first<TripRow>();
-  if (!trip) throw new HTTPException(404, { message: "Viaje no encontrado" });
+  if (!trip) throw new HTTPException(404, { message: "Rollo no encontrado" });
 
   c.set("member", member);
   c.set("trip", trip);
@@ -52,7 +52,7 @@ export const requireMember = createMiddleware<AppEnv>(async (c, next) => {
 /** Use after requireMember. */
 export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   if (c.get("member").role !== "admin") {
-    throw new HTTPException(403, { message: "Solo el admin del viaje puede hacer esto" });
+    throw new HTTPException(403, { message: "Solo el admin del rollo puede hacer esto" });
   }
   await next();
 });

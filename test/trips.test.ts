@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { api, createTrip, DAY, join, TZ, uploadMedia } from "./helpers";
+import { api, createTrip, DAY, HOUR, join, MINUTE, TZ, uploadMedia } from "./helpers";
 
 describe("POST /trips", () => {
   it("creates the trip and returns the code and admin token", async () => {
@@ -32,29 +32,54 @@ describe("POST /trips", () => {
       body: { name: "x", adminName: "a", timezone: "Mars/Base", startsAt: 1, endsAt: 2, revealAt: 2 },
     });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/zona horaria/);
+    expect(res.body.error).toMatch(/Zona horaria inválida/);
   });
 
   it("rejects a trip that ends before it starts", async () => {
+    const now = Date.now();
     const res = await api("POST", "/trips", {
-      body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 5, revealAt: 10 },
+      body: { name: "x", adminName: "a", timezone: TZ, startsAt: now + 10, endsAt: now + 5, revealAt: now + 10 },
     });
     expect(res.status).toBe(400);
+    expect(res.body.error).toBe("El rollo tiene que terminar después de empezar");
   });
 
   it("rejects a reveal before the end", async () => {
+    const now = Date.now();
     const res = await api("POST", "/trips", {
-      body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 20, revealAt: 15 },
+      body: { name: "x", adminName: "a", timezone: TZ, startsAt: now + 10, endsAt: now + 20, revealAt: now + 15 },
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/El revelado no puede ser antes del fin/);
   });
 
   it("accepts a reveal exactly at the end", async () => {
+    const now = Date.now();
     const res = await api("POST", "/trips", {
-      body: { name: "x", adminName: "a", timezone: TZ, startsAt: 10, endsAt: 20, revealAt: 20 },
+      body: { name: "x", adminName: "a", timezone: TZ, startsAt: now + 10, endsAt: now + 20, revealAt: now + 20 },
     });
     expect(res.status).toBe(201);
+  });
+});
+
+describe("POST /trips (dates in the past)", () => {
+  const create = (startsAt: number) =>
+    api("POST", "/trips", {
+      body: { name: "x", adminName: "a", timezone: TZ, startsAt, endsAt: Date.now() + 5 * DAY, revealAt: Date.now() + 6 * DAY },
+    });
+
+  it("rejects a start in the past with exactly the clear message", async () => {
+    const res = await create(Date.now() - DAY);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "El inicio no puede ser en el pasado" });
+  });
+
+  it("tolerates a start up to 5 minutes in the past", async () => {
+    expect((await create(Date.now() - 4 * MINUTE)).status).toBe(201);
+  });
+
+  it("rejects a start more than 5 minutes in the past", async () => {
+    expect((await create(Date.now() - 6 * MINUTE)).status).toBe(400);
   });
 });
 
@@ -118,6 +143,29 @@ describe("GET /trips/:id", () => {
     expect(res.body.today).toMatchObject({ photosLeft: 1, videosLeft: 1 });
     expect(res.body.totalUploaded).toBe(1);
   });
+
+  it("has nothing left today before the rollo starts", async () => {
+    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() + DAY, endsAt: Date.now() + 5 * DAY });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.today).toMatchObject({ photosLeft: 0, videosLeft: 0 });
+  });
+
+  it("has nothing left today after the rollo ended", async () => {
+    const { tripId, adminToken } = await createTrip({
+      startsAt: Date.now() - 3 * DAY,
+      endsAt: Date.now() - HOUR,
+      revealAt: Date.now() + DAY,
+    });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.today).toMatchObject({ photosLeft: 0, videosLeft: 0 });
+  });
+
+  it("has nothing left today once revealed", async () => {
+    const { tripId, adminToken } = await createTrip();
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.today).toMatchObject({ photosLeft: 0, videosLeft: 0 });
+  });
 });
 
 describe("PATCH /trips/:id", () => {
@@ -153,6 +201,26 @@ describe("PATCH /trips/:id", () => {
     const res = await api("PATCH", `/trips/${tripId}`, { token: adminToken, body: { endsAt, revealAt } });
     expect(res.status).toBe(200);
     expect(res.body.trip).toMatchObject({ endsAt, revealAt });
+  });
+
+  it("rejects an end in the past", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const res = await api("PATCH", `/trips/${tripId}`, { token: adminToken, body: { endsAt: Date.now() - 6 * MINUTE } });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "El fin no puede ser en el pasado" });
+  });
+
+  it("rejects a reveal in the past", async () => {
+    const { tripId, adminToken } = await createTrip();
+    const res = await api("PATCH", `/trips/${tripId}`, { token: adminToken, body: { revealAt: Date.now() - 6 * MINUTE } });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "El revelado no puede ser en el pasado" });
+  });
+
+  it("doesn't validate fields that aren't sent: a trip that already started can still be edited", async () => {
+    const { tripId, adminToken } = await createTrip(); // started yesterday
+    const res = await api("PATCH", `/trips/${tripId}`, { token: adminToken, body: { name: "Otro nombre" } });
+    expect(res.status).toBe(200);
   });
 
   it("a member can't edit", async () => {
@@ -229,7 +297,7 @@ describe("PATCH /trips/:id/members/me", () => {
     const fede = await join(code, "Fede");
     const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: fede.token, body: { name: "juani" } });
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe("Ya hay alguien con ese nombre en el viaje");
+    expect(res.body.error).toBe("Ya hay alguien con ese nombre en el rollo");
   });
 
   it("lets you change only the case of your own name", async () => {
