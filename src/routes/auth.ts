@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { generateToken, hashToken, requireUser } from "../lib/auth";
 import { sendLoginCode } from "../lib/email";
+import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../lib/login-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { publicUser } from "../lib/util";
 import { AuthSessionSchema, EmailStartSchema, EmailVerifySchema } from "../schemas";
@@ -12,7 +13,6 @@ const tags = ["Auth"];
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-const CODE_TTL = 10 * MINUTE;
 const MAX_ATTEMPTS = 5;
 const SESSION_TTL = 365 * 24 * HOUR;
 const EMAIL_MIN_GAP = MINUTE;
@@ -20,12 +20,6 @@ const EMAIL_PER_HOUR = 5;
 const IP_PER_HOUR = 20;
 
 const codeHash = (email: string, code: string) => hashToken(`${email}:${code}`);
-
-function randomCode(): string {
-  const n = new Uint32Array(1);
-  crypto.getRandomValues(n);
-  return String(n[0]! % 1_000_000).padStart(6, "0");
-}
 
 // ---------- Start ----------
 
@@ -35,7 +29,7 @@ const startRoute = createRoute({
   tags,
   summary: "Request a login code by email",
   description:
-    "Sends a 6-digit code (valid 10 minutes, 5 attempts). A new request invalidates the previous codes. " +
+    "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts). A new request invalidates the previous codes. " +
     "Rate limited per email and per IP. Works for new and existing users alike.",
   request: { body: { content: { "application/json": { schema: EmailStartSchema } }, required: true } },
   responses: { 204: { description: "Code sent" }, ...errors(400, 429, 502) },
@@ -59,14 +53,14 @@ auth.openapi(startRoute, async (c) => {
   if (ip && (await count("ip", ip, now - HOUR)) >= IP_PER_HOUR) throw tooMany();
 
   const isReview = !!c.env.REVIEW_EMAIL && !!c.env.REVIEW_CODE && email === c.env.REVIEW_EMAIL.trim().toLowerCase();
-  const code = isReview ? c.env.REVIEW_CODE! : randomCode();
+  const code = isReview ? c.env.REVIEW_CODE! : generateLoginCode();
   const id = crypto.randomUUID();
 
   await c.env.DB.batch([
     c.env.DB.prepare("UPDATE auth_codes SET used_at = ? WHERE email = ? AND used_at IS NULL").bind(now, email),
     c.env.DB.prepare(
       "INSERT INTO auth_codes (id, email, code_hash, ip, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ).bind(id, email, await codeHash(email, code), ip, now, now + CODE_TTL),
+    ).bind(id, email, await codeHash(email, code), ip, now, now + LOGIN_CODE_TTL),
   ]);
 
   if (!isReview) {
@@ -89,14 +83,18 @@ const verifyRoute = createRoute({
   path: "/email/verify",
   tags,
   summary: "Exchange the emailed code for a session token",
-  description: "Creates the user on the first successful verification. `isNew` is true while the user has no name.",
+  description:
+    "Creates the user on the first successful verification. `isNew` is true while the user has no name. " +
+    "The code is case-insensitive and spaces or dashes are ignored; a malformed code is answered like a wrong one.",
   request: { body: { content: { "application/json": { schema: EmailVerifySchema } }, required: true } },
   responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400) },
 });
 
 auth.openapi(verifyRoute, async (c) => {
-  const { email, code } = c.req.valid("json");
+  const { email, code: typed } = c.req.valid("json");
   const now = Date.now();
+  const code = normalizeLoginCode(typed);
+  if (code === null) throw new HTTPException(400, { message: "Código incorrecto" });
   const expired = () => new HTTPException(400, { message: "El código venció, pedí uno nuevo" });
 
   // Each guess consumes one attempt atomically *before* comparing, so concurrent requests

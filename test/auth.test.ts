@@ -6,7 +6,7 @@ import { api, HOUR, MINUTE, requestCode, signUp } from "./helpers";
 const start = (email: string, extra: Parameters<typeof api>[2] = {}) =>
   api("POST", "/auth/email/start", { body: { email }, ...extra });
 const verify = (email: string, code: string) => api("POST", "/auth/email/verify", { body: { email, code } });
-const wrongCode = (code: string) => (code === "000000" ? "111111" : "000000");
+const wrongCode = (code: string) => (code === "AAAAAA" ? "BBBBBB" : "AAAAAA");
 
 /** Moves every code of an email back in time, so rate limits that look at created_at stop applying. */
 async function ageCodes(email: string, ms: number) {
@@ -16,11 +16,11 @@ async function ageCodes(email: string, ms: number) {
 }
 
 describe("POST /auth/email/start", () => {
-  it("answers 204 and sends a 6-digit code", async () => {
+  it("answers 204 and sends a 6-character alphanumeric code", async () => {
     const email = "nuevo@rollo.test";
     const res = await start(email);
     expect(res.status).toBe(204);
-    expect(devSentCodes.get(email)).toMatch(/^\d{6}$/);
+    expect(devSentCodes.get(email)).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
   });
 
   it("stores only a hash of the code", async () => {
@@ -114,7 +114,7 @@ describe("POST /auth/email/start", () => {
     expect(calls[0]!.url).toBe("https://api.resend.com/emails");
     expect(calls[0]!.auth).toBe("Bearer re_test");
     expect(calls[0]!.body).toMatchObject({ from: "Rollo <rollo@juanifraga.com>", to: [email] });
-    expect(calls[0]!.body.subject).toMatch(/^Tu código de Rollo: \d{6}$/);
+    expect(calls[0]!.body.subject).toMatch(/^Tu código de Rollo: [ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
     expect(devSentCodes.has(email)).toBe(false);
   });
 });
@@ -211,7 +211,7 @@ describe("POST /auth/email/verify", () => {
   it("rejects an expired code", async () => {
     const email = "vencido@rollo.test";
     const code = await requestCode(email);
-    await ageCodes(email, 11 * MINUTE);
+    await ageCodes(email, 6 * MINUTE);
     const res = await verify(email, code);
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: "El código venció, pedí uno nuevo" });
@@ -220,7 +220,35 @@ describe("POST /auth/email/verify", () => {
   it("accepts a code just before it expires", async () => {
     const email = "justo@rollo.test";
     const code = await requestCode(email);
-    await ageCodes(email, 9 * MINUTE);
+    await ageCodes(email, 4 * MINUTE);
+    expect((await verify(email, code)).status).toBe(200);
+  });
+
+  it("expires exactly 5 minutes after it was issued", async () => {
+    const email = "cinco@rollo.test";
+    await requestCode(email);
+    const row = await env.DB.prepare("SELECT created_at, expires_at FROM auth_codes WHERE email = ?").bind(email).first<{ created_at: number; expires_at: number }>();
+    expect(row!.expires_at - row!.created_at).toBe(5 * MINUTE);
+  });
+
+  it("accepts lowercase, spaces and dashes in the code", async () => {
+    for (const [i, fmt] of [(c: string) => c.toLowerCase(), (c: string) => ` ${c.slice(0, 3)}-${c.slice(3)} `, (c: string) => c.toLowerCase().split("").join(" ")].entries()) {
+      const email = `formato${i}@rollo.test`;
+      const code = await requestCode(email);
+      expect((await verify(email, fmt(code))).status, email).toBe(200);
+    }
+  });
+
+  it("rejects malformed codes as incorrect without using up an attempt", async () => {
+    const email = "malformado@rollo.test";
+    const code = await requestCode(email);
+    for (const bad of ["", "   ", "AB$CD2", "A".repeat(16)]) {
+      const res = await verify(email, bad);
+      expect(res.status, bad).toBe(400);
+      expect(res.body, bad).toEqual({ error: "Código incorrecto" });
+    }
+    const row = await env.DB.prepare("SELECT attempts FROM auth_codes WHERE email = ?").bind(email).first<{ attempts: number }>();
+    expect(row!.attempts).toBe(0);
     expect((await verify(email, code)).status).toBe(200);
   });
 
@@ -249,7 +277,7 @@ describe("POST /auth/email/verify", () => {
   });
 
   it("fails without a code request", async () => {
-    const res = await verify("nadie@rollo.test", "123456");
+    const res = await verify("nadie@rollo.test", "ABC234");
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: "El código venció, pedí uno nuevo" });
   });
@@ -276,7 +304,7 @@ describe("POST /auth/email/verify", () => {
 });
 
 describe("App Review account", () => {
-  const review = { REVIEW_EMAIL: "Review@Rollo.test", REVIEW_CODE: "424242" };
+  const review = { REVIEW_EMAIL: "Review@Rollo.test", REVIEW_CODE: "K7M2QX" };
 
   it("start sends nothing and verify accepts the fixed code", async () => {
     const email = "review@rollo.test";
@@ -284,7 +312,7 @@ describe("App Review account", () => {
     expect(started.status).toBe(204);
     expect(devSentCodes.has(email)).toBe(false);
 
-    const res = await api("POST", "/auth/email/verify", { body: { email, code: "424242" }, env: review });
+    const res = await api("POST", "/auth/email/verify", { body: { email, code: "K7M2QX" }, env: review });
     expect(res.status).toBe(200);
     expect(res.body.user.email).toBe(email);
   });
@@ -311,27 +339,34 @@ describe("App Review account", () => {
     expect((await start(email, { env: review })).status).toBe(429);
 
     for (let i = 0; i < 5; i++) {
-      const res = await api("POST", "/auth/email/verify", { body: { email, code: "000000" }, env: review });
+      const res = await api("POST", "/auth/email/verify", { body: { email, code: "AAAAAA" }, env: review });
       expect(res.body).toEqual({ error: "Código incorrecto" });
     }
-    const blocked = await api("POST", "/auth/email/verify", { body: { email, code: "424242" }, env: review });
+    const blocked = await api("POST", "/auth/email/verify", { body: { email, code: "K7M2QX" }, env: review });
     expect(blocked.status).toBe(400);
+  });
+
+  it("accepts the review code in lowercase", async () => {
+    const email = "review@rollo.test";
+    await start(email, { env: review });
+    const res = await api("POST", "/auth/email/verify", { body: { email, code: " k7m-2qx " }, env: review });
+    expect(res.status).toBe(200);
   });
 
   it("other emails still get random codes", async () => {
     const email = "otro@rollo.test";
     await start(email, { env: review });
     const code = devSentCodes.get(email);
-    expect(code).toMatch(/^\d{6}$/);
-    const res = await api("POST", "/auth/email/verify", { body: { email, code: "424242" }, env: review });
-    expect(res.status).toBe(code === "424242" ? 200 : 400);
+    expect(code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+    const res = await api("POST", "/auth/email/verify", { body: { email, code: "K7M2QX" }, env: review });
+    expect(res.status).toBe(code === "K7M2QX" ? 200 : 400);
   });
 
   it("without the variables there is no review account", async () => {
     const email = "review@rollo.test";
     await start(email);
     expect(devSentCodes.get(email)).toBeDefined();
-    expect((await verify(email, "424242")).status).toBe(devSentCodes.get(email) === "424242" ? 200 : 400);
+    expect((await verify(email, "K7M2QX")).status).toBe(devSentCodes.get(email) === "K7M2QX" ? 200 : 400);
   });
 });
 

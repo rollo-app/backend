@@ -21,10 +21,10 @@ export async function sendLoginCode(env: Env, email: string, code: string): Prom
       from: env.EMAIL_FROM ?? "Rollo <rollo@juanifraga.com>",
       to: [email],
       subject: `Tu código de Rollo: ${code}`,
-      text: `Tu código de Rollo es ${code}. Vence en 10 minutos.\n\nSi no lo pediste, ignorá este mensaje.`,
+      text: `Tu código de Rollo es ${code}. Vence en 5 minutos.\n\nSi no lo pediste, ignorá este mensaje.`,
       html:
         `<p>Tu código de Rollo es:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px">${code}</p>` +
-        `<p>Vence en 10 minutos. Si no lo pediste, ignorá este mensaje.</p>`,
+        `<p>Vence en 5 minutos. Si no lo pediste, ignorá este mensaje.</p>`,
     }),
   });
   if (!res.ok) throw new Error(`Resend responded ${res.status}`);

@@ -115,7 +115,7 @@ Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 
 | Método | Ruta | Quién | Qué hace |
 |---|---|---|---|
-| POST | `/auth/email/start` | cualquiera | `{email}` → manda un código de 6 dígitos (204) |
+| POST | `/auth/email/start` | cualquiera | `{email}` → manda un código de 6 caracteres (letras y números, vence a los 5 min) (204) |
 | POST | `/auth/email/verify` | cualquiera | `{email, code}` → `{token, user, isNew}` |
 | POST | `/auth/logout` | sesión | Cierra la sesión actual |
 | GET / PATCH | `/me` | sesión | Perfil (`{name, username}` para editar; el username es único) |

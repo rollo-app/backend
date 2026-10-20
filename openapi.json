@@ -118,7 +118,8 @@
           "code": {
             "type": "string",
             "maxLength": 16,
-            "example": "123456"
+            "example": "K7M2QX",
+            "description": "6-character code from the email (letters and digits, no 0/O/1/I/L). Case-insensitive; spaces and dashes are ignored"
           }
         },
         "required": [
@@ -842,7 +843,7 @@
           "Auth"
         ],
         "summary": "Request a login code by email",
-        "description": "Sends a 6-digit code (valid 10 minutes, 5 attempts). A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
+        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts). A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
         "requestBody": {
           "required": true,
           "content": {
@@ -896,7 +897,7 @@
           "Auth"
         ],
         "summary": "Exchange the emailed code for a session token",
-        "description": "Creates the user on the first successful verification. `isNew` is true while the user has no name.",
+        "description": "Creates the user on the first successful verification. `isNew` is true while the user has no name. The code is case-insensitive and spaces or dashes are ignored; a malformed code is answered like a wrong one.",
         "requestBody": {
           "required": true,
           "content": {
