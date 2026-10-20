@@ -6,10 +6,17 @@ import { api, createTrip, join, joinAs, newTrip, signUp, uploadMedia } from "./h
 const DEV = { DEV_LOCAL_UPLOADS: "1" };
 const ORIGIN = "http://192.168.1.5:8787";
 
+const JPEG_HEADER = [0xff, 0xd8, 0xff];
+
+/** Bytes starting with the JPEG magic number followed by the given text. */
+function jpeg(content = "avatar") {
+  return new Uint8Array([...JPEG_HEADER, ...new TextEncoder().encode(content)]);
+}
+
 async function setAvatar(token: string, userId: string, content = "avatar") {
   const res = await api("POST", "/me/avatar", { token });
   const pending = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
-  await env.MEDIA.put(pending, content);
+  await env.MEDIA.put(pending, jpeg(content));
   const done = await api("POST", "/me/avatar/complete", { token });
   expect(done.status).toBe(200);
   expect(res.status).toBe(200);
@@ -25,7 +32,7 @@ describe("avatar", () => {
     expect(res.body.upload.startsWith(`${ORIGIN}/dev/upload/avatars/${userId}/`)).toBe(true);
 
     const put = await app.request(
-      new Request(res.body.upload, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: "bytes" }),
+      new Request(res.body.upload, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: jpeg("bytes") }),
       undefined,
       { ...env, ...DEV },
     );
@@ -55,10 +62,78 @@ describe("avatar", () => {
     const { user } = await setAvatar(token, userId, "the-bytes");
     const res = await api("GET", user.avatarUrl);
     expect(res.status).toBe(200);
-    expect(res.body).toBe("the-bytes");
+    expect(res.body.endsWith("the-bytes")).toBe(true);
     expect(res.headers.get("content-type")).toBe("image/jpeg");
     expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(res.headers.get("etag")).toBeTruthy();
+  });
+
+  it("is served with headers that neutralize active content", async () => {
+    const { token, userId } = await signUp();
+    const { user } = await setAvatar(token, userId);
+    const res = await api("GET", user.avatarUrl);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(res.headers.get("content-disposition")).toBe("inline");
+  });
+
+  describe("complete validation", () => {
+    const MESSAGE = "La foto tiene que ser un JPEG de hasta 2 MB";
+
+    async function request(token: string, userId: string, body: string | Uint8Array, contentType = "image/jpeg") {
+      await api("POST", "/me/avatar", { token });
+      const pending = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
+      await env.MEDIA.put(pending, body, { httpMetadata: { contentType } });
+      return pending;
+    }
+
+    async function expectRejected(token: string, userId: string, pending: string) {
+      const res = await api("POST", "/me/avatar/complete", { token });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe(MESSAGE);
+      expect(await env.MEDIA.head(pending)).toBeNull();
+      const row = await env.DB.prepare("SELECT avatar_key a, pending_avatar_key p FROM users WHERE id = ?")
+        .bind(userId)
+        .first<{ a: string | null; p: string | null }>();
+      expect(row!.p).toBeNull();
+      return row!.a;
+    }
+
+    it("rejects a non-JPEG object even if it claims to be image/jpeg", async () => {
+      const { token, userId } = await signUp();
+      const pending = await request(token, userId, "<html><script>alert(1)</script></html>");
+      expect(await expectRejected(token, userId, pending)).toBeNull();
+    });
+
+    it("rejects an object shorter than the magic bytes", async () => {
+      const { token, userId } = await signUp();
+      const pending = await request(token, userId, new Uint8Array([0xff, 0xd8]));
+      await expectRejected(token, userId, pending);
+    });
+
+    it("rejects a JPEG larger than 2 MB", async () => {
+      const { token, userId } = await signUp();
+      const big = new Uint8Array(2.1 * 1024 * 1024);
+      big.set(JPEG_HEADER);
+      const pending = await request(token, userId, big);
+      await expectRejected(token, userId, pending);
+    });
+
+    it("keeps the current avatar when a replacement is rejected", async () => {
+      const { token, userId } = await signUp();
+      const { key, user } = await setAvatar(token, userId);
+      const pending = await request(token, userId, "<svg onload=alert(1)/>");
+      expect(await expectRejected(token, userId, pending)).toBe(key);
+      expect(await env.MEDIA.head(key)).not.toBeNull();
+      expect((await api("GET", "/me", { token })).body.avatarUrl).toBe(user.avatarUrl);
+    });
+
+    it("accepts a small valid JPEG", async () => {
+      const { token, userId } = await signUp();
+      await request(token, userId, jpeg("small"));
+      expect((await api("POST", "/me/avatar/complete", { token })).status).toBe(200);
+    });
   });
 
   it("replacing the avatar deletes the old object and its URL 404s", async () => {
@@ -68,7 +143,7 @@ describe("avatar", () => {
     expect(second.key).not.toBe(first.key);
     expect(await env.MEDIA.head(first.key)).toBeNull();
     expect((await api("GET", first.user.avatarUrl)).status).toBe(404);
-    expect((await api("GET", second.user.avatarUrl)).body).toBe("two");
+    expect((await api("GET", second.user.avatarUrl)).body.endsWith("two")).toBe(true);
   });
 
   it("complete without requesting an upload is a 400", async () => {

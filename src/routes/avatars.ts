@@ -33,6 +33,9 @@ avatars.openapi(getAvatarRoute, async (c) => {
 
   const headers = new Headers();
   headers.set("content-type", "image/jpeg");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("content-security-policy", "default-src 'none'; sandbox");
+  headers.set("content-disposition", "inline");
   headers.set("etag", object.httpEtag);
   headers.set("cache-control", "public, max-age=31536000, immutable");
   return new Response(object.body, { headers });

@@ -1073,7 +1073,7 @@
           "Profile"
         ],
         "summary": "Confirm your avatar upload",
-        "description": "Checks that the file is in R2, makes it your avatar and deletes the previous one.",
+        "description": "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it your avatar and deletes the previous one. Otherwise the upload is discarded and the response is a 400.",
         "security": [
           {
             "bearerAuth": []

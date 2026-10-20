@@ -42,6 +42,16 @@ me.openapi(updateMeRoute, async (c) => {
 });
 
 const AVATAR_URL_TTL = 15 * 60;
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+
+/** The stored content type is client-controlled, so the magic bytes are the source of truth. */
+async function isJpeg(bucket: R2Bucket, key: string): Promise<boolean> {
+  const head = await bucket.get(key, { range: { offset: 0, length: JPEG_MAGIC.length } });
+  if (!head) return false;
+  const bytes = new Uint8Array(await head.arrayBuffer());
+  return bytes.length === JPEG_MAGIC.length && JPEG_MAGIC.every((b, i) => bytes[i] === b);
+}
 
 const avatarRoute = createRoute({
   method: "post",
@@ -69,7 +79,9 @@ const avatarCompleteRoute = createRoute({
   path: "/avatar/complete",
   tags,
   summary: "Confirm your avatar upload",
-  description: "Checks that the file is in R2, makes it your avatar and deletes the previous one.",
+  description:
+    "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, " +
+    "makes it your avatar and deletes the previous one. Otherwise the upload is discarded and the response is a 400.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   responses: { 200: json(UserSchema, "Profile with the new avatar"), ...errors(400, 401) },
@@ -79,7 +91,14 @@ me.openapi(avatarCompleteRoute, async (c) => {
   const user = c.get("user");
   const pending = user.pending_avatar_key;
   if (!pending) throw new HTTPException(400, { message: "Primero pedí dónde subir la foto" });
-  if (!(await c.env.MEDIA.head(pending))) throw new HTTPException(400, { message: "Falta la foto; volvé a subirla" });
+  const head = await c.env.MEDIA.head(pending);
+  if (!head) throw new HTTPException(400, { message: "Falta la foto; volvé a subirla" });
+
+  if (head.size > AVATAR_MAX_BYTES || !(await isJpeg(c.env.MEDIA, pending))) {
+    await c.env.MEDIA.delete(pending);
+    await c.env.DB.prepare("UPDATE users SET pending_avatar_key = NULL WHERE id = ?").bind(user.id).run();
+    throw new HTTPException(400, { message: "La foto tiene que ser un JPEG de hasta 2 MB" });
+  }
 
   await c.env.DB.prepare("UPDATE users SET avatar_key = ?, pending_avatar_key = NULL WHERE id = ?")
     .bind(pending, user.id)
