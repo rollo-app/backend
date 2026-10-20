@@ -46,11 +46,8 @@ const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const JPEG_MAGIC = [0xff, 0xd8, 0xff];
 
 /** The stored content type is client-controlled, so the magic bytes are the source of truth. */
-async function isJpeg(bucket: R2Bucket, key: string): Promise<boolean> {
-  const head = await bucket.get(key, { range: { offset: 0, length: JPEG_MAGIC.length } });
-  if (!head) return false;
-  const bytes = new Uint8Array(await head.arrayBuffer());
-  return bytes.length === JPEG_MAGIC.length && JPEG_MAGIC.every((b, i) => bytes[i] === b);
+function hasJpegMagic(bytes: Uint8Array): boolean {
+  return bytes.length >= JPEG_MAGIC.length && JPEG_MAGIC.every((b, i) => bytes[i] === b);
 }
 
 const avatarRoute = createRoute({
@@ -91,20 +88,26 @@ me.openapi(avatarCompleteRoute, async (c) => {
   const user = c.get("user");
   const pending = user.pending_avatar_key;
   if (!pending) throw new HTTPException(400, { message: "Primero pedí dónde subir la foto" });
-  const head = await c.env.MEDIA.head(pending);
-  if (!head) throw new HTTPException(400, { message: "Falta la foto; volvé a subirla" });
+  const object = await c.env.MEDIA.get(pending);
+  if (!object) throw new HTTPException(400, { message: "Falta la foto; volvé a subirla" });
 
-  if (head.size > AVATAR_MAX_BYTES || !(await isJpeg(c.env.MEDIA, pending))) {
+  // Validate and copy the very same bytes: the presigned PUT stays valid after this call.
+  const bytes = object.size > AVATAR_MAX_BYTES ? null : await object.arrayBuffer();
+  if (!bytes || bytes.byteLength > AVATAR_MAX_BYTES || !hasJpegMagic(new Uint8Array(bytes))) {
     await c.env.MEDIA.delete(pending);
     await c.env.DB.prepare("UPDATE users SET pending_avatar_key = NULL WHERE id = ?").bind(user.id).run();
     throw new HTTPException(400, { message: "La foto tiene que ser un JPEG de hasta 2 MB" });
   }
 
+  // Promote to a key that was never presigned, so nobody can overwrite it afterwards.
+  const key = `avatars/${user.id}/${crypto.randomUUID()}.jpg`;
+  await c.env.MEDIA.put(key, bytes, { httpMetadata: { contentType: "image/jpeg" } });
+  await c.env.MEDIA.delete(pending);
   await c.env.DB.prepare("UPDATE users SET avatar_key = ?, pending_avatar_key = NULL WHERE id = ?")
-    .bind(pending, user.id)
+    .bind(key, user.id)
     .run();
   if (user.avatar_key) await c.env.MEDIA.delete(user.avatar_key);
-  return c.json(publicUser({ ...user, avatar_key: pending }), 200);
+  return c.json(publicUser({ ...user, avatar_key: key }), 200);
 });
 
 const deleteMeRoute = createRoute({

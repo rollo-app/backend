@@ -20,7 +20,8 @@ async function setAvatar(token: string, userId: string, content = "avatar") {
   const done = await api("POST", "/me/avatar/complete", { token });
   expect(done.status).toBe(200);
   expect(res.status).toBe(200);
-  return { key: pending, user: done.body };
+  const key = (await env.DB.prepare("SELECT avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
+  return { key, pending, user: done.body };
 }
 
 describe("avatar", () => {
@@ -134,6 +135,23 @@ describe("avatar", () => {
       await request(token, userId, jpeg("small"));
       expect((await api("POST", "/me/avatar/complete", { token })).status).toBe(200);
     });
+  });
+
+  it("promotes the avatar to a new server-chosen key so a late PUT to the presigned key cannot change it", async () => {
+    const { token, userId } = await signUp();
+    const { key, pending, user } = await setAvatar(token, userId, "trusted");
+    expect(key).not.toBe(pending);
+    expect(user.avatarUrl).toBe(`/${key}`);
+    expect(user.avatarUrl.endsWith(pending.split("/").pop()!)).toBe(false);
+    expect(await env.MEDIA.head(pending)).toBeNull();
+
+    // The presigned URL is still valid for 15 minutes: simulate a late PUT on the old key.
+    await env.MEDIA.put(pending, "<html>evil</html>");
+    const res = await api("GET", user.avatarUrl);
+    expect(res.status).toBe(200);
+    expect(res.body.endsWith("trusted")).toBe(true);
+    expect(res.body).not.toContain("<html>");
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
   });
 
   it("replacing the avatar deletes the old object and its URL 404s", async () => {
