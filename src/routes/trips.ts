@@ -1,39 +1,46 @@
 import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
-import { generateToken, hashToken, requireAdmin, requireMember } from "../lib/auth";
+import { requireAdmin, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
-import { generateJoinCode, isRevealed, localDate, publicTrip } from "../lib/util";
+import { generateJoinCode, isRevealed, localDate, publicMember, publicTrip } from "../lib/util";
 import {
   CreateTripSchema,
   JoinTripSchema,
-  MemberSchema,
   TripCreatedSchema,
   TripDetailSchema,
   TripMemberParams,
   TripParams,
   TripResponseSchema,
-  UpdateMeSchema,
   UpdateTripSchema,
   PAST_TOLERANCE_MS,
 } from "../schemas";
-import type { Role, TripRow } from "../types";
+import type { MemberRow, Role, TripRow } from "../types";
 
 const trips = createApp();
 const tags = ["Trips"];
 
 // ---------- Create ----------
 
+function requireName(user: { name: string | null; username: string | null }) {
+  if (!user.name) throw new HTTPException(409, { message: "Completá tu nombre en el perfil" });
+  if (!user.username) throw new HTTPException(409, { message: "Elegí tu nombre de usuario en el perfil" });
+}
+
 const createTripRoute = createRoute({
   method: "post",
   path: "/",
   tags,
   summary: "Create a trip",
-  description: "Whoever creates it becomes the admin. Returns the invite code and the admin token.",
+  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },
-  responses: { 201: json(TripCreatedSchema, "Trip created"), ...errors(400) },
+  responses: { 201: json(TripCreatedSchema, "Trip created"), ...errors(400, 401, 409) },
 });
 
 trips.openapi(createTripRoute, async (c) => {
+  const user = c.get("user");
+  requireName(user);
   const body = c.req.valid("json");
   const now = Date.now();
 
@@ -48,7 +55,6 @@ trips.openapi(createTripRoute, async (c) => {
 
   const tripId = crypto.randomUUID();
   const memberId = crypto.randomUUID();
-  const token = generateToken();
 
   await c.env.DB.batch([
     c.env.DB.prepare(
@@ -60,16 +66,14 @@ trips.openapi(createTripRoute, async (c) => {
       body.dailyPhotoLimit, body.dailyVideoLimit, now,
     ),
     c.env.DB.prepare(
-      `INSERT INTO members (id, trip_id, name, role, token_hash, created_at)
-       VALUES (?, ?, ?, 'admin', ?, ?)`,
-    ).bind(memberId, tripId, body.adminName, await hashToken(token), now),
+      `INSERT INTO members (id, trip_id, user_id, role, created_at)
+       VALUES (?, ?, ?, 'admin', ?)`,
+    ).bind(memberId, tripId, user.id, now),
   ]);
 
   const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>();
-  return c.json(
-    { trip: publicTrip(trip!, now), member: { id: memberId, name: body.adminName, role: "admin" as Role }, token },
-    201,
-  );
+  const member = { id: memberId, user_id: user.id, role: "admin" as Role };
+  return c.json({ trip: publicTrip(trip!, now), member: publicMember(member, user) }, 201);
 });
 
 // ---------- Join ----------
@@ -79,35 +83,44 @@ const joinTripRoute = createRoute({
   path: "/join",
   tags,
   summary: "Join a trip",
-  description: "With the code and a name. The name is unique per trip (case-insensitive).",
+  description:
+    "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined, " +
+    "200 when already an active member. Someone removed by the admin gets 403.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: JoinTripSchema } }, required: true } },
-  responses: { 201: json(TripCreatedSchema, "Joined the trip"), ...errors(400, 404, 409) },
+  responses: {
+    201: json(TripCreatedSchema, "Joined the trip"),
+    200: json(TripCreatedSchema, "Already a member"),
+    ...errors(400, 401, 403, 404, 409),
+  },
 });
 
 trips.openapi(joinTripRoute, async (c) => {
-  const { code, name: memberName } = c.req.valid("json");
+  const user = c.get("user");
+  requireName(user);
+  const { code } = c.req.valid("json");
   const now = Date.now();
 
   const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE join_code = ?").bind(code).first<TripRow>();
   if (!trip) throw new HTTPException(404, { message: "Código inválido" });
+
+  const existing = await c.env.DB.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?")
+    .bind(trip.id, user.id)
+    .first<MemberRow>();
+  if (existing) {
+    if (existing.removed_at !== null) throw new HTTPException(403, { message: "El admin te sacó de este rollo" });
+    return c.json({ trip: publicTrip(trip, now), member: publicMember(existing, user) }, 200);
+  }
+
   if (publicTrip(trip, now).revealed) throw new HTTPException(409, { message: "Este rollo ya se reveló" });
 
-  const taken = await c.env.DB.prepare(
-    "SELECT 1 FROM members WHERE trip_id = ? AND name = ? AND removed_at IS NULL",
-  ).bind(trip.id, memberName).first();
-  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el rollo" });
+  const member = { id: crypto.randomUUID(), user_id: user.id, role: "member" as Role };
+  await c.env.DB.prepare("INSERT INTO members (id, trip_id, user_id, role, created_at) VALUES (?, ?, ?, 'member', ?)")
+    .bind(member.id, trip.id, user.id, now)
+    .run();
 
-  const memberId = crypto.randomUUID();
-  const token = generateToken();
-  await c.env.DB.prepare(
-    `INSERT INTO members (id, trip_id, name, role, token_hash, created_at)
-     VALUES (?, ?, ?, 'member', ?, ?)`,
-  ).bind(memberId, trip.id, memberName, await hashToken(token), now).run();
-
-  return c.json(
-    { trip: publicTrip(trip, now), member: { id: memberId, name: memberName, role: "member" as Role }, token },
-    201,
-  );
+  return c.json({ trip: publicTrip(trip, now), member: publicMember(member, user) }, 201);
 });
 
 // ---------- Detail ----------
@@ -119,7 +132,7 @@ const getTripRoute = createRoute({
   summary: "Trip info",
   description: "Trip, members and how many photos and videos you have left today.",
   security: bearerAuth,
-  middleware: [requireMember] as const,
+  middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
   responses: { 200: json(TripDetailSchema, "Trip detail"), ...errors(401, 403) },
 });
@@ -132,8 +145,10 @@ trips.openapi(getTripRoute, async (c) => {
 
   const [members, usage, totals] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT id, name, role FROM members WHERE trip_id = ? AND removed_at IS NULL ORDER BY created_at",
-    ).bind(trip.id).all<{ id: string; name: string; role: Role }>(),
+      `SELECT m.id, m.user_id, m.role, u.name, u.username, u.avatar_key
+       FROM members m JOIN users u ON u.id = m.user_id
+       WHERE m.trip_id = ? AND m.removed_at IS NULL ORDER BY m.created_at`,
+    ).bind(trip.id).all<{ id: string; user_id: string; role: Role; name: string | null; username: string | null; avatar_key: string | null }>(),
     c.env.DB.prepare(
       `SELECT type, COUNT(*) AS n FROM media
        WHERE member_id = ? AND local_date = ? GROUP BY type`,
@@ -150,8 +165,8 @@ trips.openapi(getTripRoute, async (c) => {
   return c.json(
     {
       trip: publicTrip(trip, now),
-      me: { id: me.id, name: me.name, role: me.role },
-      members: members.results,
+      me: publicMember(me, c.get("user")),
+      members: members.results.map((m) => publicMember(m, m)),
       today: {
         date: today,
         photosLeft: !active ? 0 : Math.max(0, trip.daily_photo_limit - used("photo")),
@@ -171,7 +186,7 @@ const updateTripRoute = createRoute({
   tags,
   summary: "Edit the trip (admin)",
   security: bearerAuth,
-  middleware: [requireMember, requireAdmin] as const,
+  middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateTripSchema } }, required: true },
@@ -212,7 +227,7 @@ const revealRoute = createRoute({
   tags,
   summary: "Reveal the roll now (admin)",
   security: bearerAuth,
-  middleware: [requireMember, requireAdmin] as const,
+  middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: TripParams },
   responses: { 200: json(TripResponseSchema, "Roll revealed"), ...errors(401, 403) },
 });
@@ -226,36 +241,6 @@ trips.openapi(revealRoute, async (c) => {
   return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) }, 200);
 });
 
-// ---------- Edit my name ----------
-
-const updateMeRoute = createRoute({
-  method: "patch",
-  path: "/{tripId}/members/me",
-  tags,
-  summary: "Change your name in the trip",
-  description: "Same rules as when joining: unique per trip, case-insensitive.",
-  security: bearerAuth,
-  middleware: [requireMember] as const,
-  request: {
-    params: TripParams,
-    body: { content: { "application/json": { schema: UpdateMeSchema } }, required: true },
-  },
-  responses: { 200: json(MemberSchema, "Name updated"), ...errors(400, 401, 403, 409) },
-});
-
-trips.openapi(updateMeRoute, async (c) => {
-  const me = c.get("member");
-  const { name } = c.req.valid("json");
-
-  const taken = await c.env.DB.prepare(
-    "SELECT 1 FROM members WHERE trip_id = ? AND name = ? AND id != ? AND removed_at IS NULL",
-  ).bind(me.trip_id, name, me.id).first();
-  if (taken) throw new HTTPException(409, { message: "Ya hay alguien con ese nombre en el rollo" });
-
-  await c.env.DB.prepare("UPDATE members SET name = ? WHERE id = ?").bind(name, me.id).run();
-  return c.json({ id: me.id, name, role: me.role }, 200);
-});
-
 // ---------- Remove member (admin) ----------
 
 const removeMemberRoute = createRoute({
@@ -263,9 +248,9 @@ const removeMemberRoute = createRoute({
   path: "/{tripId}/members/{memberId}",
   tags,
   summary: "Remove someone from the trip (admin)",
-  description: "Their token stops working and their name is freed. Their photos stay in the roll.",
+  description: "They lose access to the rollo and cannot rejoin. Their photos stay in the roll.",
   security: bearerAuth,
-  middleware: [requireMember, requireAdmin] as const,
+  middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: TripMemberParams },
   responses: { 204: { description: "Member removed" }, ...errors(400, 401, 403, 404) },
 });

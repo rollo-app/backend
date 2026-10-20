@@ -1,4 +1,4 @@
-import { DAY, HOUR, Planner, type Shot, type Spot, api, d1, fixedMidnight, jitter, localMidnight, pick, pool, rand, uploadShot, POOL_SIZE } from "./lib";
+import { DAY, HOUR, Planner, type Shot, type Spot, api, d1, ensureUser, fixedMidnight, jitter, localMidnight, pick, pool, rand, resetUsers, uploadShot, POOL_SIZE } from "./lib";
 import { TZ } from "./lib";
 
 /** Test scenarios. Each has a fixed trip name (that's what makes the seed idempotent). */
@@ -55,13 +55,15 @@ type Ctx = { tripId: string; tokens: string[]; names: string[] };
 type Scenario = {
   name: string;
   tests: string;
+  /** Members who take photos (index = `Shot.member`). The admin is the first one. Juani is added on top. */
   members: string[];
   trip: () => { startsAt: number; endsAt: number; revealAt: number; dailyPhotoLimit?: number; dailyVideoLimit?: number };
   shots?: () => Shot[];
-  /** Extra steps after uploading (`ids` is aligned with `shots`). Returns tokens to print. */
-  after?: (ctx: Ctx, shots: Shot[], ids: string[]) => Promise<Record<string, string>>;
+  /** Extra steps after uploading (`ids` is aligned with `shots`). */
+  after?: (ctx: Ctx, shots: Shot[], ids: string[]) => Promise<void>;
 };
 
+const JUANI = "Juani";
 const SOUTH = ["Cami", "Tomi", "Fede"];
 
 export const SCENARIOS: Scenario[] = [
@@ -143,8 +145,8 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Bariloche 2025 (revelado)",
-    tests: "Already revealed trip (Jan 2025): feed with files, download. Sign in with the Vos (prueba) token",
-    members: ["Cami", "Tomi", "Fede", "Lu", "Nacho", "Vos (prueba)"],
+    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member",
+    members: ["Cami", "Tomi", "Fede", "Lu", "Nacho"],
     // Backdated to Jan 2025 right after creating (the API rejects dates in the past). The reveal stays in
     // the future so media can be registered; `after` moves it into the past and reveals it.
     trip: () => ({
@@ -163,7 +165,7 @@ export const SCENARIOS: Scenario[] = [
       const p = new Planner(days);
       for (let i = 0; i < 60; i++) {
         const day = Math.floor((i / 60) * 7);
-        p.add(i % 6, day, "photo", near(SPOTS[(day + i) % 4]!, 0.004), cap(0.5));
+        p.add(i % 5, day, "photo", near(SPOTS[(day + i) % 4]!, 0.004), cap(0.5));
       }
       return p.shots;
     },
@@ -176,7 +178,6 @@ export const SCENARIOS: Scenario[] = [
       if (!feed.revealed || !feed.items.length || !feed.items.every((i: any) => i.files)) {
         throw new Error("Bariloche: the feed was not left revealed with files");
       }
-      return { "Vos (prueba) @ Bariloche 2025": ctx.tokens[5]! };
     },
   },
   {
@@ -204,23 +205,26 @@ export const SCENARIOS: Scenario[] = [
       if (feed.items.length !== 9 || detail.totalUploaded !== 9) {
         throw new Error(`Deleted: feed=${feed.items.length}, totalUploaded=${detail.totalUploaded} (expected 9)`);
       }
-      return {};
     },
   },
 ];
 
 // ---------- Execution ----------
 
-export type Row = { name: string; code: string; photos: number; videos: number; tests: string; adminToken: string | null; extra: Record<string, string> };
+export type Row = { name: string; code: string; photos: number; videos: number; tests: string };
 
 const sqlNames = () => SCENARIOS.map((s) => `'${s.name.replace(/'/g, "''")}'`).join(",");
 
-/** Deletes the scenario trips from local D1 (media → members → trips). R2 objects are left behind. */
+/**
+ * Deletes the scenario trips (by name, so orphan trips from older schemas go too) and the seed users from
+ * local D1: media → members → trips, then sessions → users. R2 objects are left behind.
+ */
 export function resetScenarios() {
   const ids = `SELECT id FROM trips WHERE name IN (${sqlNames()})`;
   d1(`DELETE FROM media WHERE trip_id IN (${ids})`);
   d1(`DELETE FROM members WHERE trip_id IN (${ids})`);
   d1(`DELETE FROM trips WHERE name IN (${sqlNames()})`);
+  resetUsers();
 }
 
 function stats(name: string) {
@@ -237,7 +241,7 @@ export async function runScenario(s: Scenario): Promise<Row> {
   const exists = d1(`SELECT id FROM trips WHERE name = '${s.name.replace(/'/g, "''")}'`).length > 0;
   if (exists) {
     console.log(`= ${s.name}: already exists, not recreated`);
-    return { name: s.name, ...stats(s.name), tests: s.tests, adminToken: null, extra: {} };
+    return { name: s.name, ...stats(s.name), tests: s.tests };
   }
 
   console.log(`+ ${s.name}`);
@@ -245,20 +249,21 @@ export async function runScenario(s: Scenario): Promise<Row> {
   // (before uploading, since `takenAt` can be at most 24 h before `starts_at`).
   const dates = s.trip();
   const now = Date.now();
-  const created = await api("POST", "/trips", {
+  const body = {
     name: s.name,
-    adminName: s.members[0],
     timezone: TZ,
     startsAt: now + HOUR,
     endsAt: now + 2 * HOUR,
     revealAt: now + 3 * HOUR,
     dailyPhotoLimit: dates.dailyPhotoLimit,
     dailyVideoLimit: dates.dailyVideoLimit,
-  });
+  };
+  const names = [...s.members, JUANI];
+  const tokens = await Promise.all(names.map(ensureUser));
+  const created = await api("POST", "/trips", body, tokens[0]);
   const tripId: string = created.trip.id;
   d1(`UPDATE trips SET starts_at=${dates.startsAt}, ends_at=${dates.endsAt}, reveal_at=${dates.revealAt} WHERE id='${tripId}'`);
-  const tokens: string[] = [created.token];
-  for (const name of s.members.slice(1)) tokens.push((await api("POST", "/trips/join", { code: created.trip.joinCode, name })).token);
+  for (let i = 1; i < names.length; i++) await api("POST", "/trips/join", { code: created.trip.joinCode }, tokens[i]);
 
   const shots = s.shots?.() ?? [];
   let ids: string[] = [];
@@ -270,6 +275,6 @@ export async function runScenario(s: Scenario): Promise<Row> {
       (done) => done % 25 === 0 && console.log(`    ${done}/${shots.length}`),
     );
   }
-  const extra = (await s.after?.({ tripId, tokens, names: s.members }, shots, ids)) ?? {};
-  return { name: s.name, ...stats(s.name), tests: s.tests, adminToken: created.token, extra };
+  await s.after?.({ tripId, tokens, names }, shots, ids);
+  return { name: s.name, ...stats(s.name), tests: s.tests };
 }

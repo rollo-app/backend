@@ -10,8 +10,10 @@ amigos al sur de Argentina en **enero de 2027**; también para armar fotolibros 
 
 Decisiones de producto que el backend tiene que respetar:
 
-- **Sin cuentas.** Crear un viaje devuelve un token de admin; unirse es código de 6 caracteres + nombre
-  (único por viaje, sin distinguir mayúsculas) y devuelve un token de miembro.
+- **Cuentas con email.** Se entra con email + código de 6 dígitos (`/auth/email/*`, mail por Resend) y
+  devuelve un token de sesión (365 días). El nombre (y después el avatar) vive en el perfil (`/me`) y es
+  el mismo en todos los rollos, sin ser único. Además hay un **username único** (`@juanifraga`, minúsculas, `a-z 0-9 . _`, 3–30; `src/lib/username.ts`). Crear un viaje o unirse requiere nombre y username en el perfil; unirse es solo
+  el código de 6 caracteres (idempotente; si el admin te sacó, 403). Cuenta de App Review: `REVIEW_EMAIL`/`REVIEW_CODE`.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
@@ -34,13 +36,13 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 - **Subida directa a R2:** `POST /trips/:id/media` registra y devuelve URLs prefirmadas (aws4fetch,
   15 min) para original y thumb → el celular hace PUT → `POST /media/:id/complete` verifica con HEAD.
 - **Descargas** pasan por el Worker (streaming desde R2) y solo después del revelado.
-- **Auth:** `Authorization: Bearer <token>`; en D1 solo se guarda el SHA-256 del token.
+- **Auth:** `Authorization: Bearer <token de sesión>`; en D1 solo se guarda el SHA-256 del token (`sessions`) y del código (`auth_codes`). Un middleware de membresía carga `member`/`trip` en las rutas con `{tripId}`.
 
 ```
 src/index.ts          app, /openapi.json, /docs, manejo de errores
 src/schemas.ts        contrato (zod + OpenAPI)
 src/lib/              auth, openapi helpers, r2 (presign), util (fechas, revelado, códigos)
-src/routes/           trips.ts, media.ts
+src/routes/           auth.ts, me.ts, trips.ts, media.ts
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -49,7 +51,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 ## Cómo trabajamos
 
 - **TDD siempre:** primero el test, verlo fallar, código mínimo, refactor.
-  Escenarios con los helpers de `test/helpers.ts` (`createTrip`, `join`, `uploadMedia`...).
+  Escenarios con los helpers de `test/helpers.ts` (`signUp`, `newTrip`, `joinAs`, `uploadMedia`...). Los códigos de login se leen de `devSentCodes` (`src/lib/email.ts`), que se llena cuando no hay `RESEND_API_KEY`.
 - **Si tocás la API:** `npm run openapi` y commiteá `openapi.json`. Hay un test que falla si quedó
   desactualizado. Después la app corre `npm run api:generate`.
 - **Ramas:** `develop` es la default. Features en `feature/*` (o `fix/*`, `chore/*`) desde `develop`,
@@ -68,13 +70,13 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 111 tests
+npm test              # 174 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
-npm run seed          # 7 viajes de prueba (en curso, revelado, futuro...); imprime tabla de códigos
-npm run seed -- --reset   # los borra de D1 local y los recrea (cambian los códigos)
+npm run seed          # 7 viajes de prueba (en curso, revelado, futuro...) con usuarios <nombre>@rollo.test; juani@rollo.test está en todos; imprime tabla de códigos
+npm run seed -- --reset   # borra viajes y usuarios de prueba de D1 local y los recrea (cambian los códigos)
 ```
 
 **Subidas en local:** con `DEV_LOCAL_UPLOADS=1` en `.dev.vars` (está en `.dev.vars.example`), las URLs

@@ -1,3 +1,4 @@
+import { ensureUser } from "./seed/lib";
 import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenarios";
 
 /**
@@ -6,7 +7,8 @@ import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenari
  * (otherwise the upload URLs point at the real R2).
  *
  * Idempotent: if a scenario's trip already exists in local D1, it is not recreated.
- * `npm run seed -- --reset` deletes those trips (media, members, trips) and recreates them.
+ * `npm run seed -- --reset` deletes those trips and the @rollo.test users (media, members, trips, sessions, users) and recreates them.
+ * Users: <name>@rollo.test created straight in D1 with a session each; Juani is a member of every trip.
  * Videos are placeholders: there is no ffmpeg, the original is a jpeg uploaded as video/mp4.
  */
 
@@ -23,12 +25,8 @@ async function main() {
   console.log("\n" + [pad("Trip", 28), pad("Code", 8), pad("Photos", 6), pad("Videos", 7), "What it tests"].join(" "));
   for (const r of rows) console.log([pad(r.name, 28), pad(r.code, 8), pad(r.photos, 6), pad(r.videos, 7), r.tests].join(" "));
 
-  console.log("\nTokens (only for trips created in this run):");
-  for (const r of rows) {
-    if (r.adminToken) console.log(`  admin (Cami) @ ${r.name}: ${r.adminToken}`);
-    for (const [k, v] of Object.entries(r.extra)) console.log(`  ${k}: ${v}`);
-  }
-  if (rows.some((r) => !r.adminToken)) console.log("  (trips that already existed show no token: use --reset to recreate them)");
+  console.log("\nLogin: juani@rollo.test — el código aparece en la consola de wrangler (npm run dev:lan).");
+  console.log(`Seed session token for Juani (curl): ${await ensureUser("Juani")}`);
   console.log("\nNote: videos are placeholders (original = jpeg bytes as video/mp4; thumb and thumbhash from picsum).");
 }
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "Rollo API",
     "version": "0.2.0",
-    "description": "Rollo backend: trips, shared rolls and the reveal at the end."
+    "description": "Rollo backend: accounts, trips, shared rolls and the reveal at the end."
   },
   "servers": [
     {
@@ -15,10 +15,242 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Token returned when creating or joining a trip"
+        "description": "Session token returned by POST /auth/email/verify"
       }
     },
     "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "Código inválido"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "EmailStartRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "juani@example.com",
+            "description": "Trimmed and lowercased"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "AuthSession": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Session token (Bearer). Valid for 365 days; store it on the phone"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "isNew": {
+            "type": "boolean",
+            "description": "true while the profile is incomplete (no name or no username): show the profile step"
+          }
+        },
+        "required": [
+          "token",
+          "user",
+          "isNew"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "example": "juani@example.com"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null until the profile is completed"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "juanifraga",
+            "description": "Unique handle, lowercase, without the @ (the app shows it as @username); null until chosen"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "username",
+          "avatarUrl"
+        ]
+      },
+      "EmailVerifyRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "juani@example.com",
+            "description": "Trimmed and lowercased"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 16,
+            "example": "123456"
+          }
+        },
+        "required": [
+          "email",
+          "code"
+        ]
+      },
+      "UpdateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "Juani"
+          },
+          "username": {
+            "type": "string",
+            "example": "juanifraga",
+            "description": "Optional leading @, trimmed and lowercased. a-z 0-9 . _ (3 to 30), no leading/trailing dot, no \"..\""
+          }
+        }
+      },
+      "AvatarUpload": {
+        "type": "object",
+        "properties": {
+          "upload": {
+            "type": "string",
+            "format": "uri",
+            "description": "PUT of the JPEG avatar (square, ~512px)"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "Seconds the URL stays valid"
+          }
+        },
+        "required": [
+          "upload",
+          "expiresIn"
+        ]
+      },
+      "MyTrips": {
+        "type": "object",
+        "properties": {
+          "trips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TripSummary"
+            }
+          }
+        },
+        "required": [
+          "trips"
+        ]
+      },
+      "TripSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "joinCode": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Trip start",
+            "example": 1767225600000
+          },
+          "endsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Trip end",
+            "example": 1767225600000
+          },
+          "revealAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Automatic reveal",
+            "example": 1767225600000
+          },
+          "revealed": {
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "totalUploaded": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "joinCode",
+          "startsAt",
+          "endsAt",
+          "revealAt",
+          "revealed",
+          "role",
+          "totalUploaded"
+        ]
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "member"
+        ]
+      },
+      "UsernameAvailability": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "true if nobody else has it (also true if it is yours)"
+          },
+          "username": {
+            "type": "string",
+            "description": "The normalized username that was checked"
+          }
+        },
+        "required": [
+          "available",
+          "username"
+        ]
+      },
       "TripCreated": {
         "type": "object",
         "properties": {
@@ -27,16 +259,11 @@
           },
           "member": {
             "$ref": "#/components/schemas/Member"
-          },
-          "token": {
-            "type": "string",
-            "description": "Store it on the phone: it is only returned once"
           }
         },
         "required": [
           "trip",
-          "member",
-          "token"
+          "member"
         ]
       },
       "Trip": {
@@ -105,11 +332,30 @@
         "properties": {
           "id": {
             "type": "string",
+            "format": "uuid",
+            "description": "Membership id (the one used by DELETE members and FeedItem.author)"
+          },
+          "userId": {
+            "type": "string",
             "format": "uuid"
           },
           "name": {
             "type": "string",
             "example": "Fede"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "fede",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -117,27 +363,11 @@
         },
         "required": [
           "id",
+          "userId",
           "name",
+          "username",
+          "avatarUrl",
           "role"
-        ]
-      },
-      "Role": {
-        "type": "string",
-        "enum": [
-          "admin",
-          "member"
-        ]
-      },
-      "Error": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string",
-            "example": "Código inválido"
-          }
-        },
-        "required": [
-          "error"
         ]
       },
       "CreateTripRequest": {
@@ -148,12 +378,6 @@
             "minLength": 1,
             "maxLength": 60,
             "example": "Viaje al sur"
-          },
-          "adminName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 30,
-            "example": "Juani"
           },
           "timezone": {
             "type": "string",
@@ -193,7 +417,6 @@
         },
         "required": [
           "name",
-          "adminName",
           "timezone",
           "startsAt",
           "endsAt",
@@ -208,17 +431,10 @@
             "minLength": 6,
             "maxLength": 6,
             "example": "HUB5FT"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 30,
-            "example": "Juani"
           }
         },
         "required": [
-          "code",
-          "name"
+          "code"
         ]
       },
       "TripDetail": {
@@ -311,20 +527,6 @@
             "maximum": 20
           }
         }
-      },
-      "UpdateMeRequest": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 30,
-            "example": "Juani"
-          }
-        },
-        "required": [
-          "name"
-        ]
       },
       "MediaRegistered": {
         "type": "object",
@@ -564,12 +766,27 @@
               },
               "name": {
                 "type": "string"
+              },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "avatarUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
               "id",
-              "name"
-            ]
+              "name",
+              "username",
+              "avatarUrl"
+            ],
+            "description": "`id` is the author's membership id"
           },
           "width": {
             "type": [
@@ -619,13 +836,493 @@
     "parameters": {}
   },
   "paths": {
+    "/auth/email/start": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Request a login code by email",
+        "description": "Sends a 6-digit code (valid 10 minutes, 5 attempts). A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Code sent"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream service failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/email/verify": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Exchange the emailed code for a session token",
+        "description": "Creates the user on the first successful verification. `isNew` is true while the user has no name.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailVerifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Sign out (deletes the current session)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Signed out"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Your profile",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Your profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Edit your profile",
+        "description": "Send name and/or username. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Delete your account",
+        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your avatar, sessions and pending login codes are deleted too. The same email can sign up again later as a brand-new user.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Account deleted"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/avatar": {
+      "post": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Get a URL to upload your avatar",
+        "description": "Returns a signed URL to PUT a JPEG straight to R2. Then call POST /me/avatar/complete. Each call generates a new random file name, so the avatar URL changes when you replace it.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarUpload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/avatar/complete": {
+      "post": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Confirm your avatar upload",
+        "description": "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it your avatar and deletes the previous one. Otherwise the upload is discarded and the response is a 400.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile with the new avatar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/trips": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Your rollos",
+        "description": "Rollos you are an active member of, most recent start first.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Your rollos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyTrips"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/avatars/{userId}/{file}": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Download a user's avatar",
+        "description": "Public (no token) so it can be used directly as an image URL. Only the user's current avatar is served; file names are random, so older or guessed ones return 404.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "3f1c2a.jpg"
+            },
+            "required": true,
+            "name": "file",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Avatar",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/usernames/{username}": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Check if a username is available",
+        "description": "Normalizes the username (optional @, lowercase) and says whether nobody else has it. Your own current username counts as available. 400 if it breaks the format rules. For checking while typing.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "juanifraga"
+            },
+            "required": true,
+            "name": "username",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsernameAvailability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/trips": {
       "post": {
         "tags": [
           "Trips"
         ],
         "summary": "Create a trip",
-        "description": "Whoever creates it becomes the admin. Returns the invite code and the admin token.",
+        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -656,6 +1353,26 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -666,7 +1383,12 @@
           "Trips"
         ],
         "summary": "Join a trip",
-        "description": "With the code and a name. The name is unique per trip (case-insensitive).",
+        "description": "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined, 200 when already an active member. Someone removed by the admin gets 403.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -678,6 +1400,16 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Already a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripCreated"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Joined the trip",
             "content": {
@@ -690,6 +1422,26 @@
           },
           "400": {
             "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -755,7 +1507,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -828,7 +1580,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -883,7 +1635,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -894,92 +1646,6 @@
           },
           "403": {
             "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/trips/{tripId}/members/me": {
-      "patch": {
-        "tags": [
-          "Trips"
-        ],
-        "summary": "Change your name in the trip",
-        "description": "Same rules as when joining: unique per trip, case-insensitive.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "tripId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMeRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Name updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Member"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {
@@ -997,7 +1663,7 @@
           "Trips"
         ],
         "summary": "Remove someone from the trip (admin)",
-        "description": "Their token stops working and their name is freed. Their photos stay in the roll.",
+        "description": "They lose access to the rollo and cannot rejoin. Their photos stay in the roll.",
         "security": [
           {
             "bearerAuth": []
@@ -1036,7 +1702,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1139,7 +1805,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1169,7 +1835,7 @@
             }
           },
           "429": {
-            "description": "Daily limit reached",
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -1225,7 +1891,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1281,7 +1947,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1364,7 +2030,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1423,7 +2089,7 @@
             "description": "Deleted"
           },
           "401": {
-            "description": "Missing or invalid token",
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {

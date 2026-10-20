@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
-import { isBase64, isValidTimeZone } from "./lib/util";
+import { isValidUsername, normalizeUsername, USERNAME_INVALID_MESSAGE } from "./lib/username";
+import { isBase64, isEmail, isValidTimeZone } from "./lib/util";
 
 /**
  * API contract. These schemas validate requests, type responses
@@ -33,9 +34,54 @@ export const TripSchema = z
   })
   .openapi("Trip");
 
+export const UserSchema = z
+  .object({
+    id: z.string().uuid(),
+    email: z.string().openapi({ example: "juani@example.com" }),
+    name: z.string().nullable().openapi({ description: "null until the profile is completed" }),
+    username: z.string().nullable().openapi({
+      example: "juanifraga",
+      description: "Unique handle, lowercase, without the @ (the app shows it as @username); null until chosen",
+    }),
+    avatarUrl: z.string().nullable().openapi({
+      description: "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none",
+    }),
+  })
+  .openapi("User");
+
 export const MemberSchema = z
-  .object({ id: z.string().uuid(), name: z.string().openapi({ example: "Fede" }), role: RoleSchema })
+  .object({
+    id: z.string().uuid().openapi({ description: "Membership id (the one used by DELETE members and FeedItem.author)" }),
+    userId: z.string().uuid(),
+    name: z.string().openapi({ example: "Fede" }),
+    username: z.string().nullable().openapi({ example: "fede", description: "Unique handle without the @" }),
+    avatarUrl: z.string().nullable(),
+    role: RoleSchema,
+  })
   .openapi("Member");
+
+// ---------- Auth ----------
+
+const emailField = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .refine(isEmail, "Ingresá un email válido")
+  .openapi({ example: "juani@example.com", description: "Trimmed and lowercased" });
+
+export const EmailStartSchema = z.object({ email: emailField }).openapi("EmailStartRequest");
+
+export const EmailVerifySchema = z
+  .object({ email: emailField, code: z.string().trim().max(16).openapi({ example: "123456" }) })
+  .openapi("EmailVerifyRequest");
+
+export const AuthSessionSchema = z
+  .object({
+    token: z.string().openapi({ description: "Session token (Bearer). Valid for 365 days; store it on the phone" }),
+    user: UserSchema,
+    isNew: z.boolean().openapi({ description: "true while the profile is incomplete (no name or no username): show the profile step" }),
+  })
+  .openapi("AuthSession");
 
 // ---------- Trips ----------
 
@@ -47,7 +93,6 @@ export const PAST_TOLERANCE_MS = 5 * 60_000;
 export const CreateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).openapi({ example: "Viaje al sur" }),
-    adminName: personName,
     timezone: z
       .string()
       .refine(isValidTimeZone, "Zona horaria inválida")
@@ -66,11 +111,34 @@ export const CreateTripSchema = z
 export const JoinTripSchema = z
   .object({
     code: z.string().trim().toUpperCase().length(6).openapi({ example: "HUB5FT" }),
-    name: personName,
   })
   .openapi("JoinTripRequest");
 
-export const UpdateMeSchema = z.object({ name: personName }).openapi("UpdateMeRequest");
+/** Accepts it with or without "@" and any case; the parsed value is the normalized one. */
+export const usernameField = z
+  .string()
+  .transform(normalizeUsername)
+  .refine(isValidUsername, USERNAME_INVALID_MESSAGE)
+  .openapi({
+    type: "string",
+    example: "juanifraga",
+    description: "Optional leading @, trimmed and lowercased. a-z 0-9 . _ (3 to 30), no leading/trailing dot, no \"..\"",
+  });
+
+export const UpdateProfileSchema = z
+  .object({ name: personName.optional(), username: usernameField.optional() })
+  .openapi("UpdateProfileRequest");
+
+export const UsernameParams = z.object({
+  username: z.string().openapi({ param: { name: "username", in: "path" }, example: "juanifraga" }),
+});
+
+export const UsernameAvailabilitySchema = z
+  .object({
+    available: z.boolean().openapi({ description: "true if nobody else has it (also true if it is yours)" }),
+    username: z.string().openapi({ description: "The normalized username that was checked" }),
+  })
+  .openapi("UsernameAvailability");
 
 export const UpdateTripSchema = z
   .object({
@@ -86,9 +154,36 @@ export const TripCreatedSchema = z
   .object({
     trip: TripSchema,
     member: MemberSchema,
-    token: z.string().openapi({ description: "Store it on the phone: it is only returned once" }),
   })
   .openapi("TripCreated");
+
+export const TripSummarySchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    joinCode: z.string(),
+    startsAt: epochMs("Trip start"),
+    endsAt: epochMs("Trip end"),
+    revealAt: epochMs("Automatic reveal"),
+    revealed: z.boolean(),
+    role: RoleSchema,
+    totalUploaded: z.number().int(),
+  })
+  .openapi("TripSummary");
+
+export const AvatarUploadSchema = z
+  .object({
+    upload: z.string().url().openapi({ description: "PUT of the JPEG avatar (square, ~512px)" }),
+    expiresIn: z.number().int().openapi({ description: "Seconds the URL stays valid" }),
+  })
+  .openapi("AvatarUpload");
+
+export const AvatarParams = z.object({
+  userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
+  file: z.string().openapi({ param: { name: "file", in: "path" }, example: "3f1c2a.jpg" }),
+});
+
+export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");
 
 export const TripDetailSchema = z
   .object({
@@ -175,7 +270,9 @@ export const FeedItemSchema = z
         "it only encodes blurry colors (~25 bytes), the photo cannot be reconstructed from it.",
     }),
     durationS: nullableNumber,
-    author: z.object({ id: z.string().uuid(), name: z.string() }),
+    author: z
+      .object({ id: z.string().uuid(), name: z.string(), username: z.string().nullable(), avatarUrl: z.string().nullable() })
+      .openapi({ description: "`id` is the author's membership id" }),
     width: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
     height: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
     files: z

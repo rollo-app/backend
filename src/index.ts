@@ -2,8 +2,12 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
+import auth from "./routes/auth";
+import avatars from "./routes/avatars";
+import me from "./routes/me";
 import media from "./routes/media";
 import trips from "./routes/trips";
+import usernames from "./routes/usernames";
 
 const app = createApp();
 
@@ -12,9 +16,13 @@ app.get("/", (c) => c.json({ ok: true, service: "rollo-api" }));
 app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
   type: "http",
   scheme: "bearer",
-  description: "Token returned when creating or joining a trip",
+  description: "Session token returned by POST /auth/email/verify",
 });
 
+app.route("/auth", auth);
+app.route("/me", me);
+app.route("/avatars", avatars);
+app.route("/usernames", usernames);
 app.route("/trips", trips);
 app.route("/", media);
 
@@ -24,7 +32,7 @@ app.doc31("/openapi.json", {
   info: {
     title: "Rollo API",
     version: "0.2.0",
-    description: "Rollo backend: trips, shared rolls and the reveal at the end.",
+    description: "Rollo backend: accounts, trips, shared rolls and the reveal at the end.",
   },
   servers: [{ url: "https://rollo-api.juanifraga.com" }],
 });

@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  AuthSessionSchema,
   ErrorSchema,
   FeedResponseSchema,
   MediaRegisteredSchema,
   MediaStatusSchema,
+  MyTripsSchema,
   TripCreatedSchema,
   TripDetailSchema,
   TripResponseSchema,
+  UserSchema,
 } from "../src/schemas";
-import { api, createTrip, join, photoBody, uploadMedia } from "./helpers";
+import { api, joinAs, newTrip, photoBody, requestCode, signUp, uploadMedia } from "./helpers";
 
 type OpenAPIDoc = {
   openapi: string;
@@ -24,11 +27,17 @@ async function getDoc(): Promise<OpenAPIDoc> {
 }
 
 const PUBLIC_ENDPOINTS = [
-  ["post", "/trips"],
-  ["post", "/trips/join"],
+  ["post", "/auth/email/start"],
+  ["post", "/auth/email/verify"],
 ] as const;
 
 const PROTECTED_ENDPOINTS = [
+  ["post", "/auth/logout"],
+  ["get", "/me"],
+  ["patch", "/me"],
+  ["get", "/me/trips"],
+  ["post", "/trips"],
+  ["post", "/trips/join"],
   ["get", "/trips/{tripId}"],
   ["patch", "/trips/{tripId}"],
   ["post", "/trips/{tripId}/reveal"],
@@ -69,7 +78,7 @@ describe("GET /openapi.json", () => {
 
   it("exposes named models to generate the client", async () => {
     const doc = await getDoc();
-    for (const name of ["Trip", "Member", "TripCreated", "TripDetail", "MediaRegistered", "FeedItem", "Feed", "Error"]) {
+    for (const name of ["Trip", "Member", "User", "AuthSession", "TripSummary", "TripCreated", "TripDetail", "MediaRegistered", "FeedItem", "Feed", "Error"]) {
       expect(doc.components.schemas[name], name).toBeDefined();
     }
   });
@@ -102,12 +111,30 @@ describe("GET /docs", () => {
  * If someone changes a response without updating the contract, this fails.
  */
 describe("responses comply with the contract", () => {
+  it("auth, profile and my trips", async () => {
+    const email = "contrato@rollo.test";
+    const code = await requestCode(email);
+    const verified = await api("POST", "/auth/email/verify", { body: { email, code } });
+    expect(() => AuthSessionSchema.parse(verified.body)).not.toThrow();
+    const token = verified.body.token;
+    const me = await api("GET", "/me", { token });
+    expect(() => UserSchema.parse(me.body)).not.toThrow();
+    const patched = await api("PATCH", "/me", { token, body: { name: "Fede", username: "fede.contract" } });
+    expect(() => UserSchema.parse(patched.body)).not.toThrow();
+    const trip = await newTrip();
+    await api("POST", "/trips/join", { token, body: { code: trip.code } });
+    const mine = await api("GET", "/me/trips", { token });
+    expect(mine.body.trips).toHaveLength(1);
+    expect(() => MyTripsSchema.parse(mine.body)).not.toThrow();
+  });
+
   it("create trip and join", async () => {
+    const { token: adminToken } = await signUp(undefined, "Juani");
     const created = await api("POST", "/trips", {
+      token: adminToken,
       body: {
         name: "Viaje",
-        adminName: "Juani",
-        timezone: "America/Argentina/Buenos_Aires",
+                timezone: "America/Argentina/Buenos_Aires",
         startsAt: Date.now(),
         endsAt: Date.now() + 1000,
         revealAt: Date.now() + 2000,
@@ -115,12 +142,15 @@ describe("responses comply with the contract", () => {
     });
     expect(() => TripCreatedSchema.parse(created.body)).not.toThrow();
 
-    const joined = await api("POST", "/trips/join", { body: { code: created.body.trip.joinCode, name: "Fede" } });
+    const fede = await signUp(undefined, "Fede");
+    const joined = await api("POST", "/trips/join", { token: fede.token, body: { code: created.body.trip.joinCode } });
     expect(() => TripCreatedSchema.parse(joined.body)).not.toThrow();
+    const again = await api("POST", "/trips/join", { token: fede.token, body: { code: created.body.trip.joinCode } });
+    expect(() => TripCreatedSchema.parse(again.body)).not.toThrow();
   });
 
   it("detail, edit and reveal", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const detail = await api("GET", `/trips/${tripId}`, { token: adminToken });
     expect(() => TripDetailSchema.parse(detail.body)).not.toThrow();
 
@@ -132,8 +162,8 @@ describe("responses comply with the contract", () => {
   });
 
   it("register, confirm and feed before and after the reveal", async () => {
-    const { tripId, code, adminToken } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
 
     const registered = await api("POST", `/trips/${tripId}/media`, { token: fede.token, body: photoBody() });
     expect(() => MediaRegisteredSchema.parse(registered.body)).not.toThrow();
@@ -151,7 +181,8 @@ describe("responses comply with the contract", () => {
   });
 
   it("errors", async () => {
-    const res = await api("POST", "/trips/join", { body: { code: "ZZZZZZ", name: "Fede" } });
+    const { token } = await signUp();
+    const res = await api("POST", "/trips/join", { token, body: { code: "ZZZZZZ" } });
     expect(() => ErrorSchema.parse(res.body)).not.toThrow();
   });
 });
