@@ -7,6 +7,7 @@ import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
 import trips from "./routes/trips";
+import usernames from "./routes/usernames";
 
 const app = createApp();
 
@@ -21,6 +22,7 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 app.route("/auth", auth);
 app.route("/me", me);
 app.route("/avatars", avatars);
+app.route("/usernames", usernames);
 app.route("/trips", trips);
 app.route("/", media);
 

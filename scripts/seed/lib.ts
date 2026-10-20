@@ -59,6 +59,8 @@ export const slug = (name: string) =>
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ".");
+/** Seed username: "juanifraga" for Juani, otherwise the dotted slug of the name (e.g. "maria.florencia"). */
+export const seedUsername = (name: string) => (name === "Juani" ? "juanifraga" : slug(name));
 export const seedEmail = (name: string) => `${slug(name)}@rollo.test`;
 const sessions = new Map<string, Promise<string>>();
 
@@ -74,10 +76,10 @@ export function ensureUser(name: string): Promise<string> {
       const now = Date.now();
       const [existing] = d1<{ id: string }>(`SELECT id FROM users WHERE email = ${sqlStr(email)}`);
       let userId = existing?.id;
-      if (userId) d1(`UPDATE users SET name = ${sqlStr(name)} WHERE id = ${sqlStr(userId)}`);
+      if (userId) d1(`UPDATE users SET name = ${sqlStr(name)}, username = ${sqlStr(seedUsername(name))} WHERE id = ${sqlStr(userId)}`);
       else {
         userId = randomUUID();
-        d1(`INSERT INTO users (id, email, name, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${now})`);
+        d1(`INSERT INTO users (id, email, name, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${sqlStr(seedUsername(name))}, ${now})`);
       }
       const token = randomBytes(32).toString("base64url");
       const hash = createHash("sha256").update(token).digest("hex");

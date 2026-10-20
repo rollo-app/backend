@@ -133,7 +133,7 @@ auth.openapi(verifyRoute, async (c) => {
     .bind(crypto.randomUUID(), user.id, await hashToken(token), now, now, now + SESSION_TTL)
     .run();
 
-  return c.json({ token, user: publicUser(user), isNew: user.name === null }, 200);
+  return c.json({ token, user: publicUser(user), isNew: user.name === null || user.username === null }, 200);
 });
 
 // ---------- Logout ----------

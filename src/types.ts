@@ -36,6 +36,7 @@ export type UserRow = {
   id: string;
   email: string;
   name: string | null;
+  username: string | null;
   avatar_key: string | null;
   pending_avatar_key: string | null;
   created_at: number;

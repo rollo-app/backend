@@ -166,14 +166,14 @@ media.openapi(feedRoute, async (c) => {
 
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.type, m.taken_at, m.local_date, m.lat, m.lng, m.caption, m.thumbhash, m.duration_s,
-            m.width, m.height, mem.id AS author_id, u.name AS author_name, mem.user_id AS author_user_id, u.avatar_key AS author_avatar_key
+            m.width, m.height, mem.id AS author_id, u.name AS author_name, u.username AS author_username, mem.user_id AS author_user_id, u.avatar_key AS author_avatar_key
      FROM media m JOIN members mem ON mem.id = m.member_id JOIN users u ON u.id = mem.user_id
      WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL
      ORDER BY m.taken_at`,
   ).bind(trip.id).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
     caption: string | null; thumbhash: string | null; duration_s: number | null; width: number | null; height: number | null;
-    author_id: string; author_name: string | null; author_user_id: string; author_avatar_key: string | null;
+    author_id: string; author_name: string | null; author_username: string | null; author_user_id: string; author_avatar_key: string | null;
   }>();
 
   const items = results.map((r) => ({
@@ -186,7 +186,7 @@ media.openapi(feedRoute, async (c) => {
     caption: r.caption,
     thumbhash: r.thumbhash,
     durationS: r.duration_s,
-    author: { id: r.author_id, name: r.author_name ?? "", avatarUrl: avatarUrl(r.author_user_id, r.author_avatar_key) },
+    author: { id: r.author_id, name: r.author_name ?? "", username: r.author_username, avatarUrl: avatarUrl(r.author_user_id, r.author_avatar_key) },
     ...(revealed && {
       width: r.width,
       height: r.height,

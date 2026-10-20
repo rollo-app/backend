@@ -36,18 +36,23 @@ let userCounter = 0;
 /**
  * Signs a user up through the real login flow (start + verify) and optionally sets their name.
  * Without RESEND_API_KEY the code is "sent" to `devSentCodes`, which is where the test reads it.
- * Pass `name = null` to leave the profile without a name.
+ * Pass `name = null` / `username = null` to leave the profile without a name / username.
+ * By default the username is a random unique one.
  */
 export async function signUp(
   email = `user${++userCounter}@rollo.test`,
   name: string | null = "Test",
+  username: string | null = `u${userCounter}${Math.random().toString(36).slice(2, 8)}`,
 ): Promise<{ token: string; userId: string; email: string }> {
   const code = await requestCode(email);
   const res = await api("POST", "/auth/email/verify", { body: { email, code } });
   if (res.status !== 200) throw new Error(`verify failed: ${res.status} ${JSON.stringify(res.body)}`);
   const { token, user } = res.body;
-  if (name !== null) {
-    const patched = await api("PATCH", "/me", { token, body: { name } });
+  if (name !== null || username !== null) {
+    const patched = await api("PATCH", "/me", {
+      token,
+      body: { ...(name !== null && { name }), ...(username !== null && { username }) },
+    });
     if (patched.status !== 200) throw new Error(`PATCH /me failed: ${patched.status} ${JSON.stringify(patched.body)}`);
   }
   return { token, userId: user.id, email: user.email };

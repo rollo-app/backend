@@ -118,7 +118,8 @@ Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 | POST | `/auth/email/start` | cualquiera | `{email}` → manda un código de 6 dígitos (204) |
 | POST | `/auth/email/verify` | cualquiera | `{email, code}` → `{token, user, isNew}` |
 | POST | `/auth/logout` | sesión | Cierra la sesión actual |
-| GET / PATCH | `/me` | sesión | Perfil (`{name}` para editar) |
+| GET / PATCH | `/me` | sesión | Perfil (`{name, username}` para editar; el username es único) |
+| GET | `/usernames/{username}` | sesión | `{available, username}` (normalizado); 400 si el formato es inválido |
 | GET | `/me/trips` | sesión | Mis rollos |
 | POST | `/trips` | sesión | Crea el viaje (requiere nombre en el perfil); devuelve el código |
 | POST | `/trips/join` | sesión | `{code}` → 201 si te uniste, 200 si ya eras miembro |

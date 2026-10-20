@@ -119,7 +119,7 @@ describe("responses comply with the contract", () => {
     const token = verified.body.token;
     const me = await api("GET", "/me", { token });
     expect(() => UserSchema.parse(me.body)).not.toThrow();
-    const patched = await api("PATCH", "/me", { token, body: { name: "Fede" } });
+    const patched = await api("PATCH", "/me", { token, body: { name: "Fede", username: "fede.contract" } });
     expect(() => UserSchema.parse(patched.body)).not.toThrow();
     const trip = await newTrip();
     await api("POST", "/trips/join", { token, body: { code: trip.code } });

@@ -56,7 +56,7 @@
           },
           "isNew": {
             "type": "boolean",
-            "description": "true while the user has no name yet: show the profile step"
+            "description": "true while the profile is incomplete (no name or no username): show the profile step"
           }
         },
         "required": [
@@ -83,6 +83,14 @@
             ],
             "description": "null until the profile is completed"
           },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "juanifraga",
+            "description": "Unique handle, lowercase, without the @ (the app shows it as @username); null until chosen"
+          },
           "avatarUrl": {
             "type": [
               "string",
@@ -95,6 +103,7 @@
           "id",
           "email",
           "name",
+          "username",
           "avatarUrl"
         ]
       },
@@ -125,11 +134,13 @@
             "minLength": 1,
             "maxLength": 30,
             "example": "Juani"
+          },
+          "username": {
+            "type": "string",
+            "example": "juanifraga",
+            "description": "Optional leading @, trimmed and lowercased. a-z 0-9 . _ (3 to 30), no leading/trailing dot, no \"..\""
           }
-        },
-        "required": [
-          "name"
-        ]
+        }
       },
       "AvatarUpload": {
         "type": "object",
@@ -221,6 +232,23 @@
         "enum": [
           "admin",
           "member"
+        ]
+      },
+      "UsernameAvailability": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "true if nobody else has it (also true if it is yours)"
+          },
+          "username": {
+            "type": "string",
+            "description": "The normalized username that was checked"
+          }
+        },
+        "required": [
+          "available",
+          "username"
         ]
       },
       "TripCreated": {
@@ -315,6 +343,14 @@
             "type": "string",
             "example": "Fede"
           },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "fede",
+            "description": "Unique handle without the @"
+          },
           "avatarUrl": {
             "type": [
               "string",
@@ -329,6 +365,7 @@
           "id",
           "userId",
           "name",
+          "username",
           "avatarUrl",
           "role"
         ]
@@ -730,6 +767,12 @@
               "name": {
                 "type": "string"
               },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "avatarUrl": {
                 "type": [
                   "string",
@@ -740,6 +783,7 @@
             "required": [
               "id",
               "name",
+              "username",
               "avatarUrl"
             ],
             "description": "`id` is the author's membership id"
@@ -954,7 +998,7 @@
           "Profile"
         ],
         "summary": "Edit your profile",
-        "description": "The name is shown in every rollo you are part of. It does not have to be unique.",
+        "description": "Send name and/or username. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it.",
         "security": [
           {
             "bearerAuth": []
@@ -993,6 +1037,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {
@@ -1200,13 +1254,70 @@
         }
       }
     },
+    "/usernames/{username}": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Check if a username is available",
+        "description": "Normalizes the username (optional @, lowercase) and says whether nobody else has it. Your own current username counts as available. 400 if it breaks the format rules. For checking while typing.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "juanifraga"
+            },
+            "required": true,
+            "name": "username",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsernameAvailability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/trips": {
       "post": {
         "tags": [
           "Trips"
         ],
         "summary": "Create a trip",
-        "description": "Whoever creates it becomes the admin. The profile must have a name. Returns the invite code.",
+        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code.",
         "security": [
           {
             "bearerAuth": []
@@ -1272,7 +1383,7 @@
           "Trips"
         ],
         "summary": "Join a trip",
-        "description": "With the invite code. The profile must have a name. Idempotent: 201 when newly joined, 200 when already an active member. Someone removed by the admin gets 403.",
+        "description": "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined, 200 when already an active member. Someone removed by the admin gets 403.",
         "security": [
           {
             "bearerAuth": []

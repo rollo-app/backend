@@ -67,16 +67,17 @@ export function avatarUrl(userId: string, avatarKey: string | null): string | nu
 }
 
 /** Public shape of a user. */
-export function publicUser(user: Pick<UserRow, "id" | "email" | "name" | "avatar_key">) {
-  return { id: user.id, email: user.email, name: user.name, avatarUrl: avatarUrl(user.id, user.avatar_key) };
+export function publicUser(user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key">) {
+  return { id: user.id, email: user.email, name: user.name, username: user.username, avatarUrl: avatarUrl(user.id, user.avatar_key) };
 }
 
 /** Public shape of a membership (what the app sees as a trip member). */
-export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">, user: Pick<UserRow, "name" | "avatar_key">) {
+export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">, user: Pick<UserRow, "name" | "username" | "avatar_key">) {
   return {
     id: member.id,
     userId: member.user_id,
     name: user.name ?? "",
+    username: user.username,
     avatarUrl: avatarUrl(member.user_id, user.avatar_key),
     role: member.role,
   };

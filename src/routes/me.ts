@@ -4,6 +4,7 @@ import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { presignPut } from "../lib/r2";
 import { isRevealed, publicUser } from "../lib/util";
+import { USERNAME_TAKEN_MESSAGE } from "../lib/username";
 import { AvatarUploadSchema, MyTripsSchema, UpdateProfileSchema, UserSchema } from "../schemas";
 import type { MediaRow, Role, TripRow } from "../types";
 
@@ -27,18 +28,33 @@ const updateMeRoute = createRoute({
   path: "/",
   tags,
   summary: "Edit your profile",
-  description: "The name is shown in every rollo you are part of. It does not have to be unique.",
+  description:
+    "Send name and/or username. The name is shown in every rollo you are part of and does not have to be unique. " +
+    "The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: UpdateProfileSchema } }, required: true } },
-  responses: { 200: json(UserSchema, "Profile updated"), ...errors(400, 401) },
+  responses: { 200: json(UserSchema, "Profile updated"), ...errors(400, 401, 409) },
 });
 
 me.openapi(updateMeRoute, async (c) => {
   const user = c.get("user");
-  const { name } = c.req.valid("json");
-  await c.env.DB.prepare("UPDATE users SET name = ? WHERE id = ?").bind(name, user.id).run();
-  return c.json(publicUser({ ...user, name }), 200);
+  const body = c.req.valid("json");
+  const next = { name: body.name ?? user.name, username: body.username ?? user.username };
+  if (body.username !== undefined && body.username !== user.username) {
+    const owner = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? AND id != ?")
+      .bind(body.username, user.id)
+      .first();
+    if (owner) throw new HTTPException(409, { message: USERNAME_TAKEN_MESSAGE });
+  }
+  try {
+    await c.env.DB.prepare("UPDATE users SET name = ?, username = ? WHERE id = ?").bind(next.name, next.username, user.id).run();
+  } catch (err) {
+    // Lost a race against another account taking the same username.
+    if (String(err).includes("UNIQUE")) throw new HTTPException(409, { message: USERNAME_TAKEN_MESSAGE });
+    throw err;
+  }
+  return c.json(publicUser({ ...user, ...next }), 200);
 });
 
 const AVATAR_URL_TTL = 15 * 60;

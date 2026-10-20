@@ -21,8 +21,9 @@ const tags = ["Trips"];
 
 // ---------- Create ----------
 
-function requireName(user: { name: string | null }) {
+function requireName(user: { name: string | null; username: string | null }) {
   if (!user.name) throw new HTTPException(409, { message: "Completá tu nombre en el perfil" });
+  if (!user.username) throw new HTTPException(409, { message: "Elegí tu nombre de usuario en el perfil" });
 }
 
 const createTripRoute = createRoute({
@@ -30,7 +31,7 @@ const createTripRoute = createRoute({
   path: "/",
   tags,
   summary: "Create a trip",
-  description: "Whoever creates it becomes the admin. The profile must have a name. Returns the invite code.",
+  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },
@@ -83,7 +84,7 @@ const joinTripRoute = createRoute({
   tags,
   summary: "Join a trip",
   description:
-    "With the invite code. The profile must have a name. Idempotent: 201 when newly joined, " +
+    "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined, " +
     "200 when already an active member. Someone removed by the admin gets 403.",
   security: bearerAuth,
   middleware: [requireUser] as const,
@@ -144,10 +145,10 @@ trips.openapi(getTripRoute, async (c) => {
 
   const [members, usage, totals] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT m.id, m.user_id, m.role, u.name, u.avatar_key
+      `SELECT m.id, m.user_id, m.role, u.name, u.username, u.avatar_key
        FROM members m JOIN users u ON u.id = m.user_id
        WHERE m.trip_id = ? AND m.removed_at IS NULL ORDER BY m.created_at`,
-    ).bind(trip.id).all<{ id: string; user_id: string; role: Role; name: string | null; avatar_key: string | null }>(),
+    ).bind(trip.id).all<{ id: string; user_id: string; role: Role; name: string | null; username: string | null; avatar_key: string | null }>(),
     c.env.DB.prepare(
       `SELECT type, COUNT(*) AS n FROM media
        WHERE member_id = ? AND local_date = ? GROUP BY type`,
