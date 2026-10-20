@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
@@ -18,14 +19,16 @@ export const jitter = (v: number, d: number) => v + rand(-d, d);
 // ---------- API ----------
 
 export async function api<T = any>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const init = {
     method,
     headers: {
       ...(body !== undefined && { "content-type": "application/json" }),
       ...(token && { authorization: `Bearer ${token}` }),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  };
+  // The synchronous wrangler calls can leave a keep-alive socket stale: retry once on a network error.
+  const res = await fetch(`${API}${path}`, init).catch(() => fetch(`${API}${path}`, init));
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${JSON.stringify(data)}`);
   return data as T;
@@ -43,6 +46,60 @@ export function d1<T = any>(sql: string): T[] {
   });
   const parsed = JSON.parse(out);
   return (parsed[0]?.results ?? []) as T[];
+}
+
+// ---------- Seed users (created directly in D1, with a session each) ----------
+
+const SESSION_TTL = 365 * DAY;
+const sqlStr = (v: string) => `'${v.replace(/'/g, "''")}'`;
+export const slug = (name: string) =>
+  name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ".");
+export const seedEmail = (name: string) => `${slug(name)}@rollo.test`;
+const sessions = new Map<string, Promise<string>>();
+
+/**
+ * Returns a session token for the seed user with that display name. Creates the user if the email doesn't
+ * exist (otherwise reuses it and refreshes its name) and inserts a fresh session. Cached per run.
+ */
+export function ensureUser(name: string): Promise<string> {
+  let p = sessions.get(name);
+  if (!p) {
+    p = (async () => {
+      const email = seedEmail(name);
+      const now = Date.now();
+      const [existing] = d1<{ id: string }>(`SELECT id FROM users WHERE email = ${sqlStr(email)}`);
+      let userId = existing?.id;
+      if (userId) d1(`UPDATE users SET name = ${sqlStr(name)} WHERE id = ${sqlStr(userId)}`);
+      else {
+        userId = randomUUID();
+        d1(`INSERT INTO users (id, email, name, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${now})`);
+      }
+      const token = randomBytes(32).toString("base64url");
+      const hash = createHash("sha256").update(token).digest("hex");
+      d1(
+        `INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at) VALUES (${sqlStr(randomUUID())}, ${sqlStr(userId)}, ${sqlStr(hash)}, ${now}, ${now}, ${now + SESSION_TTL})`,
+      );
+      return token;
+    })();
+    sessions.set(name, p);
+  }
+  return p;
+}
+
+/** Deletes the seed users (`@rollo.test`) with their memberships, media, sessions and login codes. */
+export function resetUsers() {
+  const users = `SELECT id FROM users WHERE email LIKE '%@rollo.test'`;
+  const members = `SELECT id FROM members WHERE user_id IN (${users})`;
+  d1(`DELETE FROM media WHERE member_id IN (${members})`);
+  d1(`DELETE FROM members WHERE user_id IN (${users})`);
+  d1(`DELETE FROM sessions WHERE user_id IN (${users})`);
+  d1(`DELETE FROM auth_codes WHERE email LIKE '%@rollo.test'`);
+  d1(`DELETE FROM users WHERE email LIKE '%@rollo.test'`);
 }
 
 // ---------- Dates (trip time zone: Buenos Aires) ----------
