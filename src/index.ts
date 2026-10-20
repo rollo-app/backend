@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import auth from "./routes/auth";
+import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
 import trips from "./routes/trips";
@@ -19,6 +20,7 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 
 app.route("/auth", auth);
 app.route("/me", me);
+app.route("/avatars", avatars);
 app.route("/trips", trips);
 app.route("/", media);
 

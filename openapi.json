@@ -131,6 +131,24 @@
           "name"
         ]
       },
+      "AvatarUpload": {
+        "type": "object",
+        "properties": {
+          "upload": {
+            "type": "string",
+            "format": "uri",
+            "description": "PUT of the JPEG avatar (square, ~512px)"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "Seconds the URL stays valid"
+          }
+        },
+        "required": [
+          "upload",
+          "expiresIn"
+        ]
+      },
       "MyTrips": {
         "type": "object",
         "properties": {
@@ -984,6 +1002,115 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Delete your account",
+        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your avatar, sessions and pending login codes are deleted too. The same email can sign up again later as a brand-new user.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Account deleted"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/avatar": {
+      "post": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Get a URL to upload your avatar",
+        "description": "Returns a signed URL to PUT a JPEG straight to R2. Then call POST /me/avatar/complete. Each call generates a new random file name, so the avatar URL changes when you replace it.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarUpload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/avatar/complete": {
+      "post": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Confirm your avatar upload",
+        "description": "Checks that the file is in R2, makes it your avatar and deletes the previous one.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile with the new avatar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/me/trips": {
@@ -1011,6 +1138,57 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/avatars/{userId}/{file}": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Download a user's avatar",
+        "description": "Public (no token) so it can be used directly as an image URL. Only the user's current avatar is served; file names are random, so older or guessed ones return 404.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "3f1c2a.jpg"
+            },
+            "required": true,
+            "name": "file",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Avatar",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

@@ -99,23 +99,27 @@ auth.openapi(verifyRoute, async (c) => {
   const now = Date.now();
   const expired = () => new HTTPException(400, { message: "El código venció, pedí uno nuevo" });
 
+  // Each guess consumes one attempt atomically *before* comparing, so concurrent requests
+  // can't all slip past the attempt limit.
   const row = await c.env.DB.prepare(
-    "SELECT id, code_hash, attempts, expires_at FROM auth_codes WHERE email = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",
+    `UPDATE auth_codes SET attempts = attempts + 1
+     WHERE id = (SELECT id FROM auth_codes WHERE email = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1)
+       AND used_at IS NULL AND attempts < ? AND expires_at > ?
+     RETURNING id, code_hash`,
   )
-    .bind(email)
-    .first<{ id: string; code_hash: string; attempts: number; expires_at: number }>();
-  if (!row || row.expires_at <= now || row.attempts >= MAX_ATTEMPTS) throw expired();
+    .bind(email, MAX_ATTEMPTS, now)
+    .first<{ id: string; code_hash: string }>();
+  if (!row) throw expired();
 
   if (row.code_hash !== (await codeHash(email, code))) {
-    await c.env.DB.prepare("UPDATE auth_codes SET attempts = attempts + 1 WHERE id = ?").bind(row.id).run();
     throw new HTTPException(400, { message: "Código incorrecto" });
   }
 
-  // Single use, even with concurrent requests.
+  // Single use, even with concurrent requests: only one verify can flip used_at.
   const used = await c.env.DB.prepare("UPDATE auth_codes SET used_at = ? WHERE id = ? AND used_at IS NULL")
     .bind(now, row.id)
     .run();
-  if (!used.meta.changes) throw expired();
+  if (used.meta.changes !== 1) throw expired();
 
   await c.env.DB.prepare("INSERT OR IGNORE INTO users (id, email, created_at) VALUES (?, ?, ?)")
     .bind(crypto.randomUUID(), email, now)

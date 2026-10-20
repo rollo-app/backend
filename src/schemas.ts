@@ -141,6 +141,18 @@ export const TripSummarySchema = z
   })
   .openapi("TripSummary");
 
+export const AvatarUploadSchema = z
+  .object({
+    upload: z.string().url().openapi({ description: "PUT of the JPEG avatar (square, ~512px)" }),
+    expiresIn: z.number().int().openapi({ description: "Seconds the URL stays valid" }),
+  })
+  .openapi("AvatarUpload");
+
+export const AvatarParams = z.object({
+  userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
+  file: z.string().openapi({ param: { name: "file", in: "path" }, example: "3f1c2a.jpg" }),
+});
+
 export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");
 
 export const TripDetailSchema = z

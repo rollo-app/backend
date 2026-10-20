@@ -184,6 +184,30 @@ describe("POST /auth/email/verify", () => {
     expect(res.body).toEqual({ error: "El código venció, pedí uno nuevo" });
   });
 
+  it("concurrent wrong guesses can't bypass the attempt limit", async () => {
+    const email = "carrera@rollo.test";
+    const code = await requestCode(email);
+    const results = await Promise.all(Array.from({ length: 10 }, () => verify(email, wrongCode(code))));
+    expect(results.every((r) => r.status === 400)).toBe(true);
+    expect(results.filter((r) => r.body.error === "Código incorrecto").length).toBeLessThanOrEqual(5);
+
+    const row = await env.DB.prepare("SELECT attempts FROM auth_codes WHERE email = ?").bind(email).first<{ attempts: number }>();
+    expect(row!.attempts).toBe(5);
+    const res = await verify(email, code);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "El código venció, pedí uno nuevo" });
+  });
+
+  it("concurrent correct verifies create a single session", async () => {
+    const email = "doble@rollo.test";
+    const code = await requestCode(email);
+    const results = await Promise.all(Array.from({ length: 3 }, () => verify(email, code)));
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(results.filter((r) => r.status === 400)).toHaveLength(2);
+    const { results: sessions } = await env.DB.prepare("SELECT id FROM sessions").all();
+    expect(sessions).toHaveLength(1);
+  });
+
   it("rejects an expired code", async () => {
     const email = "vencido@rollo.test";
     const code = await requestCode(email);
