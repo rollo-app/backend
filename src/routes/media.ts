@@ -1,9 +1,9 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
-import { requireAdmin, requireMember } from "../lib/auth";
+import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { mediaKeys, presignPut } from "../lib/r2";
-import { isRevealed, localDate } from "../lib/util";
+import { avatarUrl, isRevealed, localDate } from "../lib/util";
 import {
   FeedResponseSchema,
   MediaFileParams,
@@ -45,7 +45,7 @@ const registerRoute = createRoute({
     "Returns signed URLs to upload the original and the thumbnail straight to R2. " +
     "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
   security: bearerAuth,
-  middleware: [requireMember] as const,
+  middleware: [requireUser, requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: RegisterMediaSchema } }, required: true },
@@ -119,7 +119,7 @@ const completeRoute = createRoute({
   summary: "Confirm the files were uploaded",
   description: "Checks that the original and the thumbnail are in R2. Only then does the photo show up in the feed.",
   security: bearerAuth,
-  middleware: [requireMember] as const,
+  middleware: [requireUser, requireMediaMember] as const,
   request: { params: MediaParams },
   responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404) },
 });
@@ -155,7 +155,7 @@ const feedRoute = createRoute({
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
     "After: includes dimensions and the download paths.",
   security: bearerAuth,
-  middleware: [requireMember] as const,
+  middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
   responses: { 200: json(FeedResponseSchema, "Feed ordered by the time the shot was taken"), ...errors(401, 403) },
 });
@@ -166,14 +166,14 @@ media.openapi(feedRoute, async (c) => {
 
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.type, m.taken_at, m.local_date, m.lat, m.lng, m.caption, m.thumbhash, m.duration_s,
-            m.width, m.height, mem.id AS author_id, mem.name AS author_name
-     FROM media m JOIN members mem ON mem.id = m.member_id
+            m.width, m.height, mem.id AS author_id, u.name AS author_name, mem.user_id AS author_user_id, u.avatar_key AS author_avatar_key
+     FROM media m JOIN members mem ON mem.id = m.member_id JOIN users u ON u.id = mem.user_id
      WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL
      ORDER BY m.taken_at`,
   ).bind(trip.id).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
     caption: string | null; thumbhash: string | null; duration_s: number | null; width: number | null; height: number | null;
-    author_id: string; author_name: string;
+    author_id: string; author_name: string | null; author_user_id: string; author_avatar_key: string | null;
   }>();
 
   const items = results.map((r) => ({
@@ -186,7 +186,7 @@ media.openapi(feedRoute, async (c) => {
     caption: r.caption,
     thumbhash: r.thumbhash,
     durationS: r.duration_s,
-    author: { id: r.author_id, name: r.author_name },
+    author: { id: r.author_id, name: r.author_name ?? "", avatarUrl: avatarUrl(r.author_user_id, r.author_avatar_key) },
     ...(revealed && {
       width: r.width,
       height: r.height,
@@ -209,7 +209,7 @@ const downloadRoute = createRoute({
   summary: "Download a file (only after the reveal)",
   description: "Streamed from R2 with the same Bearer token.",
   security: bearerAuth,
-  middleware: [requireMember] as const,
+  middleware: [requireUser, requireTripMember] as const,
   request: { params: MediaFileParams },
   responses: {
     200: {
@@ -259,7 +259,7 @@ const deleteRoute = createRoute({
     "sends something inappropriate: they can delete any photo of the trip before the reveal. " +
     "The files are deleted but the quota is **not given back** to anyone, and the id cannot be registered again.",
   security: bearerAuth,
-  middleware: [requireMember, requireAdmin] as const,
+  middleware: [requireUser, requireMediaMember, requireAdmin] as const,
   request: { params: MediaParams },
   responses: { 204: { description: "Deleted" }, ...errors(401, 403, 404, 409) },
 });

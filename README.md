@@ -7,7 +7,7 @@ src/
   index.ts          app, errores, montaje de rutas, /openapi.json y /docs
   schemas.ts        contrato de la API (zod → validación, tipos y OpenAPI)
   types.ts          tipos de Env y filas de la base
-  lib/auth.ts       tokens (solo se guarda el hash) y middlewares member/admin
+  lib/auth.ts       sesiones (solo se guarda el hash) y middlewares user/member/admin
   lib/r2.ts         URLs prefirmadas para subir directo a R2
   lib/util.ts       fecha local del viaje, revelado, códigos
   lib/openapi.ts    app con validación por contrato y helpers de respuestas
@@ -110,13 +110,18 @@ De ahí salen la validación de requests, los tipos de las respuestas y el contr
 
 ## API
 
-Todas las rutas salvo crear y unirse llevan `Authorization: Bearer <token>`.
+Todas las rutas salvo `/auth/email/*` llevan `Authorization: Bearer <token de sesión>`.
 Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 
 | Método | Ruta | Quién | Qué hace |
 |---|---|---|---|
-| POST | `/trips` | cualquiera | Crea el viaje; devuelve código y token de admin |
-| POST | `/trips/join` | cualquiera | `{code, name}` → token de miembro |
+| POST | `/auth/email/start` | cualquiera | `{email}` → manda un código de 6 dígitos (204) |
+| POST | `/auth/email/verify` | cualquiera | `{email, code}` → `{token, user, isNew}` |
+| POST | `/auth/logout` | sesión | Cierra la sesión actual |
+| GET / PATCH | `/me` | sesión | Perfil (`{name}` para editar) |
+| GET | `/me/trips` | sesión | Mis rollos |
+| POST | `/trips` | sesión | Crea el viaje (requiere nombre en el perfil); devuelve el código |
+| POST | `/trips/join` | sesión | `{code}` → 201 si te uniste, 200 si ya eras miembro |
 | GET | `/trips/:tripId` | miembro | Viaje, miembros, fotos/videos que te quedan hoy |
 | PATCH | `/trips/:tripId` | admin | Nombre, fin, revelado, límites |
 | POST | `/trips/:tripId/reveal` | admin | Revela el rollo ya |

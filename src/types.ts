@@ -7,6 +7,13 @@ export type Env = {
   R2_SECRET_ACCESS_KEY: string;
   /** Only in `.dev.vars`: "1" sends uploads to the worker itself and the local R2. */
   DEV_LOCAL_UPLOADS?: string;
+  /** Resend API key. Without it, login codes are only logged to the console (dev). */
+  RESEND_API_KEY?: string;
+  /** Sender of the login emails, e.g. "Rollo <rollo@juanifraga.com>". */
+  EMAIL_FROM?: string;
+  /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
+  REVIEW_EMAIL?: string;
+  REVIEW_CODE?: string;
 };
 
 export type Role = "admin" | "member";
@@ -25,11 +32,22 @@ export type TripRow = {
   created_at: number;
 };
 
+export type UserRow = {
+  id: string;
+  email: string;
+  name: string | null;
+  avatar_key: string | null;
+  pending_avatar_key: string | null;
+  created_at: number;
+};
+
 export type MemberRow = {
   id: string;
   trip_id: string;
-  name: string;
+  user_id: string;
   role: Role;
+  created_at: number;
+  removed_at: number | null;
 };
 
 export type MediaType = "photo" | "video";
@@ -61,6 +79,8 @@ export type MediaRow = {
 export type AppEnv = {
   Bindings: Env;
   Variables: {
+    user: UserRow;
+    sessionId: string;
     member: MemberRow;
     trip: TripRow;
   };

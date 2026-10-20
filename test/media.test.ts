@@ -3,20 +3,21 @@ import app from "../src/index";
 import { describe, expect, it } from "vitest";
 import {
   api,
-  createTrip,
+  newTrip,
   DAY,
   HOUR,
-  join,
+  joinAs,
   MINUTE,
   photoBody,
   putFiles,
+  signUp,
   uploadMedia,
   videoBody,
 } from "./helpers";
 
 describe("POST /trips/:id/media (register)", () => {
   it("returns signed URLs for original and thumbnail", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const body = photoBody();
     const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
 
@@ -28,7 +29,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("is idempotent: retrying with the same id doesn't duplicate or use quota", async () => {
-    const { tripId, adminToken } = await createTrip({ dailyPhotoLimit: 1 });
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 1 });
     const body = photoBody();
 
     expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(201);
@@ -41,7 +42,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("if already uploaded, the retry only confirms", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
     await putFiles(tripId, body.id);
@@ -52,15 +53,15 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("doesn't allow using another person's id", async () => {
-    const { tripId, code, adminToken } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
     expect((await api("POST", `/trips/${tripId}/media`, { token: fede.token, body })).status).toBe(409);
   });
 
   it("rejects videos longer than 15 seconds", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: videoBody({ durationS: 22 }),
@@ -70,7 +71,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("accepts a video of exactly 15 seconds", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: videoBody({ durationS: 15 }),
@@ -80,7 +81,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("rejects files that are too large", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ sizeBytes: 30 * 1024 * 1024 }),
@@ -89,7 +90,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("rejects photos with a time in the future", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ takenAt: Date.now() + HOUR }),
@@ -98,7 +99,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("rejects photos taken before the rollo starts", async () => {
-    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() - HOUR });
+    const { tripId, adminToken } = await newTrip({ startsAt: Date.now() - HOUR });
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ takenAt: Date.now() - HOUR - 10 * MINUTE }),
@@ -108,7 +109,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("accepts a photo taken a few minutes before the start (clock skew tolerance)", async () => {
-    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() - HOUR });
+    const { tripId, adminToken } = await newTrip({ startsAt: Date.now() - HOUR });
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ takenAt: Date.now() - HOUR - 2 * MINUTE }),
@@ -117,7 +118,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("rejects photos taken after the rollo ends", async () => {
-    const { tripId, adminToken } = await createTrip({ startsAt: Date.now() - 2 * DAY, endsAt: Date.now() - HOUR });
+    const { tripId, adminToken } = await newTrip({ startsAt: Date.now() - 2 * DAY, endsAt: Date.now() - HOUR });
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ takenAt: Date.now() - 10 * MINUTE }),
@@ -127,7 +128,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("accepts a photo taken during the rollo and registered after it ended (offline queue)", async () => {
-    const { tripId, adminToken } = await createTrip({
+    const { tripId, adminToken } = await newTrip({
       startsAt: Date.now() - 3 * DAY,
       endsAt: Date.now() - HOUR,
       revealAt: Date.now() + DAY,
@@ -141,7 +142,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("a retry of an already registered photo still works after the admin moves the end earlier", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const body = photoBody();
     expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(201);
     await env.DB.prepare("UPDATE trips SET ends_at = ? WHERE id = ?").bind(Date.now() - HOUR, tripId).run();
@@ -150,7 +151,7 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("accepts photos without GPS", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ lat: null, lng: null, accuracyM: null }),
@@ -159,16 +160,62 @@ describe("POST /trips/:id/media (register)", () => {
   });
 
   it("accepts nothing after the reveal", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
     expect(res.status).toBe(409);
   });
 });
 
+describe("access to media routes", () => {
+  it("a stranger gets 403 on register and feed of another rollo", async () => {
+    const { tripId } = await newTrip();
+    const { token } = await signUp();
+    expect((await api("POST", `/trips/${tripId}/media`, { token, body: photoBody() })).status).toBe(403);
+    expect((await api("GET", `/trips/${tripId}/feed`, { token })).status).toBe(403);
+  });
+
+  it("a removed member can't register, read the feed or download", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    const id = await uploadMedia(tripId, adminToken);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+
+    expect((await api("POST", `/trips/${tripId}/media`, { token: fede.token, body: photoBody() })).status).toBe(403);
+    expect((await api("GET", `/trips/${tripId}/feed`, { token: fede.token })).status).toBe(403);
+    expect((await api("GET", `/trips/${tripId}/media/${id}/thumb`, { token: fede.token })).status).toBe(403);
+  });
+
+  it("media of a rollo you're not in looks like it doesn't exist", async () => {
+    const a = await newTrip();
+    const b = await newTrip();
+    const id = await uploadMedia(a.tripId, a.adminToken);
+    expect((await api("POST", `/media/${id}/complete`, { token: b.adminToken })).status).toBe(404);
+    expect((await api("DELETE", `/media/${id}`, { token: b.adminToken })).status).toBe(404);
+  });
+
+  it("a removed member can't complete their pending upload", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    const body = photoBody();
+    await api("POST", `/trips/${tripId}/media`, { token: fede.token, body });
+    await putFiles(tripId, body.id);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    expect((await api("POST", `/media/${body.id}/complete`, { token: fede.token })).status).toBe(404);
+  });
+
+  it("an unknown media id gives 404 and no session gives 401", async () => {
+    const { adminToken } = await newTrip();
+    const id = crypto.randomUUID();
+    expect((await api("POST", `/media/${id}/complete`, { token: adminToken })).status).toBe(404);
+    expect((await api("POST", `/media/${id}/complete`)).status).toBe(401);
+  });
+});
+
 describe("daily limit", () => {
   it("cuts off at the day's photo limit", async () => {
-    const { tripId, adminToken } = await createTrip({ dailyPhotoLimit: 2 });
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 2 });
     await uploadMedia(tripId, adminToken);
     await uploadMedia(tripId, adminToken);
 
@@ -178,29 +225,29 @@ describe("daily limit", () => {
   });
 
   it("pending ones count too", async () => {
-    const { tripId, adminToken } = await createTrip({ dailyPhotoLimit: 1 });
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 1 });
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
     const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
     expect(res.status).toBe(429);
   });
 
   it("photos and videos have separate quotas", async () => {
-    const { tripId, adminToken } = await createTrip({ dailyPhotoLimit: 1, dailyVideoLimit: 1 });
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 1, dailyVideoLimit: 1 });
     await uploadMedia(tripId, adminToken);
     const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: videoBody() });
     expect(res.status).toBe(201);
   });
 
   it("the quota is per person", async () => {
-    const { tripId, code, adminToken } = await createTrip({ dailyPhotoLimit: 1 });
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip({ dailyPhotoLimit: 1 });
+    const fede = await joinAs(code, "Fede");
     await uploadMedia(tripId, adminToken);
     const res = await api("POST", `/trips/${tripId}/media`, { token: fede.token, body: photoBody() });
     expect(res.status).toBe(201);
   });
 
   it("a photo taken yesterday (uploaded today) counts toward yesterday's quota", async () => {
-    const { tripId, adminToken } = await createTrip({ dailyPhotoLimit: 1, startsAt: Date.now() - 3 * DAY });
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 1, startsAt: Date.now() - 3 * DAY });
     await uploadMedia(tripId, adminToken);
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
@@ -212,7 +259,7 @@ describe("daily limit", () => {
 
 describe("POST /media/:id/complete", () => {
   it("fails if the files are not in R2", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
     const res = await api("POST", `/media/${body.id}/complete`, { token: adminToken });
@@ -220,7 +267,7 @@ describe("POST /media/:id/complete", () => {
   });
 
   it("fails if only the thumbnail is missing", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
     await env.MEDIA.put(`trips/${tripId}/${body.id}/original.jpg`, "x");
@@ -228,7 +275,7 @@ describe("POST /media/:id/complete", () => {
   });
 
   it("marks as uploaded and stores the real size", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
     await putFiles(tripId, body.id);
@@ -241,8 +288,8 @@ describe("POST /media/:id/complete", () => {
   });
 
   it("nobody can confirm someone else's photo", async () => {
-    const { tripId, code, adminToken } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
     await putFiles(tripId, body.id);
@@ -252,8 +299,8 @@ describe("POST /media/:id/complete", () => {
 
 describe("GET /trips/:id/feed", () => {
   it("before the reveal: metadata only, no files (not even your own)", async () => {
-    const { tripId, code } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code } = await newTrip();
+    const fede = await joinAs(code, "Fede");
     await uploadMedia(tripId, fede.token, { caption: "el viento" });
 
     const res = await api("GET", `/trips/${tripId}/feed`, { token: fede.token });
@@ -265,20 +312,20 @@ describe("GET /trips/:id/feed", () => {
       caption: "el viento",
       lat: -49.33,
       lng: -72.88,
-      author: { name: "Fede" },
+      author: { id: fede.memberId, name: "Fede", avatarUrl: null },
     });
     expect(res.body.items[0]).not.toHaveProperty("files");
   });
 
   it("doesn't show the ones that haven't finished uploading", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
     const res = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
     expect(res.body.items).toHaveLength(0);
   });
 
   it("orders by time taken, not by upload time", async () => {
-    const { tripId, adminToken } = await createTrip({ dailyPhotoLimit: 5 });
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 5 });
     const later = await uploadMedia(tripId, adminToken, { takenAt: Date.now() - MINUTE });
     const earlier = await uploadMedia(tripId, adminToken, { takenAt: Date.now() - 2 * HOUR });
 
@@ -287,7 +334,7 @@ describe("GET /trips/:id/feed", () => {
   });
 
   it("after the reveal it includes the files", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const id = await uploadMedia(tripId, adminToken);
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
 
@@ -302,14 +349,14 @@ describe("GET /trips/:id/feed", () => {
 
 describe("downloads", () => {
   it("blocked before the reveal", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const id = await uploadMedia(tripId, adminToken);
     expect((await api("GET", `/trips/${tripId}/media/${id}/thumb`, { token: adminToken })).status).toBe(403);
   });
 
   it("after the reveal it returns thumb and original", async () => {
-    const { tripId, code, adminToken } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
     const id = await uploadMedia(tripId, adminToken);
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
 
@@ -323,7 +370,7 @@ describe("downloads", () => {
   });
 
   it("videos are served as mp4", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const id = await uploadMedia(tripId, adminToken, { type: "video" });
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     const res = await api("GET", `/trips/${tripId}/media/${id}/original`, { token: adminToken });
@@ -331,8 +378,8 @@ describe("downloads", () => {
   });
 
   it("files from another trip can't be requested", async () => {
-    const a = await createTrip();
-    const b = await createTrip();
+    const a = await newTrip();
+    const b = await newTrip();
     const id = await uploadMedia(a.tripId, a.adminToken);
     await api("POST", `/trips/${b.tripId}/reveal`, { token: b.adminToken });
     expect((await api("GET", `/trips/${b.tripId}/media/${id}/thumb`, { token: b.adminToken })).status).toBe(404);
@@ -341,8 +388,8 @@ describe("downloads", () => {
 
 describe("DELETE /media/:id (admin only)", () => {
   it("the admin deletes anyone's photo and its files before the reveal", async () => {
-    const { tripId, code, adminToken } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
     const id = await uploadMedia(tripId, fede.token);
 
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(204);
@@ -354,15 +401,15 @@ describe("DELETE /media/:id (admin only)", () => {
   });
 
   it("a member can't delete, not even their own", async () => {
-    const { tripId, code } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code } = await newTrip();
+    const fede = await joinAs(code, "Fede");
     const id = await uploadMedia(tripId, fede.token);
     expect((await api("DELETE", `/media/${id}`, { token: fede.token })).status).toBe(403);
   });
 
   it("doesn't give the quota back: deleting is not retaking", async () => {
-    const { tripId, code, adminToken } = await createTrip({ dailyPhotoLimit: 1 });
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip({ dailyPhotoLimit: 1 });
+    const fede = await joinAs(code, "Fede");
     const id = await uploadMedia(tripId, fede.token);
     await api("DELETE", `/media/${id}`, { token: adminToken });
 
@@ -371,8 +418,8 @@ describe("DELETE /media/:id (admin only)", () => {
   });
 
   it("retrying to register a deleted photo gives 409 and doesn't revive it", async () => {
-    const { tripId, code, adminToken } = await createTrip();
-    const fede = await join(code, "Fede");
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: fede.token, body });
     await api("DELETE", `/media/${body.id}`, { token: adminToken });
@@ -383,21 +430,21 @@ describe("DELETE /media/:id (admin only)", () => {
   });
 
   it("deleting twice gives 404", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const id = await uploadMedia(tripId, adminToken);
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(204);
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(404);
   });
 
   it("the admin of another trip can't delete", async () => {
-    const a = await createTrip();
-    const b = await createTrip();
+    const a = await newTrip();
+    const b = await newTrip();
     const id = await uploadMedia(a.tripId, a.adminToken);
     expect((await api("DELETE", `/media/${id}`, { token: b.adminToken })).status).toBe(404);
   });
 
   it("can't delete after the reveal", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const id = await uploadMedia(tripId, adminToken);
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(409);
@@ -409,7 +456,7 @@ describe("thumbhash", () => {
   const HASH = "3OcRJYB4d3h/iIeHeEh3eIhw+j3A";
 
   it("is stored on register and shows up in the feed before the reveal", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const id = await uploadMedia(tripId, adminToken, { thumbhash: HASH });
     const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
     expect(feed.body.revealed).toBe(false);
@@ -419,7 +466,7 @@ describe("thumbhash", () => {
   });
 
   it("is still there after the reveal", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     await uploadMedia(tripId, adminToken, { type: "video", thumbhash: HASH });
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
@@ -427,14 +474,14 @@ describe("thumbhash", () => {
   });
 
   it("is optional: without thumbhash the feed returns null", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     await uploadMedia(tripId, adminToken);
     const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
     expect(feed.body.items[0].thumbhash).toBeNull();
   });
 
   it("rejects something that isn't base64", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ thumbhash: "no es base64!" }),
@@ -443,7 +490,7 @@ describe("thumbhash", () => {
   });
 
   it("rejects a thumbhash longer than 64 characters", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const res = await api("POST", `/trips/${tripId}/media`, {
       token: adminToken,
       body: photoBody({ thumbhash: "A".repeat(68) }),
@@ -452,7 +499,7 @@ describe("thumbhash", () => {
   });
 
   it("a retry with a different thumbhash doesn't fail and keeps the first one", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const body = photoBody({ thumbhash: HASH });
     expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(201);
     const retry = await api("POST", `/trips/${tripId}/media`, {
@@ -484,14 +531,14 @@ describe("local uploads (DEV_LOCAL_UPLOADS)", () => {
   }
 
   it("the URLs point to the worker itself, with the request's host", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const { body, upload } = await register(tripId, adminToken);
     expect(upload.original.startsWith(`${ORIGIN}/dev/upload/trips/${tripId}/${body.id}/original.jpg?`)).toBe(true);
     expect(upload.thumb.startsWith(`${ORIGIN}/dev/upload/trips/${tripId}/${body.id}/thumb.jpg?`)).toBe(true);
   });
 
   it("the PUT stores in local R2 and then complete works", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const { body, upload } = await register(tripId, adminToken);
     expect((await put(upload.original, "foto")).status).toBe(200);
     expect((await put(upload.thumb, "mini")).status).toBe(200);
@@ -505,7 +552,7 @@ describe("local uploads (DEV_LOCAL_UPLOADS)", () => {
   });
 
   it("rejects a tampered signature or one used for another key", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const { upload } = await register(tripId, adminToken);
     const otherKey = upload.original.replace("original.jpg", "otra.jpg");
     expect((await put(otherKey, "x")).status).toBe(403);
@@ -514,7 +561,7 @@ describe("local uploads (DEV_LOCAL_UPLOADS)", () => {
   });
 
   it("without the variable the route doesn't exist and the URLs are R2's", async () => {
-    const { tripId, adminToken } = await createTrip();
+    const { tripId, adminToken } = await newTrip();
     const { upload } = await register(tripId, adminToken);
     expect((await put(upload.original, "x", { DEV_LOCAL_UPLOADS: undefined })).status).toBe(404);
 

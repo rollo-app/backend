@@ -21,11 +21,12 @@ export const bearerAuth = [{ bearerAuth: [] }];
 
 const ERROR_DESCRIPTIONS: Record<number, string> = {
   400: "Invalid data",
-  401: "Missing or invalid token",
+  401: "Missing or invalid session token",
   403: "Forbidden",
   404: "Not found",
   409: "Conflict with the current state",
-  429: "Daily limit reached",
+  429: "Daily limit or rate limit reached",
+  502: "Upstream service failed",
 };
 
 /** Documented error responses for an endpoint. */
