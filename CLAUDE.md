@@ -77,14 +77,27 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 286 tests
+npm test              # 295 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
-npm run seed          # 7 viajes de prueba (en curso, revelado, futuro...) con usuarios <nombre>@rollo.test; juani@rollo.test está en todos; imprime tabla de códigos. Juani es amigo de Cami, Tomi y Fede; Cami y Tomi son amigos. Los usuarios tienen avatar generado (sin Lu y Mateo, para probar el fallback).
-npm run seed -- --reset   # borra viajes y usuarios de prueba de D1 local y los recrea (cambian los códigos)
+npm run seed          # 9 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
+npm run seed -- --reset   # borra rollos y usuarios de prueba de D1 local (con amistades, links y descripciones) y los recrea (cambian los códigos)
 ```
+
+**Seed** (`scripts/seed.ts`, `scripts/seed/{lib,scenarios,people,avatars}.ts`; lo puro de `people.ts` tiene tests en
+`test/seed-people.test.ts`). Necesita el server local corriendo (`npm run dev:lan` con `DEV_LOCAL_UPLOADS=1`); con
+`SEED_API_URL` y `SEED_PERSIST_TO` corre contra otro server/estado aislado. Al final chequea `GET /friends/{id}` de cada amigo
+de Juani y falla si los rollos en común no son los esperados. Cuentas:
+- `juani@rollo.test`: en todos los rollos menos "Escapada sin Juani"; **admin** de "Finde en Tandil" (empieza mañana).
+- Amigos de Juani: Cami, Tomi, Fede (varios rollos en común; descripción corta, de 150 justos y de 3 renglones), Bruno
+  (solo Tandil en común; también está en "Escapada sin Juani", que no tiene que aparecer), Pilar (ningún rollo), Rama (se salió
+  de Tandil, `left_at`) y Vicky (Juani la sacó de Tandil, `removed_at`): estos tres sin rollos en común.
+- Lu, Nacho, Sofi... comparten rollos con Juani pero no son amigos. Lu tiene un **link de amistad** nuevo en cada corrida (1 h,
+  se imprime el código y `rollo://friends/<CODE>`) y el seed la des-amiga de Juani para poder canjearlo otra vez.
+- `nuevo@rollo.test`: sin rollos ni amigos (estados vacíos; el seed le borra los amigos en cada corrida). `rocio@rollo.test`: tiene
+  nombre pero no `@usuario` (la app la manda a "Completá tu perfil"). Sin foto: Lu, Mateo, Nuevo y Rocío.
 
 **Subidas en local:** con `DEV_LOCAL_UPLOADS=1` en `.dev.vars` (está en `.dev.vars.example`), las URLs
 de subida apuntan al propio worker (`PUT /dev/upload/<key>`, firmado con HMAC, fuera del contrato) y

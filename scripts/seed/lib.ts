@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
 import { NO_AVATAR, renderAvatar } from "./avatars";
+import { NO_USERNAME, SEED_BIOS } from "./people";
 
 /** Seed helpers: API, local D1, images (disk-cached), times and daily quota. */
 
@@ -77,10 +78,11 @@ export function ensureUser(name: string): Promise<string> {
       const now = Date.now();
       const [existing] = d1<{ id: string }>(`SELECT id FROM users WHERE email = ${sqlStr(email)}`);
       let userId = existing?.id;
-      if (userId) d1(`UPDATE users SET name = ${sqlStr(name)}, username = ${sqlStr(seedUsername(name))} WHERE id = ${sqlStr(userId)}`);
+      const username = NO_USERNAME.has(name) ? "NULL" : sqlStr(seedUsername(name));
+      if (userId) d1(`UPDATE users SET name = ${sqlStr(name)}, username = ${username} WHERE id = ${sqlStr(userId)}`);
       else {
         userId = randomUUID();
-        d1(`INSERT INTO users (id, email, name, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${sqlStr(seedUsername(name))}, ${now})`);
+        d1(`INSERT INTO users (id, email, name, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${username}, ${now})`);
       }
       const token = randomBytes(32).toString("base64url");
       const hash = createHash("sha256").update(token).digest("hex");
@@ -88,6 +90,8 @@ export function ensureUser(name: string): Promise<string> {
         `INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at) VALUES (${sqlStr(randomUUID())}, ${sqlStr(userId)}, ${sqlStr(hash)}, ${now}, ${now}, ${now + SESSION_TTL})`,
       );
       if (!NO_AVATAR.has(name)) await uploadAvatar(name, token);
+      // Through the API, so the bios go through the same validation as the app's. "" clears a bio from an earlier run.
+      await api("PATCH", "/me", { bio: SEED_BIOS[name] ?? "" }, token);
       return token;
     })();
     sessions.set(name, p);
@@ -108,16 +112,34 @@ const avatarIndex = (name: string) => {
   return avatarNames.indexOf(name);
 };
 
+/** User id of a seed user (by display name), or undefined if it doesn't exist yet. */
+export const seedUserId = (name: string) => d1<{ id: string }>(`SELECT id FROM users WHERE email = ${sqlStr(seedEmail(name))}`)[0]?.id;
+
+function seedPair(nameA: string, nameB: string): [string, string] {
+  const [a, b] = [seedUserId(nameA), seedUserId(nameB)];
+  if (!a || !b) throw new Error(`Seed users not found: ${nameA}, ${nameB}`);
+  return a < b ? [a, b] : [b, a];
+}
+
 /** Makes two seed users friends straight in D1 (idempotent). Both must already exist (see `ensureUser`). */
 export function befriendSeed(nameA: string, nameB: string) {
-  const idOf = (name: string) => d1<{ id: string }>(`SELECT id FROM users WHERE email = ${sqlStr(seedEmail(name))}`)[0]?.id;
-  const [a, b] = [idOf(nameA), idOf(nameB)];
-  if (!a || !b) throw new Error(`Seed users not found: ${nameA}, ${nameB}`);
-  const [lo, hi] = a < b ? [a, b] : [b, a];
+  const [lo, hi] = seedPair(nameA, nameB);
   d1(`INSERT OR IGNORE INTO friendships (user_a, user_b, created_at) VALUES (${sqlStr(lo)}, ${sqlStr(hi)}, ${Date.now()})`);
 }
 
-/** Deletes the seed users (`@rollo.test`) with their memberships, media, sessions and login codes. */
+/** Undoes a friendship made while testing (so a friend link can be redeemed again on the next run). */
+export function unfriendSeed(nameA: string, nameB: string) {
+  const [lo, hi] = seedPair(nameA, nameB);
+  d1(`DELETE FROM friendships WHERE user_a = ${sqlStr(lo)} AND user_b = ${sqlStr(hi)}`);
+}
+
+/** Removes every friendship of a seed user (to keep an "empty" account empty across runs). */
+export function clearFriendsSeed(name: string) {
+  const id = seedUserId(name);
+  if (id) d1(`DELETE FROM friendships WHERE user_a = ${sqlStr(id)} OR user_b = ${sqlStr(id)}`);
+}
+
+/** Deletes the seed users (`@rollo.test`) with their memberships, media, friendships, friend links, claims, attempts, sessions and login codes (bios go with the users). */
 export function resetUsers() {
   const users = `SELECT id FROM users WHERE email LIKE '%@rollo.test'`;
   const members = `SELECT id FROM members WHERE user_id IN (${users})`;
@@ -126,6 +148,7 @@ export function resetUsers() {
   d1(`DELETE FROM friendships WHERE user_a IN (${users}) OR user_b IN (${users})`);
   d1(`DELETE FROM friend_links WHERE user_id IN (${users})`);
   d1(`DELETE FROM friend_claims WHERE link_user_id IN (${users})`);
+  d1(`DELETE FROM friend_attempts WHERE key IN (SELECT 'user:' || id FROM users WHERE email LIKE '%@rollo.test')`);
   d1(`DELETE FROM sessions WHERE user_id IN (${users})`);
   d1(`DELETE FROM auth_codes WHERE email LIKE '%@rollo.test'`);
   d1(`DELETE FROM users WHERE email LIKE '%@rollo.test'`);
