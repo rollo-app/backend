@@ -50,6 +50,8 @@ const PROTECTED_ENDPOINTS = [
   ["delete", "/media/{mediaId}"],
   ["post", "/friends/link"],
   ["post", "/friends/redeem"],
+  ["post", "/trips/{tripId}/members"],
+  ["delete", "/trips/{tripId}/members/me"],
   ["get", "/friends"],
   ["delete", "/friends/{userId}"],
 ] as const;

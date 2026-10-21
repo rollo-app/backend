@@ -255,6 +255,26 @@ export const RedeemFriendSchema = z
 
 export const FriendResponseSchema = z.object({ friend: FriendSchema }).openapi("FriendResponse");
 
+export const AddMembersSchema = z
+  .object({
+    friendIds: z.array(z.string().min(1).max(64)).min(1).max(50).openapi({ description: "User ids of your friends (1 to 50)" }),
+  })
+  .openapi("AddMembersRequest");
+
+export const AddMembersResponseSchema = z
+  .object({
+    results: z.array(
+      z.object({
+        userId: z.string(),
+        status: z.enum(["added", "already_member", "unavailable"]).openapi({
+          description:
+            "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin, or unknown",
+        }),
+      }),
+    ),
+  })
+  .openapi("AddMembersResponse");
+
 export const FriendParams = z.object({
   userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
 });

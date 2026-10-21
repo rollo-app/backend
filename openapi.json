@@ -682,6 +682,57 @@
           }
         }
       },
+      "AddMembersResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "added",
+                    "already_member",
+                    "unavailable"
+                  ],
+                  "description": "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin, or unknown"
+                }
+              },
+              "required": [
+                "userId",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "AddMembersRequest": {
+        "type": "object",
+        "properties": {
+          "friendIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "User ids of your friends (1 to 50)"
+          }
+        },
+        "required": [
+          "friendIds"
+        ]
+      },
       "MediaRegistered": {
         "type": "object",
         "properties": {
@@ -1765,7 +1816,7 @@
           "Trips"
         ],
         "summary": "Join a trip",
-        "description": "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined, 200 when already an active member. Someone removed by the admin gets 403.",
+        "description": "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), 200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409.",
         "security": [
           {
             "bearerAuth": []
@@ -2028,6 +2079,151 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/members": {
+      "post": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Add your friends to the trip",
+        "description": "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they had left and come back), `already_member`, or `unavailable` (not your friend, removed by the admin, or unknown). A revealed rollo gets 409 for the whole request.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMembersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result per friend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/members/me": {
+      "delete": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Leave the trip",
+        "description": "You lose access and the rollo leaves your list; your photos stay in the roll. You can come back with the code or if a friend adds you (before the reveal). The admin can't leave (409).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "You left the trip"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {

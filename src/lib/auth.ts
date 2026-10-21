@@ -57,7 +57,7 @@ async function loadTripAndMember(c: Context<AppEnv>, tripId: string, notMember: 
   const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>();
   if (!trip) throw new HTTPException(404, { message: "Rollo no encontrado" });
   const member = await c.env.DB.prepare(
-    "SELECT * FROM members WHERE trip_id = ? AND user_id = ? AND removed_at IS NULL",
+    "SELECT * FROM members WHERE trip_id = ? AND user_id = ? AND removed_at IS NULL AND left_at IS NULL",
   )
     .bind(tripId, c.get("user").id)
     .first<MemberRow>();
