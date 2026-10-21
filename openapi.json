@@ -1267,7 +1267,7 @@
           "Profile"
         ],
         "summary": "Delete your account",
-        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your avatar, sessions and pending login codes are deleted too. The same email can sign up again later as a brand-new user.",
+        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
         "security": [
           {
             "bearerAuth": []
@@ -1558,7 +1558,7 @@
           "Friends"
         ],
         "summary": "Become friends with whoever made a link",
-        "description": "Send exactly one of `code` (a link that is still valid) or `claimToken` (from /friend-links/claim, valid 24 hours). The friendship is symmetric and needs no acceptance. Redeeming your own link or one from a current friend is not an error. A wrong, expired or replaced code always gets the same 400. 10 failed attempts per user or per IP in an hour lock it (429).",
+        "description": "Send exactly one of `code` (a link that is still valid) or `claimToken` (from /friend-links/claim, valid 24 hours, single use). The friendship is symmetric and needs no acceptance. Redeeming your own link or one from a current friend is not an error. A wrong, expired or replaced code always gets the same 400. 10 failed attempts per user or per IP in an hour lock it (429).",
         "security": [
           {
             "bearerAuth": []

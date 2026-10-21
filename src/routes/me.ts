@@ -136,7 +136,7 @@ const deleteMeRoute = createRoute({
     "your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. " +
     "If you were the admin, the oldest remaining active member becomes admin. " +
     "If no active members remain, the whole rollo is deleted with all its files. " +
-    "Your avatar, sessions and pending login codes are deleted too. " +
+    "Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
     "The same email can sign up again later as a brand-new user.",
   security: bearerAuth,
   middleware: [requireUser] as const,
@@ -190,6 +190,11 @@ me.openapi(deleteMeRoute, async (c) => {
   if (avatars.length) await MEDIA.delete(avatars);
 
   await DB.batch([
+    DB.prepare("DELETE FROM friendships WHERE user_a = ? OR user_b = ?").bind(user.id, user.id),
+    DB.prepare("DELETE FROM friend_links WHERE user_id = ?").bind(user.id),
+    DB.prepare("DELETE FROM friend_claims WHERE link_user_id = ?").bind(user.id),
+    DB.prepare("DELETE FROM friend_attempts WHERE key = ?").bind(`user:${user.id}`),
+    DB.prepare("UPDATE members SET added_by_user_id = NULL WHERE added_by_user_id = ?").bind(user.id),
     DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id),
     DB.prepare("DELETE FROM auth_codes WHERE email = ?").bind(user.email),
     DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
