@@ -49,6 +49,8 @@ export type MemberRow = {
   role: Role;
   created_at: number;
   removed_at: number | null;
+  left_at: number | null;
+  added_by_user_id: string | null;
 };
 
 export type MediaType = "photo" | "video";
