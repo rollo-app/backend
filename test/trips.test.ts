@@ -631,10 +631,15 @@ describe("DELETE /trips/:id/members/me (leave)", () => {
     expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
   });
 
-  it("an admin removing someone who already left is 404 and nothing changes", async () => {
+  it("the admin can remove someone who already left, and they can't come back", async () => {
     const { tripId, code, adminToken } = await newTrip();
     const fede = await joinAs(code, "Fede");
+    const cami = await joinAs(code, "Cami");
+    await befriend(cami.token, fede.token);
     await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token });
-    expect((await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken })).status).toBe(404);
+    expect((await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken })).status).toBe(204);
+    expect((await api("POST", "/trips/join", { token: fede.token, body: { code } })).status).toBe(403);
+    const res = await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "unavailable" }]);
   });
 });

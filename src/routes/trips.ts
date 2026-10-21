@@ -354,7 +354,7 @@ trips.openapi(removeMemberRoute, async (c) => {
     throw new HTTPException(400, { message: "No te podés sacar a vos mismo" });
   }
   const res = await c.env.DB.prepare(
-    "UPDATE members SET removed_at = ? WHERE id = ? AND trip_id = ? AND removed_at IS NULL AND left_at IS NULL",
+    "UPDATE members SET removed_at = ? WHERE id = ? AND trip_id = ? AND removed_at IS NULL",
   ).bind(Date.now(), memberId, c.get("trip").id).run();
   if (!res.meta.changes) throw new HTTPException(404, { message: "Miembro no encontrado" });
   return c.body(null, 204);

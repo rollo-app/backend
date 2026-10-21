@@ -93,6 +93,8 @@ friends.openapi(linkRoute, async (c) => {
   const expiresAt = now + FRIEND_LINK_TTL;
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM friend_links WHERE user_id = ?").bind(user.id),
+    // Pending claims are NOT deleted when a new link is generated: on purpose, so whoever opened the old link in
+    // time can still finish signing up. Only expired claims are cleaned up.
     c.env.DB.prepare("DELETE FROM friend_claims WHERE expires_at <= ?").bind(now),
     c.env.DB.prepare("DELETE FROM friend_attempts WHERE created_at <= ?").bind(now - HOUR),
     c.env.DB.prepare("INSERT INTO friend_links (id, user_id, code_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)").bind(
@@ -154,7 +156,7 @@ const redeemRoute = createRoute({
   tags,
   summary: "Become friends with whoever made a link",
   description:
-    "Send exactly one of `code` (a link that is still valid) or `claimToken` (from /friend-links/claim, valid 24 hours). " +
+    "Send exactly one of `code` (a link that is still valid) or `claimToken` (from /friend-links/claim, valid 24 hours, single use). " +
     "The friendship is symmetric and needs no acceptance. Redeeming your own link or one from a current friend is not an error. " +
     "A wrong, expired or replaced code always gets the same 400. 10 failed attempts per user or per IP in an hour lock it (429).",
   security: bearerAuth,
@@ -172,8 +174,11 @@ friends.openapi(redeemRoute, async (c) => {
 
   let creatorId: string | undefined;
   if (body.claimToken !== undefined) {
-    const claim = await c.env.DB.prepare("SELECT link_user_id FROM friend_claims WHERE claim_hash = ? AND expires_at > ?")
-      .bind(await hashToken(body.claimToken), now)
+    // Single use, atomically: only one redeem can flip used_at.
+    const claim = await c.env.DB.prepare(
+      "UPDATE friend_claims SET used_at = ? WHERE claim_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING link_user_id",
+    )
+      .bind(now, await hashToken(body.claimToken), now)
       .first<{ link_user_id: string }>();
     creatorId = claim?.link_user_id;
   } else {

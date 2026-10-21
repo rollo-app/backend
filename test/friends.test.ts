@@ -195,4 +195,26 @@ describe("friend links", () => {
     expect(c!.claim_hash).not.toBe(claimToken);
     expect(DAY).toBeGreaterThan(0);
   });
+
+  it("a claim token is single use: the second redeem gets the generic 400", async () => {
+    const a = await signUp();
+    const b = await signUp();
+    const c = await signUp();
+    const { code } = await link(a.token);
+    const { claimToken } = (await api("POST", "/friend-links/claim", { body: { code } })).body;
+    expect((await api("POST", "/friends/redeem", { token: b.token, body: { claimToken } })).status).toBe(200);
+    const again = await api("POST", "/friends/redeem", { token: c.token, body: { claimToken } });
+    expect(again.status).toBe(400);
+    expect(again.body.error).toBe("Código incorrecto o vencido");
+    expect(await friendsOf(c.token)).toEqual([]);
+  });
+
+  it("a pending claim still works after the creator generates a new link", async () => {
+    const a = await signUp();
+    const b = await signUp();
+    const { code } = await link(a.token);
+    const { claimToken } = (await api("POST", "/friend-links/claim", { body: { code } })).body;
+    await link(a.token);
+    expect((await api("POST", "/friends/redeem", { token: b.token, body: { claimToken } })).status).toBe(200);
+  });
 });
