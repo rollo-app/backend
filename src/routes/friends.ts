@@ -79,7 +79,7 @@ const linkRoute = createRoute({
   tags,
   summary: "Generate a friend link",
   description:
-    "Returns an 8-character code (the link is rollo://amigos/<code>) valid for 1 hour and reusable while it lives. " +
+    "Returns an 8-character code (the link is rollo://friends/<code>) valid for 1 hour and reusable while it lives. " +
     "Generating a new one invalidates the previous links of the user.",
   security: bearerAuth,
   middleware: [requireUser] as const,
