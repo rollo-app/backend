@@ -11,10 +11,12 @@ src/
   lib/r2.ts         URLs prefirmadas para subir directo a R2
   lib/util.ts       fecha local del viaje, revelado, códigos
   lib/openapi.ts    app con validación por contrato y helpers de respuestas
-  routes/trips.ts   crear, unirse, info, editar, revelar, sacar miembros
+  routes/trips.ts   crear, unirse, info, editar, revelar, sacar miembros, sumar amigos, salirse
+  routes/friends.ts link de amistad (1 h), canje, lista de amigos
   routes/media.ts   registrar, confirmar subida, feed, descargar, borrar
 migrations/
   0001_init.sql     trips, members, media
+  0006_friends.sql  amistades, links, claims, intentos; members.left_at
 scripts/
   export-openapi.ts genera openapi.json
 openapi.json        contrato versionado (lo consume la app mobile)

@@ -108,12 +108,24 @@ const avatarIndex = (name: string) => {
   return avatarNames.indexOf(name);
 };
 
+/** Makes two seed users friends straight in D1 (idempotent). Both must already exist (see `ensureUser`). */
+export function befriendSeed(nameA: string, nameB: string) {
+  const idOf = (name: string) => d1<{ id: string }>(`SELECT id FROM users WHERE email = ${sqlStr(seedEmail(name))}`)[0]?.id;
+  const [a, b] = [idOf(nameA), idOf(nameB)];
+  if (!a || !b) throw new Error(`Seed users not found: ${nameA}, ${nameB}`);
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  d1(`INSERT OR IGNORE INTO friendships (user_a, user_b, created_at) VALUES (${sqlStr(lo)}, ${sqlStr(hi)}, ${Date.now()})`);
+}
+
 /** Deletes the seed users (`@rollo.test`) with their memberships, media, sessions and login codes. */
 export function resetUsers() {
   const users = `SELECT id FROM users WHERE email LIKE '%@rollo.test'`;
   const members = `SELECT id FROM members WHERE user_id IN (${users})`;
   d1(`DELETE FROM media WHERE member_id IN (${members})`);
   d1(`DELETE FROM members WHERE user_id IN (${users})`);
+  d1(`DELETE FROM friendships WHERE user_a IN (${users}) OR user_b IN (${users})`);
+  d1(`DELETE FROM friend_links WHERE user_id IN (${users})`);
+  d1(`DELETE FROM friend_claims WHERE link_user_id IN (${users})`);
   d1(`DELETE FROM sessions WHERE user_id IN (${users})`);
   d1(`DELETE FROM auth_codes WHERE email LIKE '%@rollo.test'`);
   d1(`DELETE FROM users WHERE email LIKE '%@rollo.test'`);

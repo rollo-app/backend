@@ -14,6 +14,13 @@ Decisiones de producto que el backend tiene que respetar:
   devuelve un token de sesión (365 días desde el último uso: se renueva sola, al usarla, como máximo una vez por día). El nombre (y después el avatar) vive en el perfil (`/me`) y es
   el mismo en todos los rollos, sin ser único. Además hay un **username único** (`@juanifraga`, minúsculas, `a-z 0-9 . _`, 3–30; `src/lib/username.ts`). Crear un viaje o unirse requiere nombre y username en el perfil; unirse es solo
   el código de 6 caracteres (idempotente; si el admin te sacó, 403). Cuenta de App Review: `REVIEW_EMAIL`/`REVIEW_CODE`.
+- **Amigos** (`src/routes/friends.ts`, `src/lib/friend-code.ts`): la amistad es simétrica y se crea **sin aceptación**
+  (`friendships`, par ordenado `user_a < user_b`). `POST /friends/link` genera un código de 8 caracteres (guardado hasheado) que vale
+  **1 hora**, es multiuso y se reemplaza al generar otro. `POST /friend-links/claim` (**sin sesión**) devuelve un `claimToken`
+  (24 h) para canjear después de registrarse; `POST /friends/redeem` canjea con `code` o `claimToken`. Cualquier falla es el mismo 400
+  genérico; 10 fallas por usuario o IP en una hora → 429 (`friend_attempts`). Cualquier miembro suma **a sus amigos** a un rollo
+  (`POST /trips/{id}/members`, respuesta por amigo, no si ya se reveló). `members.left_at` (se salió: `DELETE /trips/{id}/members/me`,
+  puede volver por código o por amigos, sus fotos quedan) es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
@@ -41,8 +48,8 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 ```
 src/index.ts          app, /openapi.json, /docs, manejo de errores
 src/schemas.ts        contrato (zod + OpenAPI)
-src/lib/              auth, openapi helpers, r2 (presign), util (fechas, revelado), login-code (códigos)
-src/routes/           auth.ts, me.ts, trips.ts, media.ts
+src/lib/              auth, openapi helpers, r2 (presign), util (fechas, revelado), login-code (códigos), friend-code (amistad)
+src/routes/           auth.ts, me.ts, friends.ts, trips.ts, media.ts
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -70,12 +77,12 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 174 tests
+npm test              # 273 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
-npm run seed          # 7 viajes de prueba (en curso, revelado, futuro...) con usuarios <nombre>@rollo.test; juani@rollo.test está en todos; imprime tabla de códigos Los usuarios tienen avatar generado (sin Lu y Mateo, para probar el fallback).
+npm run seed          # 7 viajes de prueba (en curso, revelado, futuro...) con usuarios <nombre>@rollo.test; juani@rollo.test está en todos; imprime tabla de códigos. Juani es amigo de Cami, Tomi y Fede; Cami y Tomi son amigos. Los usuarios tienen avatar generado (sin Lu y Mateo, para probar el fallback).
 npm run seed -- --reset   # borra viajes y usuarios de prueba de D1 local y los recrea (cambian los códigos)
 ```
 

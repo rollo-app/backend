@@ -29,6 +29,7 @@ async function getDoc(): Promise<OpenAPIDoc> {
 const PUBLIC_ENDPOINTS = [
   ["post", "/auth/email/start"],
   ["post", "/auth/email/verify"],
+  ["post", "/friend-links/claim"],
 ] as const;
 
 const PROTECTED_ENDPOINTS = [
@@ -47,6 +48,12 @@ const PROTECTED_ENDPOINTS = [
   ["get", "/trips/{tripId}/feed"],
   ["get", "/trips/{tripId}/media/{mediaId}/{variant}"],
   ["delete", "/media/{mediaId}"],
+  ["post", "/friends/link"],
+  ["post", "/friends/redeem"],
+  ["post", "/trips/{tripId}/members"],
+  ["delete", "/trips/{tripId}/members/me"],
+  ["get", "/friends"],
+  ["delete", "/friends/{userId}"],
 ] as const;
 
 describe("GET /openapi.json", () => {

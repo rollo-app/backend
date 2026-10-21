@@ -136,7 +136,7 @@ const deleteMeRoute = createRoute({
     "your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. " +
     "If you were the admin, the oldest remaining active member becomes admin. " +
     "If no active members remain, the whole rollo is deleted with all its files. " +
-    "Your avatar, sessions and pending login codes are deleted too. " +
+    "Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
     "The same email can sign up again later as a brand-new user.",
   security: bearerAuth,
   middleware: [requireUser] as const,
@@ -159,7 +159,7 @@ me.openapi(deleteMeRoute, async (c) => {
 
   const { results: memberships } = await DB.prepare("SELECT * FROM members WHERE user_id = ?")
     .bind(user.id)
-    .all<{ id: string; trip_id: string; role: Role; removed_at: number | null }>();
+    .all<{ id: string; trip_id: string; role: Role; removed_at: number | null; left_at: number | null }>();
 
   for (const m of memberships) {
     await deleteMediaRows(DB, MEDIA, "member_id", m.id);
@@ -169,7 +169,7 @@ me.openapi(deleteMeRoute, async (c) => {
     ]);
 
     const next = await DB.prepare(
-      "SELECT id, role FROM members WHERE trip_id = ? AND removed_at IS NULL ORDER BY created_at, id",
+      "SELECT id, role FROM members WHERE trip_id = ? AND removed_at IS NULL AND left_at IS NULL ORDER BY created_at, id",
     )
       .bind(m.trip_id)
       .all<{ id: string; role: Role }>();
@@ -181,7 +181,7 @@ me.openapi(deleteMeRoute, async (c) => {
         DB.prepare("DELETE FROM members WHERE trip_id = ?").bind(m.trip_id),
         DB.prepare("DELETE FROM trips WHERE id = ?").bind(m.trip_id),
       ]);
-    } else if (m.role === "admin" && m.removed_at === null && !next.results.some((r) => r.role === "admin")) {
+    } else if (m.role === "admin" && m.removed_at === null && m.left_at === null && !next.results.some((r) => r.role === "admin")) {
       await DB.prepare("UPDATE members SET role = 'admin' WHERE id = ?").bind(next.results[0]!.id).run();
     }
   }
@@ -190,6 +190,11 @@ me.openapi(deleteMeRoute, async (c) => {
   if (avatars.length) await MEDIA.delete(avatars);
 
   await DB.batch([
+    DB.prepare("DELETE FROM friendships WHERE user_a = ? OR user_b = ?").bind(user.id, user.id),
+    DB.prepare("DELETE FROM friend_links WHERE user_id = ?").bind(user.id),
+    DB.prepare("DELETE FROM friend_claims WHERE link_user_id = ?").bind(user.id),
+    DB.prepare("DELETE FROM friend_attempts WHERE key = ?").bind(`user:${user.id}`),
+    DB.prepare("UPDATE members SET added_by_user_id = NULL WHERE added_by_user_id = ?").bind(user.id),
     DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id),
     DB.prepare("DELETE FROM auth_codes WHERE email = ?").bind(user.email),
     DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
@@ -214,7 +219,7 @@ me.openapi(myTripsRoute, async (c) => {
     `SELECT t.*, m.role AS my_role,
             (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL) AS total_uploaded
      FROM members m JOIN trips t ON t.id = m.trip_id
-     WHERE m.user_id = ? AND m.removed_at IS NULL
+     WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL
      ORDER BY t.starts_at DESC`,
   )
     .bind(c.get("user").id)

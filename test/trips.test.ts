@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { api, createTrip, DAY, HOUR, join, joinAs, MINUTE, newTrip, signUp, TZ, uploadMedia } from "./helpers";
+import { api, befriend, createTrip, DAY, HOUR, join, joinAs, MINUTE, newTrip, signUp, TZ, uploadMedia } from "./helpers";
 
 const tripBody = (now = Date.now()) => ({
   name: "Viaje al sur",
@@ -162,7 +162,7 @@ describe("POST /trips/join", () => {
     expect(res.status).toBe(201);
   });
 
-  it("someone removed by the admin can't rejoin", async () => {
+  it("someone removed by the admin can't join by code", async () => {
     const { tripId, code, adminToken } = await newTrip();
     const fede = await joinAs(code, "Fede");
     await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
@@ -468,5 +468,236 @@ describe("member shape", () => {
     const inB = await api("GET", `/trips/${b.tripId}`, { token: a.adminToken });
     expect(inA.body.me.name).toBe("Juani G");
     expect(inB.body.members.map((m: { name: string }) => m.name)).toContain("Juani G");
+  });
+});
+
+describe("POST /trips/:id/members (add friends)", () => {
+  it("a member adds their friend, who shows up as member in the detail", async () => {
+    const { tripId, code } = await newTrip();
+    const cami = await joinAs(code, "Cami");
+    const tomi = await signUp(undefined, "Tomi");
+    await befriend(cami.token, tomi.token);
+
+    const res = await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: [tomi.userId] } });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ results: [{ userId: tomi.userId, status: "added" }] });
+
+    const detail = await api("GET", `/trips/${tripId}`, { token: tomi.token });
+    expect(detail.status).toBe(200);
+    expect(detail.body.members.find((m: any) => m.userId === tomi.userId).role).toBe("member");
+    const row = await env.DB.prepare("SELECT added_by_user_id FROM members WHERE trip_id = ? AND user_id = ?")
+      .bind(tripId, tomi.userId)
+      .first<{ added_by_user_id: string }>();
+    expect(row!.added_by_user_id).toBe(cami.userId);
+  });
+
+  it("answers per friend without failing the whole request", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const cami = await joinAs(code, "Cami");
+    const already = await joinAs(code, "Yaesta");
+    const stranger = await signUp(undefined, "Extraño");
+    const kicked = await joinAs(code, "Sacado");
+    const fresh = await signUp(undefined, "Nuevo");
+    for (const u of [already, kicked, fresh]) await befriend(cami.token, u.token);
+    await api("DELETE", `/trips/${tripId}/members/${kicked.memberId}`, { token: adminToken });
+
+    const res = await api("POST", `/trips/${tripId}/members`, {
+      token: cami.token,
+      body: { friendIds: [already.userId, stranger.userId, kicked.userId, fresh.userId, "no-such-user"] },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.results).toEqual([
+      { userId: already.userId, status: "already_member" },
+      { userId: stranger.userId, status: "unavailable" },
+      { userId: kicked.userId, status: "unavailable" },
+      { userId: fresh.userId, status: "added" },
+      { userId: "no-such-user", status: "unavailable" },
+    ]);
+  });
+
+  it("someone who is no longer a friend is unavailable", async () => {
+    const { tripId, code } = await newTrip();
+    const cami = await joinAs(code, "Cami");
+    const tomi = await signUp(undefined, "Tomi");
+    await befriend(cami.token, tomi.token);
+    await api("DELETE", `/friends/${tomi.userId}`, { token: cami.token });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: [tomi.userId] } });
+    expect(res.body.results).toEqual([{ userId: tomi.userId, status: "unavailable" }]);
+  });
+
+  it("a non-member can't add (403); needs a session; validates 1 to 50 ids", async () => {
+    const { tripId, code } = await newTrip();
+    const out = await signUp();
+    const friend = await signUp();
+    await befriend(out.token, friend.token);
+    expect((await api("POST", `/trips/${tripId}/members`, { token: out.token, body: { friendIds: [friend.userId] } })).status).toBe(403);
+    expect((await api("POST", `/trips/${tripId}/members`, { body: { friendIds: [friend.userId] } })).status).toBe(401);
+    const cami = await joinAs(code, "Cami");
+    expect((await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: [] } })).status).toBe(400);
+    const many = Array.from({ length: 51 }, (_, i) => `u${i}`);
+    expect((await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: many } })).status).toBe(400);
+  });
+
+  it("rejects the whole request on a revealed roll", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const friend = await signUp();
+    await befriend(adminToken, friend.token);
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [friend.userId] } });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "Este rollo ya se reveló" });
+  });
+});
+
+describe("DELETE /trips/:id/members/me (leave)", () => {
+  it("a member leaves: no access, the roll leaves their list, their photos stay", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await uploadMedia(tripId, fede.token);
+
+    expect((await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token })).status).toBe(204);
+
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
+    expect((await api("GET", `/trips/${tripId}/feed`, { token: fede.token })).status).toBe(403);
+    expect((await api("GET", "/me/trips", { token: fede.token })).body.trips).toEqual([]);
+
+    const detail = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(detail.body.members.map((m: any) => m.userId)).not.toContain(fede.userId);
+    expect(detail.body.totalUploaded).toBe(1);
+    const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
+    expect(feed.body.items).toHaveLength(1);
+    expect(feed.body.items[0].author.name).toBe("Fede");
+    const row = await env.DB.prepare("SELECT left_at, removed_at FROM members WHERE id = ?").bind(fede.memberId).first<any>();
+    expect(row.left_at).toBeGreaterThan(0);
+    expect(row.removed_at).toBeNull();
+  });
+
+  it("the admin can't leave (409)", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const res = await api("DELETE", `/trips/${tripId}/members/me`, { token: adminToken });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "Sos el admin: no podés salirte del rollo" });
+  });
+
+  it("requires a session and membership", async () => {
+    const { tripId } = await newTrip();
+    expect((await api("DELETE", `/trips/${tripId}/members/me`)).status).toBe(401);
+    expect((await api("DELETE", `/trips/${tripId}/members/me`, { token: (await signUp()).token })).status).toBe(403);
+  });
+
+  it("whoever left comes back with the code (same membership, no duplicate)", async () => {
+    const { tripId, code } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token });
+    const res = await api("POST", "/trips/join", { token: fede.token, body: { code } });
+    expect(res.status).toBe(201);
+    expect(res.body.member.id).toBe(fede.memberId);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(200);
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM members WHERE user_id = ?").bind(fede.userId).first<{ n: number }>();
+    expect(n!.n).toBe(1);
+  });
+
+  it("whoever left comes back when a friend adds them, and counts as added", async () => {
+    const { tripId, code } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    const cami = await joinAs(code, "Cami");
+    await befriend(cami.token, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "added" }]);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(200);
+    const row = await env.DB.prepare("SELECT left_at, added_by_user_id FROM members WHERE id = ?").bind(fede.memberId).first<any>();
+    expect(row.left_at).toBeNull();
+    expect(row.added_by_user_id).toBe(cami.userId);
+  });
+
+  it("whoever left can't come back to a revealed roll", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token });
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+    expect((await api("POST", "/trips/join", { token: fede.token, body: { code } })).status).toBe(409);
+  });
+
+  it("someone removed by the admin can't come back by code or when a regular member adds them", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    const cami = await joinAs(code, "Cami");
+    await befriend(cami.token, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    expect((await api("POST", "/trips/join", { token: fede.token, body: { code } })).status).toBe(403);
+    const res = await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "unavailable" }]);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
+  });
+
+  it("the admin can add back someone they removed: active again, listed, old photos still in the roll", async () => {
+    const { tripId, code, adminToken, adminUserId } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await uploadMedia(tripId, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
+
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "added" }]);
+
+    const detail = await api("GET", `/trips/${tripId}`, { token: fede.token });
+    expect(detail.status).toBe(200);
+    expect(detail.body.members.map((m: any) => m.userId)).toContain(fede.userId);
+    expect(detail.body.totalUploaded).toBe(1);
+    const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
+    expect(feed.body.items).toHaveLength(1);
+    expect(feed.body.items[0].author.name).toBe("Fede");
+    const row = await env.DB.prepare("SELECT removed_at, left_at, added_by_user_id FROM members WHERE id = ?").bind(fede.memberId).first<any>();
+    expect(row.removed_at).toBeNull();
+    expect(row.left_at).toBeNull();
+    expect(row.added_by_user_id).toBe(adminUserId);
+    // Joining by code afterwards is just the idempotent 200.
+    expect((await api("POST", "/trips/join", { token: fede.token, body: { code } })).status).toBe(200);
+  });
+
+  it("the admin can add back someone who was removed after leaving", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token });
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "added" }]);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(200);
+  });
+
+  it("a removed person who is no longer the admin's friend is unavailable for the admin too", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    await api("DELETE", `/friends/${fede.userId}`, { token: adminToken });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "unavailable" }]);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
+  });
+
+  it("the admin can't add back a removed person once the roll is revealed", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.status).toBe(409);
+  });
+
+  it("the admin can remove someone who already left, and they can't come back by code or through a regular member", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    const cami = await joinAs(code, "Cami");
+    await befriend(cami.token, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token });
+    expect((await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken })).status).toBe(204);
+    expect((await api("POST", "/trips/join", { token: fede.token, body: { code } })).status).toBe(403);
+    const res = await api("POST", `/trips/${tripId}/members`, { token: cami.token, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "unavailable" }]);
   });
 });

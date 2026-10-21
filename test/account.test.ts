@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
-import { api, createTrip, join, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
+import { api, befriend, createTrip, join, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 
 const DEV = { DEV_LOCAL_UPLOADS: "1" };
 const ORIGIN = "http://192.168.1.5:8787";
@@ -363,5 +363,60 @@ describe("DELETE /me", () => {
     expect((await api("DELETE", "/me", { token: u.token })).status).toBe(204);
     expect(await env.DB.prepare("SELECT 1 FROM media").first()).toBeNull();
     expect((await api("GET", `/trips/${a.tripId}`, { token: a.adminToken })).status).toBe(200);
+  });
+});
+
+describe("DELETE /me with friends", () => {
+  it("cleans friendships, links and claims; the friend keeps their rollos and loses only that friend", async () => {
+    const t = await newTrip();
+    const ana = await joinAs(t.code, "Ana");
+    const beto = await joinAs(t.code, "Beto");
+    const gone = await signUp(undefined, "Gone", "gone1");
+    await befriend(gone.token, ana.token);
+    await befriend(beto.token, gone.token);
+    await befriend(ana.token, beto.token);
+    const { body: link } = await api("POST", "/friends/link", { token: gone.token });
+    await api("POST", "/friend-links/claim", { body: { code: link.code } });
+    await api("POST", "/friends/redeem", { token: gone.token, body: { code: "ZZZZZZZZ" } }); // a failed attempt
+
+    expect((await api("DELETE", "/me", { token: gone.token })).status).toBe(204);
+
+    for (const [table, column] of [["friend_links", "user_id"], ["friend_claims", "link_user_id"]]) {
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`).bind(gone.userId).first<{ n: number }>();
+      expect(row!.n).toBe(0);
+    }
+    const mine = await env.DB.prepare("SELECT COUNT(*) AS n FROM friendships WHERE user_a = ? OR user_b = ?")
+      .bind(gone.userId, gone.userId)
+      .first<{ n: number }>();
+    expect(mine!.n).toBe(0);
+    const attempts = await env.DB.prepare("SELECT COUNT(*) AS n FROM friend_attempts WHERE key = ?").bind(`user:${gone.userId}`).first<{ n: number }>();
+    expect(attempts!.n).toBe(0);
+
+    // The friends are untouched: still friends between them, still in their rollo.
+    expect((await api("GET", "/friends", { token: ana.token })).body.friends.map((f: any) => f.id)).toEqual([beto.userId]);
+    expect((await api("GET", "/friends", { token: beto.token })).body.friends.map((f: any) => f.id)).toEqual([ana.userId]);
+    expect((await api("GET", `/trips/${t.tripId}`, { token: ana.token })).status).toBe(200);
+  });
+
+  it("clears added_by on members this user added", async () => {
+    const t = await newTrip();
+    const adder = await joinAs(t.code, "Adder");
+    const friend = await signUp(undefined, "Friend");
+    await befriend(adder.token, friend.token);
+    await api("POST", `/trips/${t.tripId}/members`, { token: adder.token, body: { friendIds: [friend.userId] } });
+    await api("DELETE", "/me", { token: adder.token });
+    const row = await env.DB.prepare("SELECT added_by_user_id a FROM members WHERE user_id = ?").bind(friend.userId).first<{ a: string | null }>();
+    expect(row!.a).toBeNull();
+    expect((await api("GET", `/trips/${t.tripId}`, { token: friend.token })).status).toBe(200);
+  });
+
+  it("someone who left doesn't count as active: the admin role goes to an active member", async () => {
+    const t = await newTrip();
+    const left = await joinAs(t.code, "Left");
+    const stays = await joinAs(t.code, "Stays");
+    await api("DELETE", `/trips/${t.tripId}/members/me`, { token: left.token });
+    await api("DELETE", "/me", { token: t.adminToken });
+    const detail = await api("GET", `/trips/${t.tripId}`, { token: stays.token });
+    expect(detail.body.me.role).toBe("admin");
   });
 });

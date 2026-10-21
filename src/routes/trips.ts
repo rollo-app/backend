@@ -2,8 +2,11 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { pairKey } from "../lib/friend-code";
 import { generateJoinCode, isRevealed, localDate, publicMember, publicTrip } from "../lib/util";
 import {
+  AddMembersResponseSchema,
+  AddMembersSchema,
   CreateTripSchema,
   JoinTripSchema,
   TripCreatedSchema,
@@ -76,6 +79,46 @@ trips.openapi(createTripRoute, async (c) => {
   return c.json({ trip: publicTrip(trip!, now), member: publicMember(member, user) }, 201);
 });
 
+// ---------- Membership ----------
+
+type AddResult =
+  | { status: "added"; member: Pick<MemberRow, "id" | "user_id" | "role"> }
+  | { status: "already_member"; member: MemberRow }
+  | { status: "removed" };
+
+/**
+ * Single place where someone becomes a member of a trip (by code or added by a friend).
+ * An active member stays as is; someone who left gets their old membership back (same id, so their
+ * photos stay linked); someone the admin removed only comes back when `reactivateRemoved` is set
+ * (an admin adding them as a friend). Does not check the reveal.
+ */
+async function addMember(
+  db: D1Database,
+  tripId: string,
+  userId: string,
+  addedBy: string | null,
+  now = Date.now(),
+  reactivateRemoved = false,
+): Promise<AddResult> {
+  const existing = await db.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?").bind(tripId, userId).first<MemberRow>();
+  if (existing) {
+    if (existing.removed_at !== null) {
+      if (!reactivateRemoved) return { status: "removed" };
+      await db.prepare("UPDATE members SET removed_at = NULL, left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, existing.id).run();
+      return { status: "added", member: existing };
+    }
+    if (existing.left_at === null) return { status: "already_member", member: existing };
+    await db.prepare("UPDATE members SET left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, existing.id).run();
+    return { status: "added", member: existing };
+  }
+  const member = { id: crypto.randomUUID(), user_id: userId, role: "member" as Role };
+  await db
+    .prepare("INSERT INTO members (id, trip_id, user_id, role, created_at, added_by_user_id) VALUES (?, ?, ?, 'member', ?, ?)")
+    .bind(member.id, tripId, userId, now, addedBy)
+    .run();
+  return { status: "added", member };
+}
+
 // ---------- Join ----------
 
 const joinTripRoute = createRoute({
@@ -84,8 +127,8 @@ const joinTripRoute = createRoute({
   tags,
   summary: "Join a trip",
   description:
-    "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined, " +
-    "200 when already an active member. Someone removed by the admin gets 403.",
+    "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), " +
+    "200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: JoinTripSchema } }, required: true } },
@@ -105,22 +148,18 @@ trips.openapi(joinTripRoute, async (c) => {
   const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE join_code = ?").bind(code).first<TripRow>();
   if (!trip) throw new HTTPException(404, { message: "Código inválido" });
 
-  const existing = await c.env.DB.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?")
+  // Active members are answered before the reveal check (they get 200 even after it).
+  const current = await c.env.DB.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?")
     .bind(trip.id, user.id)
     .first<MemberRow>();
-  if (existing) {
-    if (existing.removed_at !== null) throw new HTTPException(403, { message: "El admin te sacó de este rollo" });
-    return c.json({ trip: publicTrip(trip, now), member: publicMember(existing, user) }, 200);
-  }
+  if (current?.removed_at != null) throw new HTTPException(403, { message: "El admin te sacó de este rollo" });
+  if (current && current.left_at === null) return c.json({ trip: publicTrip(trip, now), member: publicMember(current, user) }, 200);
 
   if (publicTrip(trip, now).revealed) throw new HTTPException(409, { message: "Este rollo ya se reveló" });
 
-  const member = { id: crypto.randomUUID(), user_id: user.id, role: "member" as Role };
-  await c.env.DB.prepare("INSERT INTO members (id, trip_id, user_id, role, created_at) VALUES (?, ?, ?, 'member', ?)")
-    .bind(member.id, trip.id, user.id, now)
-    .run();
-
-  return c.json({ trip: publicTrip(trip, now), member: publicMember(member, user) }, 201);
+  const added = await addMember(c.env.DB, trip.id, user.id, null, now);
+  if (added.status !== "added") throw new HTTPException(403, { message: "El admin te sacó de este rollo" });
+  return c.json({ trip: publicTrip(trip, now), member: publicMember(added.member, user) }, 201);
 });
 
 // ---------- Detail ----------
@@ -147,7 +186,7 @@ trips.openapi(getTripRoute, async (c) => {
     c.env.DB.prepare(
       `SELECT m.id, m.user_id, m.role, u.name, u.username, u.avatar_key
        FROM members m JOIN users u ON u.id = m.user_id
-       WHERE m.trip_id = ? AND m.removed_at IS NULL ORDER BY m.created_at`,
+       WHERE m.trip_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL ORDER BY m.created_at`,
     ).bind(trip.id).all<{ id: string; user_id: string; role: Role; name: string | null; username: string | null; avatar_key: string | null }>(),
     c.env.DB.prepare(
       `SELECT type, COUNT(*) AS n FROM media
@@ -241,6 +280,73 @@ trips.openapi(revealRoute, async (c) => {
   return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) }, 200);
 });
 
+// ---------- Add friends ----------
+
+const addMembersRoute = createRoute({
+  method: "post",
+  path: "/{tripId}/members",
+  tags,
+  summary: "Add your friends to the trip",
+  description:
+    "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they " +
+    "had left and come back), `already_member`, or `unavailable` (not your friend, removed by the admin, or unknown). " +
+    "The rollo's admin can add back someone who was removed (they become active again with their old photos); " +
+    "for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember] as const,
+  request: {
+    params: TripParams,
+    body: { content: { "application/json": { schema: AddMembersSchema } }, required: true },
+  },
+  responses: { 200: json(AddMembersResponseSchema, "Result per friend"), ...errors(400, 401, 403, 409) },
+});
+
+trips.openapi(addMembersRoute, async (c) => {
+  const trip = c.get("trip");
+  const me = c.get("user");
+  if (isRevealed(trip)) throw new HTTPException(409, { message: "Este rollo ya se reveló" });
+
+  const results: { userId: string; status: "added" | "already_member" | "unavailable" }[] = [];
+  for (const userId of new Set(c.req.valid("json").friendIds)) {
+    if (userId === me.id) {
+      results.push({ userId, status: "already_member" });
+      continue;
+    }
+    const [a, b] = pairKey(me.id, userId);
+    const friend = await c.env.DB.prepare("SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?").bind(a, b).first();
+    if (!friend) {
+      results.push({ userId, status: "unavailable" });
+      continue;
+    }
+    const added = await addMember(c.env.DB, trip.id, userId, me.id, Date.now(), c.get("member").role === "admin");
+    results.push({ userId, status: added.status === "removed" ? "unavailable" : added.status });
+  }
+  return c.json({ results }, 200);
+});
+
+// ---------- Leave ----------
+
+const leaveRoute = createRoute({
+  method: "delete",
+  path: "/{tripId}/members/me",
+  tags,
+  summary: "Leave the trip",
+  description:
+    "You lose access and the rollo leaves your list; your photos stay in the roll. You can come back with the code or " +
+    "if a friend adds you (before the reveal). The admin can't leave (409).",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember] as const,
+  request: { params: TripParams },
+  responses: { 204: { description: "You left the trip" }, ...errors(401, 403, 409) },
+});
+
+trips.openapi(leaveRoute, async (c) => {
+  const member = c.get("member");
+  if (member.role === "admin") throw new HTTPException(409, { message: "Sos el admin: no podés salirte del rollo" });
+  await c.env.DB.prepare("UPDATE members SET left_at = ? WHERE id = ?").bind(Date.now(), member.id).run();
+  return c.body(null, 204);
+});
+
 // ---------- Remove member (admin) ----------
 
 const removeMemberRoute = createRoute({
@@ -248,7 +354,7 @@ const removeMemberRoute = createRoute({
   path: "/{tripId}/members/{memberId}",
   tags,
   summary: "Remove someone from the trip (admin)",
-  description: "They lose access to the rollo and cannot rejoin. Their photos stay in the roll.",
+  description: "They lose access to the rollo and cannot rejoin by code or through a regular member; only the admin can add them back as a friend. Their photos stay in the roll.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: TripMemberParams },
