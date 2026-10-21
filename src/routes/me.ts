@@ -29,8 +29,9 @@ const updateMeRoute = createRoute({
   tags,
   summary: "Edit your profile",
   description:
-    "Send name and/or username. The name is shown in every rollo you are part of and does not have to be unique. " +
-    "The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it.",
+    "Send any of name, username and bio; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. " +
+    "The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it. " +
+    "The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise).",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: UpdateProfileSchema } }, required: true } },
@@ -40,7 +41,11 @@ const updateMeRoute = createRoute({
 me.openapi(updateMeRoute, async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
-  const next = { name: body.name ?? user.name, username: body.username ?? user.username };
+  const next = {
+    name: body.name ?? user.name,
+    username: body.username ?? user.username,
+    bio: body.bio === undefined ? user.bio : body.bio,
+  };
   if (body.username !== undefined && body.username !== user.username) {
     const owner = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? AND id != ?")
       .bind(body.username, user.id)
@@ -48,7 +53,9 @@ me.openapi(updateMeRoute, async (c) => {
     if (owner) throw new HTTPException(409, { message: USERNAME_TAKEN_MESSAGE });
   }
   try {
-    await c.env.DB.prepare("UPDATE users SET name = ?, username = ? WHERE id = ?").bind(next.name, next.username, user.id).run();
+    await c.env.DB.prepare("UPDATE users SET name = ?, username = ?, bio = ? WHERE id = ?")
+      .bind(next.name, next.username, next.bio, user.id)
+      .run();
   } catch (err) {
     // Lost a race against another account taking the same username.
     if (String(err).includes("UNIQUE")) throw new HTTPException(409, { message: USERNAME_TAKEN_MESSAGE });

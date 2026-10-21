@@ -31,12 +31,13 @@ const HOUR = 3_600_000;
 const MAX_FAILED_ATTEMPTS = 10;
 const BAD_CODE = "Código incorrecto o vencido";
 
-type PublicFriendRow = { id: string; name: string | null; username: string | null; avatar_key: string | null };
+type PublicFriendRow = { id: string; name: string | null; username: string | null; avatar_key: string | null; bio: string | null };
 const publicFriend = (u: PublicFriendRow) => ({
   id: u.id,
   name: u.name ?? "",
   username: u.username,
   avatarUrl: avatarUrl(u.id, u.avatar_key),
+  bio: u.bio,
 });
 
 // ---------- Rate limit (failed attempts per user and per IP) ----------
@@ -193,7 +194,7 @@ friends.openapi(redeemRoute, async (c) => {
   }
   if (!creatorId) return failAttempt(c, keys);
 
-  const creator = (await c.env.DB.prepare("SELECT id, name, username, avatar_key FROM users WHERE id = ?")
+  const creator = (await c.env.DB.prepare("SELECT id, name, username, avatar_key, bio FROM users WHERE id = ?")
     .bind(creatorId)
     .first<PublicFriendRow>())!;
 
@@ -220,7 +221,7 @@ const listRoute = createRoute({
 friends.openapi(listRoute, async (c) => {
   const id = c.get("user").id;
   const { results } = await c.env.DB.prepare(
-    `SELECT u.id, u.name, u.username, u.avatar_key
+    `SELECT u.id, u.name, u.username, u.avatar_key, u.bio
      FROM users u
      WHERE u.id IN (SELECT user_b FROM friendships WHERE user_a = ?1 UNION SELECT user_a FROM friendships WHERE user_b = ?1)
      ORDER BY u.name COLLATE NOCASE, u.id`,
@@ -252,7 +253,7 @@ friends.openapi(profileRoute, async (c) => {
   const [a, b] = pairKey(me, friendId);
   // Yourself is never a friendship row (redeem skips it), so it falls into the same 404.
   const friend = await c.env.DB.prepare(
-    `SELECT u.id, u.name, u.username, u.avatar_key
+    `SELECT u.id, u.name, u.username, u.avatar_key, u.bio
      FROM friendships f JOIN users u ON u.id = ?3
      WHERE f.user_a = ?1 AND f.user_b = ?2`,
   )

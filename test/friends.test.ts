@@ -23,7 +23,7 @@ describe("friend links", () => {
 
     const redeem = await api("POST", "/friends/redeem", { token: b.token, body: { claimToken: claim.body.claimToken } });
     expect(redeem.status).toBe(200);
-    expect(redeem.body.friend).toEqual({ id: a.userId, name: "Ana", username: "ana1", avatarUrl: null });
+    expect(redeem.body.friend).toEqual({ id: a.userId, name: "Ana", username: "ana1", avatarUrl: null, bio: null });
 
     expect((await friendsOf(a.token)).map((f) => f.id)).toEqual([b.userId]);
     expect((await friendsOf(b.token)).map((f) => f.id)).toEqual([a.userId]);
@@ -177,6 +177,16 @@ describe("friend links", () => {
     expect((await friendsOf(me.token)).map((f) => f.name)).toEqual(["ana", "Zoe"]);
   });
 
+  it("lists friends with their bio", async () => {
+    const me = await signUp();
+    const cami = await signUp(undefined, "Cami", "cami.bio");
+    await befriend(me.token, cami.token);
+    await api("PATCH", "/me", { token: cami.token, body: { bio: "Fotos de montaña" } });
+    expect(await friendsOf(me.token)).toEqual([
+      { id: cami.userId, name: "Cami", username: "cami.bio", avatarUrl: null, bio: "Fotos de montaña" },
+    ]);
+  });
+
   it("only claim is public", async () => {
     expect((await api("POST", "/friends/link")).status).toBe(401);
     expect((await api("POST", "/friends/redeem", { body: { code: "AAAAAAAA" } })).status).toBe(401);
@@ -249,12 +259,18 @@ describe("friend profile", () => {
 
     const res = await profile(a.token, b.userId);
     expect(res.status).toBe(200);
-    expect(res.body.friend).toEqual({ id: b.userId, name: "Cami", username: expect.any(String), avatarUrl: null });
+    expect(res.body.friend).toEqual({ id: b.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: null });
     expect(res.body.commonTrips).toEqual([
       { id: shared.tripId, name: "Bariloche", startsAt: expect.any(Number), endsAt: expect.any(Number), revealed: false },
     ]);
     // Symmetric: the friend sees the same rollo in common.
     expect((await profile(b.token, a.userId)).body.commonTrips.map((t: { id: string }) => t.id)).toEqual([shared.tripId]);
+  });
+
+  it("includes the friend's bio", async () => {
+    const { a, b } = await friendsWithSharedTrip();
+    await api("PATCH", "/me", { token: b.token, body: { bio: "Viajando por el sur" } });
+    expect((await profile(a.token, b.userId)).body.friend.bio).toBe("Viajando por el sur");
   });
 
   it("leaves out a rollo the friend left or was removed from, and one you left", async () => {
