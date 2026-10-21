@@ -1,6 +1,6 @@
 import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
-import { generateToken, hashToken, requireUser } from "../lib/auth";
+import { generateToken, hashToken, requireUser, SESSION_TTL } from "../lib/auth";
 import { sendLoginCode } from "../lib/email";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../lib/login-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
@@ -14,7 +14,6 @@ const tags = ["Auth"];
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const MAX_ATTEMPTS = 5;
-const SESSION_TTL = 365 * 24 * HOUR;
 const EMAIL_MIN_GAP = MINUTE;
 const EMAIL_PER_HOUR = 5;
 const IP_PER_HOUR = 20;

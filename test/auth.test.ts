@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { devSentCodes } from "../src/lib/email";
-import { api, HOUR, MINUTE, requestCode, signUp } from "./helpers";
+import { api, DAY, HOUR, MINUTE, requestCode, signUp } from "./helpers";
 
 const start = (email: string, extra: Parameters<typeof api>[2] = {}) =>
   api("POST", "/auth/email/start", { body: { email }, ...extra });
@@ -412,7 +412,24 @@ describe("sessions", () => {
     expect(row!.expires_at - row!.created_at).toBe(365 * 24 * HOUR);
   });
 
-  it("last_used_at is refreshed, but at most once per hour", async () => {
+  it("using the session extends it another year, at most once per day", async () => {
+    const { token } = await signUp();
+    const read = async () => (await env.DB.prepare("SELECT expires_at FROM sessions").first<{ expires_at: number }>())!.expires_at;
+
+    // Used 10 minutes ago: nothing changes yet.
+    const nearExpiry = Date.now() + 2 * 24 * HOUR;
+    await env.DB.prepare("UPDATE sessions SET expires_at = ?, last_used_at = ?").bind(nearExpiry, Date.now() - 10 * MINUTE).run();
+    await api("GET", "/me", { token });
+    expect(await read()).toBe(nearExpiry);
+
+    // Used 2 days ago and about to expire: it goes back to a full year from now.
+    await env.DB.prepare("UPDATE sessions SET last_used_at = ?").bind(Date.now() - 2 * DAY).run();
+    const before = Date.now();
+    expect((await api("GET", "/me", { token })).status).toBe(200);
+    expect(await read()).toBeGreaterThanOrEqual(before + 365 * 24 * HOUR);
+  });
+
+  it("last_used_at is refreshed, but at most once per day", async () => {
     const { token } = await signUp();
     const read = async () => (await env.DB.prepare("SELECT last_used_at FROM sessions").first<{ last_used_at: number }>())!.last_used_at;
 
@@ -421,9 +438,9 @@ describe("sessions", () => {
     await api("GET", "/me", { token });
     expect(await read()).toBe(recent);
 
-    const stale = Date.now() - 2 * HOUR;
+    const stale = Date.now() - 2 * DAY;
     await env.DB.prepare("UPDATE sessions SET last_used_at = ?").bind(stale).run();
     await api("GET", "/me", { token });
-    expect(await read()).toBeGreaterThan(stale + HOUR);
+    expect(await read()).toBeGreaterThan(stale + DAY);
   });
 });

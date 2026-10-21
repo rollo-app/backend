@@ -11,7 +11,7 @@ amigos al sur de Argentina en **enero de 2027**; también para armar fotolibros 
 Decisiones de producto que el backend tiene que respetar:
 
 - **Cuentas con email.** Se entra con email + código de 6 caracteres (A-Z y 2-9 sin ambiguos, vence a los 5 min; en `verify` se ignoran mayúsculas, espacios y guiones) (`/auth/email/*`, mail por Resend) y
-  devuelve un token de sesión (365 días). El nombre (y después el avatar) vive en el perfil (`/me`) y es
+  devuelve un token de sesión (365 días desde el último uso: se renueva sola, al usarla, como máximo una vez por día). El nombre (y después el avatar) vive en el perfil (`/me`) y es
   el mismo en todos los rollos, sin ser único. Además hay un **username único** (`@juanifraga`, minúsculas, `a-z 0-9 . _`, 3–30; `src/lib/username.ts`). Crear un viaje o unirse requiere nombre y username en el perfil; unirse es solo
   el código de 6 caracteres (idempotente; si el admin te sacó, 403). Cuenta de App Review: `REVIEW_EMAIL`/`REVIEW_CODE`.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve

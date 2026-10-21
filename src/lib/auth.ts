@@ -18,11 +18,13 @@ export async function hashToken(token: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const SESSION_TOUCH_INTERVAL = 60 * 60_000;
+/** A session lasts a year from its last use: whoever opens the app now and then never has to log in again. */
+export const SESSION_TTL = 365 * 24 * 60 * 60_000;
+const SESSION_TOUCH_INTERVAL = 24 * 60 * 60_000;
 
 /**
  * Requires `Authorization: Bearer <token>` of a valid session. Loads the user into the context.
- * `last_used_at` is refreshed at most once per hour.
+ * `last_used_at` and the expiry (a year ahead) are refreshed at most once per day.
  */
 export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
@@ -40,7 +42,9 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   if (!row) throw new HTTPException(401, { message: "Sesión inválida, volvé a entrar" });
 
   if (now - row.last_used_at > SESSION_TOUCH_INTERVAL) {
-    await c.env.DB.prepare("UPDATE sessions SET last_used_at = ? WHERE id = ?").bind(now, row.session_id).run();
+    await c.env.DB.prepare("UPDATE sessions SET last_used_at = ?, expires_at = ? WHERE id = ?")
+      .bind(now, now + SESSION_TTL, row.session_id)
+      .run();
   }
 
   const { session_id, last_used_at: _, ...user } = row;
