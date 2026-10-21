@@ -173,3 +173,11 @@ export async function uploadMedia(
   if (done.status !== 200) throw new Error(`complete failed: ${done.status} ${JSON.stringify(done.body)}`);
   return body.id;
 }
+
+/** Makes two users friends through the real flow (A generates a link, B redeems it). */
+export async function befriend(tokenA: string, tokenB: string): Promise<void> {
+  const link = await api("POST", "/friends/link", { token: tokenA });
+  if (link.status !== 200) throw new Error(`link failed: ${link.status} ${JSON.stringify(link.body)}`);
+  const res = await api("POST", "/friends/redeem", { token: tokenB, body: { code: link.body.code } });
+  if (res.status !== 200) throw new Error(`redeem failed: ${res.status} ${JSON.stringify(res.body)}`);
+}

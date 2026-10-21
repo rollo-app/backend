@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import auth from "./routes/auth";
+import friends, { friendLinks } from "./routes/friends";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
@@ -23,6 +24,8 @@ app.route("/auth", auth);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);
+app.route("/friends", friends);
+app.route("/friend-links", friendLinks);
 app.route("/trips", trips);
 app.route("/", media);
 

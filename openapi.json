@@ -252,6 +252,159 @@
           "username"
         ]
       },
+      "FriendLink": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "K7M2QX9A",
+            "description": "8-character code; the link is rollo://amigos/<code>"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The link stops working at this instant (1 hour after it was generated)",
+            "example": 1767225600000
+          }
+        },
+        "required": [
+          "code",
+          "expiresAt"
+        ]
+      },
+      "FriendResponse": {
+        "type": "object",
+        "properties": {
+          "friend": {
+            "$ref": "#/components/schemas/Friend"
+          }
+        },
+        "required": [
+          "friend"
+        ]
+      },
+      "Friend": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl"
+        ]
+      },
+      "RedeemFriendRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Friend code typed or taken from a link that is still valid"
+          },
+          "claimToken": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Token returned by /friend-links/claim"
+          }
+        }
+      },
+      "Friends": {
+        "type": "object",
+        "properties": {
+          "friends": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Friend"
+            }
+          }
+        },
+        "required": [
+          "friends"
+        ]
+      },
+      "ClaimResponse": {
+        "type": "object",
+        "properties": {
+          "claimToken": {
+            "type": "string",
+            "description": "Permission to redeem this link while signed in. Valid for 24 hours"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The claim token stops working at this instant",
+            "example": 1767225600000
+          },
+          "creator": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "avatarUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "username",
+              "avatarUrl"
+            ]
+          }
+        },
+        "required": [
+          "claimToken",
+          "expiresAt",
+          "creator"
+        ]
+      },
+      "ClaimFriendLinkRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 64,
+            "example": "K7M2QX9A",
+            "description": "Case-insensitive; spaces and dashes are ignored"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
       "TripCreated": {
         "type": "object",
         "properties": {
@@ -1301,6 +1454,234 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/friends/link": {
+      "post": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Generate a friend link",
+        "description": "Returns an 8-character code (the link is rollo://amigos/<code>) valid for 1 hour and reusable while it lives. Generating a new one invalidates the previous links of the user.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Friend link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendLink"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/friends/redeem": {
+      "post": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Become friends with whoever made a link",
+        "description": "Send exactly one of `code` (a link that is still valid) or `claimToken` (from /friend-links/claim, valid 24 hours). The friendship is symmetric and needs no acceptance. Redeeming your own link or one from a current friend is not an error. A wrong, expired or replaced code always gets the same 400. 10 failed attempts per user or per IP in an hour lock it (429).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemFriendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new (or existing) friend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/friends": {
+      "get": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Your friends",
+        "description": "Ordered by name.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Friends",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Friends"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/friends/{userId}": {
+      "delete": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Remove a friend",
+        "description": "Removes the friendship in both directions. Also 204 if you were not friends. Rollos you share are not affected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Friendship removed"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/friend-links/claim": {
+      "post": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Open a friend link (no session needed)",
+        "description": "For someone who opens the link before having an account. Returns who invited them and a claim token (valid 24 hours) to redeem the friendship once signed in. A wrong, expired or replaced code always gets the same 400. Rate limited per IP.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimFriendLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Claim token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
