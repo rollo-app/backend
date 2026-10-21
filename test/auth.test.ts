@@ -412,6 +412,23 @@ describe("sessions", () => {
     expect(row!.expires_at - row!.created_at).toBe(365 * 24 * HOUR);
   });
 
+  it("using the session extends it another year, at most once per hour", async () => {
+    const { token } = await signUp();
+    const read = async () => (await env.DB.prepare("SELECT expires_at FROM sessions").first<{ expires_at: number }>())!.expires_at;
+
+    // Used 10 minutes ago: nothing changes yet.
+    const nearExpiry = Date.now() + 2 * 24 * HOUR;
+    await env.DB.prepare("UPDATE sessions SET expires_at = ?, last_used_at = ?").bind(nearExpiry, Date.now() - 10 * MINUTE).run();
+    await api("GET", "/me", { token });
+    expect(await read()).toBe(nearExpiry);
+
+    // Used 2 hours ago and about to expire: it goes back to a full year from now.
+    await env.DB.prepare("UPDATE sessions SET last_used_at = ?").bind(Date.now() - 2 * HOUR).run();
+    const before = Date.now();
+    expect((await api("GET", "/me", { token })).status).toBe(200);
+    expect(await read()).toBeGreaterThanOrEqual(before + 365 * 24 * HOUR);
+  });
+
   it("last_used_at is refreshed, but at most once per hour", async () => {
     const { token } = await signUp();
     const read = async () => (await env.DB.prepare("SELECT last_used_at FROM sessions").first<{ last_used_at: number }>())!.last_used_at;
