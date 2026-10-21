@@ -162,7 +162,7 @@ describe("POST /trips/join", () => {
     expect(res.status).toBe(201);
   });
 
-  it("someone removed by the admin can't rejoin", async () => {
+  it("someone removed by the admin can't join by code", async () => {
     const { tripId, code, adminToken } = await newTrip();
     const fede = await joinAs(code, "Fede");
     await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
@@ -619,7 +619,7 @@ describe("DELETE /trips/:id/members/me (leave)", () => {
     expect((await api("POST", "/trips/join", { token: fede.token, body: { code } })).status).toBe(409);
   });
 
-  it("someone removed by the admin comes back neither by code nor by friends", async () => {
+  it("someone removed by the admin can't come back by code or when a regular member adds them", async () => {
     const { tripId, code, adminToken } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const cami = await joinAs(code, "Cami");
@@ -631,7 +631,65 @@ describe("DELETE /trips/:id/members/me (leave)", () => {
     expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
   });
 
-  it("the admin can remove someone who already left, and they can't come back", async () => {
+  it("the admin can add back someone they removed: active again, listed, old photos still in the roll", async () => {
+    const { tripId, code, adminToken, adminUserId } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await uploadMedia(tripId, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
+
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "added" }]);
+
+    const detail = await api("GET", `/trips/${tripId}`, { token: fede.token });
+    expect(detail.status).toBe(200);
+    expect(detail.body.members.map((m: any) => m.userId)).toContain(fede.userId);
+    expect(detail.body.totalUploaded).toBe(1);
+    const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
+    expect(feed.body.items).toHaveLength(1);
+    expect(feed.body.items[0].author.name).toBe("Fede");
+    const row = await env.DB.prepare("SELECT removed_at, left_at, added_by_user_id FROM members WHERE id = ?").bind(fede.memberId).first<any>();
+    expect(row.removed_at).toBeNull();
+    expect(row.left_at).toBeNull();
+    expect(row.added_by_user_id).toBe(adminUserId);
+    // Joining by code afterwards is just the idempotent 200.
+    expect((await api("POST", "/trips/join", { token: fede.token, body: { code } })).status).toBe(200);
+  });
+
+  it("the admin can add back someone who was removed after leaving", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/me`, { token: fede.token });
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "added" }]);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(200);
+  });
+
+  it("a removed person who is no longer the admin's friend is unavailable for the admin too", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    await api("DELETE", `/friends/${fede.userId}`, { token: adminToken });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.body.results).toEqual([{ userId: fede.userId, status: "unavailable" }]);
+    expect((await api("GET", `/trips/${tripId}`, { token: fede.token })).status).toBe(403);
+  });
+
+  it("the admin can't add back a removed person once the roll is revealed", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    await befriend(adminToken, fede.token);
+    await api("DELETE", `/trips/${tripId}/members/${fede.memberId}`, { token: adminToken });
+    await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
+    const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [fede.userId] } });
+    expect(res.status).toBe(409);
+  });
+
+  it("the admin can remove someone who already left, and they can't come back by code or through a regular member", async () => {
     const { tripId, code, adminToken } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const cami = await joinAs(code, "Cami");

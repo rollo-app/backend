@@ -268,7 +268,7 @@ export const AddMembersResponseSchema = z
         userId: z.string(),
         status: z.enum(["added", "already_member", "unavailable"]).openapi({
           description:
-            "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin, or unknown",
+            "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin (unless the caller is the admin), or unknown",
         }),
       }),
     ),

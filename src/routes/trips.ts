@@ -89,12 +89,24 @@ type AddResult =
 /**
  * Single place where someone becomes a member of a trip (by code or added by a friend).
  * An active member stays as is; someone who left gets their old membership back (same id, so their
- * photos stay linked); someone the admin removed never comes back. Does not check the reveal.
+ * photos stay linked); someone the admin removed only comes back when `reactivateRemoved` is set
+ * (an admin adding them as a friend). Does not check the reveal.
  */
-async function addMember(db: D1Database, tripId: string, userId: string, addedBy: string | null, now = Date.now()): Promise<AddResult> {
+async function addMember(
+  db: D1Database,
+  tripId: string,
+  userId: string,
+  addedBy: string | null,
+  now = Date.now(),
+  reactivateRemoved = false,
+): Promise<AddResult> {
   const existing = await db.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?").bind(tripId, userId).first<MemberRow>();
   if (existing) {
-    if (existing.removed_at !== null) return { status: "removed" };
+    if (existing.removed_at !== null) {
+      if (!reactivateRemoved) return { status: "removed" };
+      await db.prepare("UPDATE members SET removed_at = NULL, left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, existing.id).run();
+      return { status: "added", member: existing };
+    }
     if (existing.left_at === null) return { status: "already_member", member: existing };
     await db.prepare("UPDATE members SET left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, existing.id).run();
     return { status: "added", member: existing };
@@ -278,7 +290,8 @@ const addMembersRoute = createRoute({
   description:
     "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they " +
     "had left and come back), `already_member`, or `unavailable` (not your friend, removed by the admin, or unknown). " +
-    "A revealed rollo gets 409 for the whole request.",
+    "The rollo's admin can add back someone who was removed (they become active again with their old photos); " +
+    "for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: {
@@ -305,7 +318,7 @@ trips.openapi(addMembersRoute, async (c) => {
       results.push({ userId, status: "unavailable" });
       continue;
     }
-    const added = await addMember(c.env.DB, trip.id, userId, me.id);
+    const added = await addMember(c.env.DB, trip.id, userId, me.id, Date.now(), c.get("member").role === "admin");
     results.push({ userId, status: added.status === "removed" ? "unavailable" : added.status });
   }
   return c.json({ results }, 200);
@@ -341,7 +354,7 @@ const removeMemberRoute = createRoute({
   path: "/{tripId}/members/{memberId}",
   tags,
   summary: "Remove someone from the trip (admin)",
-  description: "They lose access to the rollo and cannot rejoin. Their photos stay in the roll.",
+  description: "They lose access to the rollo and cannot rejoin by code or through a regular member; only the admin can add them back as a friend. Their photos stay in the roll.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: TripMemberParams },

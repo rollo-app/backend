@@ -20,7 +20,7 @@ Decisiones de producto que el backend tiene que respetar:
   (24 h) para canjear después de registrarse; `POST /friends/redeem` canjea con `code` o `claimToken`. Cualquier falla es el mismo 400
   genérico; 10 fallas por usuario o IP en una hora → 429 (`friend_attempts`). Cualquier miembro suma **a sus amigos** a un rollo
   (`POST /trips/{id}/members`, respuesta por amigo, no si ya se reveló). `members.left_at` (se salió: `DELETE /trips/{id}/members/me`,
-  puede volver por código o por amigos, sus fotos quedan) es distinto de `removed_at` (lo sacó el admin: no vuelve). El admin no puede salirse.
+  puede volver por código o por amigos, sus fotos quedan) es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
@@ -77,7 +77,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 267 tests
+npm test              # 273 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
