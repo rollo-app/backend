@@ -9,6 +9,7 @@ import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenari
  * Idempotent: if a scenario's trip already exists in local D1, it is not recreated.
  * `npm run seed -- --reset` deletes those trips and the @rollo.test users (media, members, trips, sessions, users) and recreates them.
  * Users: <name>@rollo.test created straight in D1 with a session each; Juani is a member of every trip.
+ * Avatars: generated JPEGs (scripts/seed/avatars.ts) uploaded through the real /me/avatar flow; Lu and Mateo have none (fallback).
  * Videos are placeholders: there is no ffmpeg, the original is a jpeg uploaded as video/mp4.
  */
 

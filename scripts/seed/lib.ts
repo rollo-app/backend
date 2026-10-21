@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
+import { NO_AVATAR, renderAvatar } from "./avatars";
 
 /** Seed helpers: API, local D1, images (disk-cached), times and daily quota. */
 
@@ -86,12 +87,26 @@ export function ensureUser(name: string): Promise<string> {
       d1(
         `INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at) VALUES (${sqlStr(randomUUID())}, ${sqlStr(userId)}, ${sqlStr(hash)}, ${now}, ${now}, ${now + SESSION_TTL})`,
       );
+      if (!NO_AVATAR.has(name)) await uploadAvatar(name, token);
       return token;
     })();
     sessions.set(name, p);
   }
   return p;
 }
+
+/** Real avatar flow: POST /me/avatar → PUT the JPEG → POST /me/avatar/complete (the API deletes the previous avatar). */
+async function uploadAvatar(name: string, token: string) {
+  const jpeg = await renderAvatar(name, avatarIndex(name));
+  const { upload } = await api<{ upload: string }>("POST", "/me/avatar", undefined, token);
+  await put(upload, jpeg, "image/jpeg");
+  await api("POST", "/me/avatar/complete", undefined, token);
+}
+const avatarNames: string[] = [];
+const avatarIndex = (name: string) => {
+  if (!avatarNames.includes(name)) avatarNames.push(name);
+  return avatarNames.indexOf(name);
+};
 
 /** Deletes the seed users (`@rollo.test`) with their memberships, media, sessions and login codes. */
 export function resetUsers() {
