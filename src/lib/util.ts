@@ -1,3 +1,4 @@
+import { LOGIN_CODE_ALPHABET, randomFromAlphabet } from "./login-code";
 import type { MemberRow, TripRow, UserRow } from "../types";
 
 /** YYYY-MM-DD date of an instant, in the trip's time zone. */
@@ -34,15 +35,8 @@ export function isRevealed(trip: TripRow, now = Date.now()): boolean {
   return trip.revealed_at !== null || now >= trip.reveal_at;
 }
 
-// No 0/O or 1/I/L so it can be read out loud.
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
 export function generateJoinCode(length = 6): string {
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  let code = "";
-  for (const b of bytes) code += CODE_ALPHABET[b % CODE_ALPHABET.length];
-  return code;
+  return randomFromAlphabet(LOGIN_CODE_ALPHABET, length);
 }
 
 /** Public shape of a trip (what the app sees). */

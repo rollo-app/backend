@@ -10,7 +10,7 @@ amigos al sur de Argentina en **enero de 2027**; también para armar fotolibros 
 
 Decisiones de producto que el backend tiene que respetar:
 
-- **Cuentas con email.** Se entra con email + código de 6 dígitos (`/auth/email/*`, mail por Resend) y
+- **Cuentas con email.** Se entra con email + código de 6 caracteres (A-Z y 2-9 sin ambiguos, vence a los 5 min; en `verify` se ignoran mayúsculas, espacios y guiones) (`/auth/email/*`, mail por Resend) y
   devuelve un token de sesión (365 días). El nombre (y después el avatar) vive en el perfil (`/me`) y es
   el mismo en todos los rollos, sin ser único. Además hay un **username único** (`@juanifraga`, minúsculas, `a-z 0-9 . _`, 3–30; `src/lib/username.ts`). Crear un viaje o unirse requiere nombre y username en el perfil; unirse es solo
   el código de 6 caracteres (idempotente; si el admin te sacó, 403). Cuenta de App Review: `REVIEW_EMAIL`/`REVIEW_CODE`.
@@ -41,7 +41,7 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 ```
 src/index.ts          app, /openapi.json, /docs, manejo de errores
 src/schemas.ts        contrato (zod + OpenAPI)
-src/lib/              auth, openapi helpers, r2 (presign), util (fechas, revelado, códigos)
+src/lib/              auth, openapi helpers, r2 (presign), util (fechas, revelado), login-code (códigos)
 src/routes/           auth.ts, me.ts, trips.ts, media.ts
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales

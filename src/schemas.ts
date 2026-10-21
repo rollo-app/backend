@@ -72,7 +72,15 @@ const emailField = z
 export const EmailStartSchema = z.object({ email: emailField }).openapi("EmailStartRequest");
 
 export const EmailVerifySchema = z
-  .object({ email: emailField, code: z.string().trim().max(16).openapi({ example: "123456" }) })
+  .object({ email: emailField, code: z
+      .string()
+      .trim()
+      .max(16)
+      .openapi({
+        example: "K7M2QX",
+        description:
+          "6-character code from the email (letters and digits, no 0/O/1/I/L). Case-insensitive; spaces and dashes are ignored",
+      }) })
   .openapi("EmailVerifyRequest");
 
 export const AuthSessionSchema = z
