@@ -10,17 +10,18 @@ import {
   pairKey,
 } from "../lib/friend-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
-import { avatarUrl } from "../lib/util";
+import { avatarUrl, isRevealed } from "../lib/util";
 import {
   ClaimFriendLinkSchema,
   ClaimResponseSchema,
   FriendLinkSchema,
   FriendParams,
+  FriendProfileSchema,
   FriendResponseSchema,
   FriendsSchema,
   RedeemFriendSchema,
 } from "../schemas";
-import type { AppEnv } from "../types";
+import type { AppEnv, TripRow } from "../types";
 
 const friends = createApp();
 export const friendLinks = createApp();
@@ -227,6 +228,62 @@ friends.openapi(listRoute, async (c) => {
     .bind(id)
     .all<PublicFriendRow>();
   return c.json({ friends: results.map(publicFriend) }, 200);
+});
+
+// ---------- Profile ----------
+
+const profileRoute = createRoute({
+  method: "get",
+  path: "/{userId}",
+  tags,
+  summary: "A friend's profile",
+  description:
+    "The friend and the rollos both of you are active members of (neither left nor was removed), most recent start first. " +
+    "404 if you are not friends, also for an unknown id or your own.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  request: { params: FriendParams },
+  responses: { 200: json(FriendProfileSchema, "Friend profile"), ...errors(401, 404) },
+});
+
+friends.openapi(profileRoute, async (c) => {
+  const me = c.get("user").id;
+  const friendId = c.req.valid("param").userId;
+  const [a, b] = pairKey(me, friendId);
+  // Yourself is never a friendship row (redeem skips it), so it falls into the same 404.
+  const friend = await c.env.DB.prepare(
+    `SELECT u.id, u.name, u.username, u.avatar_key
+     FROM friendships f JOIN users u ON u.id = ?3
+     WHERE f.user_a = ?1 AND f.user_b = ?2`,
+  )
+    .bind(a, b, friendId)
+    .first<PublicFriendRow>();
+  if (!friend) throw new HTTPException(404, { message: "No es tu amigo" });
+
+  const now = Date.now();
+  const { results } = await c.env.DB.prepare(
+    `SELECT t.*
+     FROM trips t
+     JOIN members mine ON mine.trip_id = t.id AND mine.user_id = ?1 AND mine.removed_at IS NULL AND mine.left_at IS NULL
+     JOIN members theirs ON theirs.trip_id = t.id AND theirs.user_id = ?2 AND theirs.removed_at IS NULL AND theirs.left_at IS NULL
+     ORDER BY t.starts_at DESC, t.id`,
+  )
+    .bind(me, friendId)
+    .all<TripRow>();
+
+  return c.json(
+    {
+      friend: publicFriend(friend),
+      commonTrips: results.map((t) => ({
+        id: t.id,
+        name: t.name,
+        startsAt: t.starts_at,
+        endsAt: t.ends_at,
+        revealed: isRevealed(t, now),
+      })),
+    },
+    200,
+  );
 });
 
 // ---------- Remove ----------

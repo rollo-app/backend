@@ -255,6 +255,25 @@ export const RedeemFriendSchema = z
 
 export const FriendResponseSchema = z.object({ friend: FriendSchema }).openapi("FriendResponse");
 
+export const CommonTripSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    startsAt: epochMs("Trip start"),
+    endsAt: epochMs("Trip end"),
+    revealed: z.boolean(),
+  })
+  .openapi("CommonTrip");
+
+export const FriendProfileSchema = z
+  .object({
+    friend: FriendSchema,
+    commonTrips: z.array(CommonTripSchema).openapi({
+      description: "Rollos both of you are active members of, most recent start first",
+    }),
+  })
+  .openapi("FriendProfile");
+
 export const AddMembersSchema = z
   .object({
     friendIds: z.array(z.string().min(1).max(64)).min(1).max(50).openapi({ description: "User ids of your friends (1 to 50)" }),

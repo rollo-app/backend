@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { api, DAY, signUp } from "./helpers";
+import { api, befriend, createTrip, DAY, join, signUp } from "./helpers";
 
 const link = async (token: string) => (await api("POST", "/friends/link", { token })).body as { code: string; expiresAt: number };
 const friendsOf = async (token: string) => (await api("GET", "/friends", { token })).body.friends as any[];
@@ -216,5 +216,104 @@ describe("friend links", () => {
     const { claimToken } = (await api("POST", "/friend-links/claim", { body: { code } })).body;
     await link(a.token);
     expect((await api("POST", "/friends/redeem", { token: b.token, body: { claimToken } })).status).toBe(200);
+  });
+});
+
+describe("friend profile", () => {
+  const NOT_FRIEND = "No es tu amigo";
+  const profile = (token: string, userId: string) => api("GET", `/friends/${userId}`, { token });
+
+  async function friendsWithSharedTrip() {
+    const a = await signUp(undefined, "Juani");
+    const b = await signUp(undefined, "Cami");
+    await befriend(a.token, b.token);
+    const shared = await createTrip(a.token, { name: "Bariloche" });
+    await join(shared.code, b.token);
+    return { a, b, shared };
+  }
+
+  /** Creates a rollo as `adminToken`, joins `memberToken` and only then sets the dates (joining a revealed rollo is a 409). */
+  async function sharedTrip(adminToken: string, memberToken: string, name: string, dates: { startsAt: number; endsAt: number; revealAt: number }) {
+    const trip = await createTrip(adminToken, { name });
+    await join(trip.code, memberToken);
+    await env.DB.prepare("UPDATE trips SET starts_at = ?, ends_at = ?, reveal_at = ? WHERE id = ?")
+      .bind(dates.startsAt, dates.endsAt, dates.revealAt, trip.tripId)
+      .run();
+    return trip;
+  }
+
+  it("returns the friend and only the rollos both are members of", async () => {
+    const { a, b, shared } = await friendsWithSharedTrip();
+    await createTrip(a.token, { name: "Solo de Juani" });
+    await createTrip(b.token, { name: "Solo de Cami" });
+
+    const res = await profile(a.token, b.userId);
+    expect(res.status).toBe(200);
+    expect(res.body.friend).toEqual({ id: b.userId, name: "Cami", username: expect.any(String), avatarUrl: null });
+    expect(res.body.commonTrips).toEqual([
+      { id: shared.tripId, name: "Bariloche", startsAt: expect.any(Number), endsAt: expect.any(Number), revealed: false },
+    ]);
+    // Symmetric: the friend sees the same rollo in common.
+    expect((await profile(b.token, a.userId)).body.commonTrips.map((t: { id: string }) => t.id)).toEqual([shared.tripId]);
+  });
+
+  it("leaves out a rollo the friend left or was removed from, and one you left", async () => {
+    const { a, b, shared } = await friendsWithSharedTrip();
+    const removedFrom = await createTrip(a.token, { name: "Lo sacaron" });
+    const { memberId } = await join(removedFrom.code, b.token);
+    const youLeft = await createTrip(b.token, { name: "Te saliste" });
+    await join(youLeft.code, a.token);
+
+    expect((await api("DELETE", `/trips/${shared.tripId}/members/me`, { token: b.token })).status).toBe(204);
+    expect((await api("DELETE", `/trips/${removedFrom.tripId}/members/${memberId}`, { token: a.token })).status).toBe(204);
+    expect((await api("DELETE", `/trips/${youLeft.tripId}/members/me`, { token: a.token })).status).toBe(204);
+
+    const res = await profile(a.token, b.userId);
+    expect(res.status).toBe(200);
+    expect(res.body.commonTrips).toEqual([]);
+  });
+
+  it("answers the same 404 for a non friend, an unknown id and yourself", async () => {
+    const { a } = await friendsWithSharedTrip();
+    const stranger = await signUp();
+    const shared = await createTrip(a.token);
+    await join(shared.code, stranger.token);
+
+    for (const id of [stranger.userId, crypto.randomUUID(), "not-a-uuid", a.userId]) {
+      const res = await profile(a.token, id);
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe(NOT_FRIEND);
+    }
+  });
+
+  it("requires a session", async () => {
+    const { b } = await friendsWithSharedTrip();
+    expect((await api("GET", `/friends/${b.userId}`)).status).toBe(401);
+  });
+
+  it("reports revealed like GET /me/trips", async () => {
+    const { a, b } = await friendsWithSharedTrip();
+    const now = Date.now();
+    const byDate = await sharedTrip(a.token, b.token, "Revelado por fecha", { startsAt: now - 10 * DAY, endsAt: now - 5 * DAY, revealAt: now - 4 * DAY });
+    const byAdmin = await createTrip(a.token, { name: "Revelado a mano", startsAt: now - 3 * DAY });
+    await join(byAdmin.code, b.token);
+    expect((await api("POST", `/trips/${byAdmin.tripId}/reveal`, { token: a.token })).status).toBe(200);
+
+    const mine = (await api("GET", "/me/trips", { token: a.token })).body.trips as { id: string; revealed: boolean }[];
+    const common = (await profile(a.token, b.userId)).body.commonTrips as { id: string; revealed: boolean }[];
+    expect(common).toHaveLength(3);
+    for (const t of common) expect(t.revealed).toBe(mine.find((m) => m.id === t.id)!.revealed);
+    expect(common.find((t) => t.id === byDate.tripId)!.revealed).toBe(true);
+    expect(common.find((t) => t.id === byAdmin.tripId)!.revealed).toBe(true);
+  });
+
+  it("orders the rollos in common by start, most recent first", async () => {
+    const { a, b, shared } = await friendsWithSharedTrip(); // starts yesterday
+    const now = Date.now();
+    const older = await sharedTrip(a.token, b.token, "Viejo", { startsAt: now - 20 * DAY, endsAt: now - 15 * DAY, revealAt: now - 14 * DAY });
+    const newer = await sharedTrip(a.token, b.token, "Nuevo", { startsAt: now + DAY, endsAt: now + 3 * DAY, revealAt: now + 4 * DAY });
+
+    const common = (await profile(a.token, b.userId)).body.commonTrips as { id: string; startsAt: number }[];
+    expect(common.map((t) => t.id)).toEqual([newer.tripId, shared.tripId, older.tripId]);
   });
 });
