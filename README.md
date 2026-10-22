@@ -4,22 +4,29 @@ Backend de **Rollo**: Cloudflare Workers + Hono + D1 (SQLite) + R2.
 
 ```
 src/
-  index.ts          app, errores, montaje de rutas
+  index.ts          app, errores, montaje de rutas, /openapi.json y /docs
+  schemas.ts        contrato de la API (zod → validación, tipos y OpenAPI)
   types.ts          tipos de Env y filas de la base
-  lib/auth.ts       tokens (solo se guarda el hash) y middlewares member/admin
+  lib/auth.ts       sesiones (solo se guarda el hash) y middlewares user/member/admin
   lib/r2.ts         URLs prefirmadas para subir directo a R2
   lib/util.ts       fecha local del viaje, revelado, códigos
-  lib/validate.ts   validación con zod y errores simples
-  routes/trips.ts   crear, unirse, info, editar, revelar, sacar miembros
+  lib/openapi.ts    app con validación por contrato y helpers de respuestas
+  routes/trips.ts   crear, unirse, info, editar, revelar, sacar miembros, sumar amigos, salirse
+  routes/friends.ts link de amistad (1 h), canje, lista de amigos
   routes/media.ts   registrar, confirmar subida, feed, descargar, borrar
 migrations/
   0001_init.sql     trips, members, media
+  0006_friends.sql  amistades, links, claims, intentos; members.left_at
+scripts/
+  export-openapi.ts genera openapi.json
+openapi.json        contrato versionado (lo consume la app mobile)
 test/
   setup.ts          base y bucket vacíos + migraciones antes de cada test
   helpers.ts        api(), createTrip(), join(), uploadMedia()...
   util.test.ts      unitarios: fechas, revelado, tokens, URLs firmadas
   trips.test.ts     integración: viajes, auth, admin, revelado
   media.test.ts     integración: registro, límites, subida, feed, descargas
+  openapi.test.ts   contrato: endpoints, auth, modelos y respuestas reales
 ```
 
 ## Tests
@@ -91,15 +98,33 @@ npm run db:migrate:remote
 npm run deploy                   # queda en https://rollo-api.juanifraga.com
 ```
 
+## Contrato (OpenAPI)
+
+La API se define con esquemas de zod en `src/schemas.ts` y rutas de `@hono/zod-openapi`.
+De ahí salen la validación de requests, los tipos de las respuestas y el contrato:
+
+- `GET /openapi.json`: el contrato OpenAPI 3.1.
+- `GET /docs`: documentación interactiva para probar los endpoints.
+- `openapi.json` en la raíz: el mismo contrato versionado. La app mobile genera su cliente desde acá.
+
+**Si cambiás la API, corré `npm run openapi` y commiteá el archivo.** Hay un test que falla si el
+`openapi.json` versionado no coincide con el código, así que el CI no te deja olvidarlo.
+
 ## API
 
-Todas las rutas salvo crear y unirse llevan `Authorization: Bearer <token>`.
+Todas las rutas salvo `/auth/email/*` llevan `Authorization: Bearer <token de sesión>`.
 Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 
 | Método | Ruta | Quién | Qué hace |
 |---|---|---|---|
-| POST | `/trips` | cualquiera | Crea el viaje; devuelve código y token de admin |
-| POST | `/trips/join` | cualquiera | `{code, name}` → token de miembro |
+| POST | `/auth/email/start` | cualquiera | `{email}` → manda un código de 6 caracteres (letras y números, vence a los 5 min) (204) |
+| POST | `/auth/email/verify` | cualquiera | `{email, code}` → `{token, user, isNew}` |
+| POST | `/auth/logout` | sesión | Cierra la sesión actual |
+| GET / PATCH | `/me` | sesión | Perfil (`{name, username}` para editar; el username es único) |
+| GET | `/usernames/{username}` | sesión | `{available, username}` (normalizado); 400 si el formato es inválido |
+| GET | `/me/trips` | sesión | Mis rollos |
+| POST | `/trips` | sesión | Crea el viaje (requiere nombre en el perfil); devuelve el código |
+| POST | `/trips/join` | sesión | `{code}` → 201 si te uniste, 200 si ya eras miembro |
 | GET | `/trips/:tripId` | miembro | Viaje, miembros, fotos/videos que te quedan hoy |
 | PATCH | `/trips/:tripId` | admin | Nombre, fin, revelado, límites |
 | POST | `/trips/:tripId/reveal` | admin | Revela el rollo ya |

@@ -10,7 +10,7 @@
     {
       "binding": "DB",
       "database_name": "rollo",
-      "database_id": "REEMPLAZAR_CON_EL_ID_DE_D1",
+      "database_id": "13f35fe4-d442-4ff2-a0fc-e895537561ef",
       "migrations_dir": "migrations"
     }
   ],
@@ -24,7 +24,8 @@
   ],
 
   "vars": {
-    "R2_BUCKET_NAME": "rollo-media"
+    "R2_BUCKET_NAME": "rollo-media",
+    "EMAIL_FROM": "Rollo <rollo@juanifraga.com>"
   },
 
   // Dominio propio. Un solo nivel de subdominio para que lo cubra el
@@ -35,4 +36,7 @@
 
   // Secrets (no van acá; se cargan con `npx wrangler secret put <NOMBRE>`):
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+  // Opcionales:
+  //   RESEND_API_KEY            envío de los códigos de login (sin esto solo se loguean en consola)
+  //   REVIEW_EMAIL, REVIEW_CODE cuenta para App Review: a ese email no se le manda nada y REVIEW_CODE es su código
 }

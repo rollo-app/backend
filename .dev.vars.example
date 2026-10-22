@@ -1,3 +1,12 @@
 R2_ACCOUNT_ID=tu_account_id
 R2_ACCESS_KEY_ID=tu_access_key
 R2_SECRET_ACCESS_KEY=tu_secret
+
+# Subidas al R2 local en `npm run dev` (nunca en producción)
+DEV_LOCAL_UPLOADS=1
+
+# Opcionales. Sin RESEND_API_KEY el código de login aparece en la consola de wrangler.
+# RESEND_API_KEY=re_xxx
+# Cuenta de App Review (a ese email no se le manda nada; REVIEW_CODE es su código)
+# REVIEW_EMAIL=review@example.com
+# REVIEW_CODE=K7M2QX
