@@ -514,6 +514,10 @@ export const FeedItemSchema = z
     featureBlocked: z.boolean().optional().openapi({
       description: "Only after the reveal: the author does not let others feature it (they still can)",
     }),
+    likeCount: z.number().int().optional().openapi({
+      description: "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos",
+    }),
+    likedByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you like it" }),
   })
   .openapi("FeedItem");
 
@@ -555,6 +559,8 @@ export const FeaturedPhotoSchema = z
     zone: ZoneSchema.nullable().openapi({ description: "null if the photo has no GPS" }),
     thumbPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/thumb" }),
     originalPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/original" }),
+    likeCount: z.number().int().openapi({ description: "How many people like it (the same counter as in its rollo)" }),
+    likedByMe: z.boolean().openapi({ description: "You like it" }),
   })
   .openapi("FeaturedPhoto", {
     description: "A photo on someone's profile. Never includes the rollo, the caption or the exact location",

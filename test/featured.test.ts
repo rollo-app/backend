@@ -200,7 +200,7 @@ describe("GET /users/{userId}/featured", () => {
     expect(Object.keys(res.body)).toEqual(["photos"]);
     const [photo] = res.body.photos;
     expect(Object.keys(photo).sort()).toEqual(
-      ["author", "height", "mediaId", "originalPath", "takenAt", "thumbPath", "thumbhash", "width", "zone"].sort(),
+      ["author", "height", "likeCount", "likedByMe", "mediaId", "originalPath", "takenAt", "thumbPath", "thumbhash", "width", "zone"].sort(),
     );
     expect(Object.keys(photo.author).sort()).toEqual(["avatarUrl", "id", "name", "username"]);
     expect(photo).toMatchObject({

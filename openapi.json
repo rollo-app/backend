@@ -1415,6 +1415,14 @@
           "featureBlocked": {
             "type": "boolean",
             "description": "Only after the reveal: the author does not let others feature it (they still can)"
+          },
+          "likeCount": {
+            "type": "integer",
+            "description": "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos"
+          },
+          "likedByMe": {
+            "type": "boolean",
+            "description": "Only after the reveal: you like it"
           }
         },
         "required": [
@@ -1518,6 +1526,14 @@
           "originalPath": {
             "type": "string",
             "example": "/featured/<userId>/<mediaId>/original"
+          },
+          "likeCount": {
+            "type": "integer",
+            "description": "How many people like it (the same counter as in its rollo)"
+          },
+          "likedByMe": {
+            "type": "boolean",
+            "description": "You like it"
           }
         },
         "required": [
@@ -1529,7 +1545,9 @@
           "author",
           "zone",
           "thumbPath",
-          "originalPath"
+          "originalPath",
+          "likeCount",
+          "likedByMe"
         ],
         "description": "A photo on someone's profile. Never includes the rollo, the caption or the exact location"
       },
@@ -3565,7 +3583,7 @@
           "Media"
         ],
         "summary": "Trip feed",
-        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, and its likes (`likeCount`, `likedByMe`). Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
         "security": [
           {
             "bearerAuth": []
@@ -4005,7 +4023,7 @@
           "Featured"
         ],
         "summary": "A user's featured photos",
-        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos you reported or by authors you blocked, and photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
+        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, its author when it is not the owner, and its likes; never the rollo or the caption. Photos you reported or by authors you blocked, and photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
         "security": [
           {
             "bearerAuth": []
@@ -4151,6 +4169,102 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{mediaId}/like": {
+      "put": {
+        "tags": [
+          "Likes"
+        ],
+        "summary": "Like a photo",
+        "description": "Idempotent. Whoever can see the photo can like it: an active member of its rollo once it is revealed, or anyone who can see a profile where it is featured. Otherwise 404 (also with a block with its author); 400 for a video. Notifies the author (`photoLiked`) at most once every 30 minutes per photo: the likes in between are counted and added to the next push (\"A Cami y 3 más les gustó tu foto\").",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Liked"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Likes"
+        ],
+        "summary": "Remove your like from a photo",
+        "description": "Idempotent: 204 also if you did not like it (or the photo does not exist). Never notifies.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Not liked anymore"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {

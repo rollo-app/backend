@@ -9,6 +9,7 @@ import auth from "./routes/auth";
 import blocks from "./routes/blocks";
 import featured from "./routes/featured";
 import friends, { friendLinks } from "./routes/friends";
+import likes from "./routes/likes";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
@@ -41,6 +42,7 @@ app.route("/friend-links", friendLinks);
 app.route("/trips", trips);
 app.route("/", media);
 app.route("/", featured);
+app.route("/", likes);
 
 // Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {

@@ -145,7 +145,7 @@ const listRoute = createRoute({
   summary: "A user's featured photos",
   description:
     "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. " +
-    "Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. " +
+    "Each photo carries a ~5 km zone instead of its location, its author when it is not the owner, and its likes; never the rollo or the caption. " +
     "Photos you reported or by authors you blocked, and photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
   security: bearerAuth,
   middleware: [requireUser] as const,
@@ -159,16 +159,19 @@ featured.openapi(listRoute, async (c) => {
 
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.taken_at, m.width, m.height, m.thumbhash, m.lat, m.lng,
-            author.user_id AS author_user_id, u.name AS author_name, u.username AS author_username, u.avatar_key AS author_avatar_key
+            author.user_id AS author_user_id, u.name AS author_name, u.username AS author_username, u.avatar_key AS author_avatar_key,
+            (SELECT COUNT(*) FROM likes l WHERE l.media_id = m.id) AS like_count,
+            EXISTS (SELECT 1 FROM likes ml WHERE ml.media_id = m.id AND ml.user_id = ?) AS liked_by_me
      FROM ${VISIBLE_FROM} JOIN users u ON u.id = author.user_id
      WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND ${hiddenMediaSql("m", "author")}
      ORDER BY m.taken_at DESC, m.id`,
   )
-    .bind(Date.now(), owner.id, viewerId, viewerId)
+    .bind(viewerId, Date.now(), owner.id, viewerId, viewerId)
     .all<{
       id: string; taken_at: number; width: number | null; height: number | null; thumbhash: string | null;
       lat: number | null; lng: number | null;
       author_user_id: string; author_name: string | null; author_username: string | null; author_avatar_key: string | null;
+      like_count: number; liked_by_me: number;
     }>();
 
   const photos = results.map((r) => ({
@@ -189,6 +192,8 @@ featured.openapi(listRoute, async (c) => {
     zone: zoneOf(r.lat, r.lng),
     thumbPath: `/featured/${owner.id}/${r.id}/thumb`,
     originalPath: `/featured/${owner.id}/${r.id}/original`,
+    likeCount: r.like_count,
+    likedByMe: r.liked_by_me === 1,
   }));
   return c.json({ photos }, 200);
 });
