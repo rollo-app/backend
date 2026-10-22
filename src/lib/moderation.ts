@@ -24,3 +24,22 @@ export function hiddenMediaSql(mediaAlias: string, authorMemberAlias: string): s
     ` AND ${authorMemberAlias}.user_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?))`
   );
 }
+
+/** Most moderation emails (reports + blocks) per user per rolling 24 hours; beyond it they are stored but not emailed. */
+export const MODERATION_EMAILS_PER_DAY = 10;
+
+/**
+ * Whether a moderation email may be sent for this user. Call after inserting the new report/block row,
+ * so the count includes it: the 10th is still emailed, the 11th is not.
+ */
+export async function withinModerationEmailCap(db: D1Database, userId: string): Promise<boolean> {
+  const since = Date.now() - 24 * 60 * 60 * 1000;
+  const row = await db
+    .prepare(
+      `SELECT (SELECT COUNT(*) FROM reports WHERE reporter_id = ?1 AND created_at > ?2) +
+              (SELECT COUNT(*) FROM blocks WHERE blocker_id = ?1 AND created_at > ?2) AS n`,
+    )
+    .bind(userId, since)
+    .first<{ n: number }>();
+  return (row?.n ?? 0) <= MODERATION_EMAILS_PER_DAY;
+}

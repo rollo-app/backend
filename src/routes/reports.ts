@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
 import { sendReportEmail } from "../lib/email";
+import { withinModerationEmailCap } from "../lib/moderation";
 import { bearerAuth, createApp, errors } from "../lib/openapi";
 import { canSeeProfile } from "../lib/profile-access";
 import { presignGet } from "../lib/r2";
@@ -18,7 +19,7 @@ const route = createRoute({
   summary: "Report a photo or a person",
   description:
     "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. " +
-    "A reported photo disappears from the reporter's own views. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+    "A reported photo disappears from the reporter's own views (and from their featured photos). At most 10 reports and blocks per user per 24 hours are emailed to support; the rest are stored without email. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateReportSchema } }, required: true } },
@@ -72,7 +73,10 @@ reports.openapi(route, async (c) => {
     .run();
 
   if (inserted.meta.changes === 1) {
+    // A reported photo also leaves the reporter's own featured list (and its cap).
+    if (media) await db.prepare("DELETE FROM featured WHERE user_id = ? AND media_id = ?").bind(viewer.id, media.id).run();
     try {
+      if (!(await withinModerationEmailCap(db, viewer.id))) return c.body(null, 204);
       const trip = media ? await db.prepare("SELECT name FROM trips WHERE id = ?").bind(media.trip_id).first<{ name: string }>() : null;
       await sendReportEmail(c.env, {
         reason,

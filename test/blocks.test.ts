@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { devSentBlocks } from "../src/lib/email";
 import { hiddenMediaSql } from "../src/lib/moderation";
 import { photoWithMetadata } from "./jpeg-fixture";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
@@ -263,5 +264,81 @@ describe("blocked pair sees a header-only profile", () => {
       expect(profile.body.friendCount).toBe(1);
       expect(profile.body.canSee).toBe(false);
     }
+  });
+});
+
+describe("blocking and featured photos / emails", () => {
+  it("blocking removes the blocked author's photos from the blocker's featured list", async () => {
+    const trip = await newTrip({ dailyPhotoLimit: 10 });
+    const a = { token: trip.adminToken, userId: trip.adminUserId };
+    const b = await joinAs(trip.code, "Beto");
+    const d = await joinAs(trip.code, "Dani");
+    const photo = await uploadMedia(trip.tripId, b.token);
+    const own = await uploadMedia(trip.tripId, a.token);
+    await env.MEDIA.put(`trips/${trip.tripId}/${photo}/thumb.jpg`, photoWithMetadata("x", "Beto"));
+    await env.MEDIA.put(`trips/${trip.tripId}/${own}/thumb.jpg`, photoWithMetadata("x", "Ana"));
+    await api("POST", `/trips/${trip.tripId}/reveal`, { token: a.token });
+    await api("PUT", `/me/featured/${photo}`, { token: a.token });
+    await api("PUT", `/me/featured/${own}`, { token: a.token });
+    await befriend(a.token, d.token);
+
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+    const list = ((await api("GET", `/users/${a.userId}/featured`, { token: d.token })).body.photos as any[]).map((p) => p.mediaId);
+    expect(list).toEqual([own]);
+    const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM featured WHERE user_id = ?").bind(a.userId).first<{ n: number }>();
+    expect(row!.n).toBe(1);
+  });
+
+  it("a new block emails support once; repeating it does not", async () => {
+    devSentBlocks.length = 0;
+    const a = await signUp(undefined, "Ana", "ana_b");
+    const b = await signUp(undefined, "Beto", null);
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+    expect(devSentBlocks).toHaveLength(1);
+    expect(devSentBlocks[0]!.blocker.id).toBe(a.userId);
+    expect(devSentBlocks[0]!.blocked.id).toBe(b.userId);
+    expect(devSentBlocks[0]!.adminBase).toBe("https://rollo.test");
+  });
+
+  it("the block email has the exact subject, the delete command and survives a Resend failure", async () => {
+    const realFetch = globalThis.fetch;
+    const a = await signUp(undefined, "Ana", "ana_c");
+    const b = await signUp(undefined, "Beto", null);
+    let sent: any;
+    let fail = false;
+    globalThis.fetch = (async (input: any, init?: any) => {
+      const url = typeof input === "string" ? input : (input.url ?? String(input));
+      if (url.startsWith("https://api.resend.com")) {
+        sent = JSON.parse(init.body);
+        return new Response("boom", { status: fail ? 500 : 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const res = await api("PUT", `/blocks/${b.userId}`, { token: a.token, env: { RESEND_API_KEY: "x" } });
+      expect(res.status).toBe(204);
+      expect(sent.subject).toBe("Bloqueo en Rollo: @ana_c bloqueó a Beto");
+      expect(sent.text).toContain(`/admin/users/${b.userId}`);
+      expect(sent.text).toContain("$ROLLO_ADMIN_TOKEN");
+
+      fail = true;
+      const c = await signUp();
+      const res2 = await api("PUT", `/blocks/${c.userId}`, { token: a.token, env: { RESEND_API_KEY: "x" } });
+      expect(res2.status).toBe(204);
+      expect((await blockedOf(a.token)).map((u) => u.id)).toContain(c.userId);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("GET /me/trips cover ignores photos by authors you blocked", async () => {
+    const trip = await newTrip({ dailyPhotoLimit: 10 });
+    const b = await joinAs(trip.code, "Beto");
+    await uploadMedia(trip.tripId, trip.adminToken, { takenAt: Date.now() - 3 * 3600_000, thumbhash: "b2xkZXN0" });
+    await uploadMedia(trip.tripId, b.token, { takenAt: Date.now() - 3600_000, thumbhash: "bmV3ZXN0" });
+    expect((await api("GET", "/me/trips", { token: trip.adminToken })).body.trips[0].coverThumbhash).toBe("bmV3ZXN0");
+    await api("PUT", `/blocks/${b.userId}`, { token: trip.adminToken });
+    expect((await api("GET", "/me/trips", { token: trip.adminToken })).body.trips[0].coverThumbhash).toBe("b2xkZXN0");
   });
 });

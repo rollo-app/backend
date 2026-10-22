@@ -54,38 +54,12 @@ const REASON_LABELS: Record<string, string> = {
 const handle = (p: Person) => (p.username ? `@${p.username}` : (p.name ?? p.email));
 const describePerson = (p: Person) => `${p.name ?? "(sin nombre)"} (${p.username ? `@${p.username}` : "sin usuario"}), ${p.email}, id ${p.id}`;
 
-/** Emails a report to support. Without `RESEND_API_KEY` it only logs it (and keeps it in `devSentReports`). Throws if Resend fails. */
-export async function sendReportEmail(env: Env, report: ReportEmail): Promise<void> {
-  const subject = report.media
-    ? `Denuncia en Rollo: ${report.media.type === "video" ? "video" : "foto"} de ${handle(report.target)}`
-    : `Denuncia en Rollo: ${handle(report.target)}`;
-  const adminCurl = (path: string) => `curl -X DELETE -H "Authorization: Bearer $ROLLO_ADMIN_TOKEN" ${report.adminBase}${path}`;
+/** Emails sent to support without a Resend key (local dev and tests): reports and blocks. */
+export const devSentBlocks: BlockEmail[] = [];
 
-  const lines = [
-    `Motivo: ${REASON_LABELS[report.reason] ?? report.reason}`,
-    `Denunció: ${describePerson(report.reporter)}`,
-    `Denunciado: ${describePerson(report.target)}`,
-  ];
-  if (report.trip) lines.push(`Rollo: ${report.trip.name}`);
-  if (report.media) {
-    lines.push(
-      `${report.media.type === "video" ? "Video" : "Foto"}: ${report.media.url}`,
-      `Epígrafe: ${report.media.caption ?? "(sin epígrafe)"}`,
-      `Sacada: ${new Date(report.media.takenAt).toISOString()}`,
-      "",
-      "Borrar el archivo:",
-      adminCurl(`/admin/media/${report.media.id}`),
-    );
-  }
-  lines.push("", "Borrar la cuenta:", adminCurl(`/admin/users/${report.target.id}`));
-  const text = lines.join("\n");
+export type BlockEmail = { blocker: Person; blocked: Person; adminBase: string };
 
-  if (!env.RESEND_API_KEY) {
-    console.log(`[report] ${subject}\n${text}`);
-    devSentReports.push(report);
-    return;
-  }
-
+async function deliverToSupport(env: Env, subject: string, text: string): Promise<void> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
@@ -97,4 +71,60 @@ export async function sendReportEmail(env: Env, report: ReportEmail): Promise<vo
     }),
   });
   if (!res.ok) throw new Error(`Resend responded ${res.status}`);
+}
+
+const adminCurlFor = (adminBase: string, path: string) => `curl -X DELETE -H "Authorization: Bearer $ROLLO_ADMIN_TOKEN" ${adminBase}${path}`;
+
+/**
+ * Emails a report to support. Without `RESEND_API_KEY` it only logs it (and keeps it in `devSentReports`). Throws if Resend fails.
+ * The admin commands come first and user-provided text (names, caption) last and quoted, so it cannot imitate a command.
+ */
+export async function sendReportEmail(env: Env, report: ReportEmail): Promise<void> {
+  const subject = report.media
+    ? `Denuncia en Rollo: ${report.media.type === "video" ? "video" : "foto"} de ${handle(report.target)}`
+    : `Denuncia en Rollo: ${handle(report.target)}`;
+
+  const lines: string[] = [];
+  if (report.media) lines.push("Borrar el archivo:", adminCurlFor(report.adminBase, `/admin/media/${report.media.id}`), "");
+  lines.push("Borrar la cuenta:", adminCurlFor(report.adminBase, `/admin/users/${report.target.id}`), "");
+  lines.push(
+    `Motivo: ${REASON_LABELS[report.reason] ?? report.reason}`,
+    `Denunció: ${describePerson(report.reporter)}`,
+    `Denunciado: ${describePerson(report.target)}`,
+  );
+  if (report.trip) lines.push(`Rollo: ${report.trip.name}`);
+  if (report.media) {
+    lines.push(
+      `${report.media.type === "video" ? "Video" : "Foto"}: ${report.media.url}`,
+      `Epígrafe: ${report.media.caption === null ? "(sin epígrafe)" : JSON.stringify(report.media.caption)}`,
+      `Sacada: ${new Date(report.media.takenAt).toISOString()}`,
+    );
+  }
+  const text = lines.join("\n");
+
+  if (!env.RESEND_API_KEY) {
+    console.log(`[report] ${subject}\n${text}`);
+    devSentReports.push(report);
+    return;
+  }
+  await deliverToSupport(env, subject, text);
+}
+
+/** Emails support about a new block (App Store guideline 1.2). Same dev/Resend behavior as `sendReportEmail`. */
+export async function sendBlockEmail(env: Env, block: BlockEmail): Promise<void> {
+  const subject = `Bloqueo en Rollo: ${handle(block.blocker)} bloqueó a ${handle(block.blocked)}`;
+  const text = [
+    "Borrar la cuenta del bloqueado:",
+    adminCurlFor(block.adminBase, `/admin/users/${block.blocked.id}`),
+    "",
+    `Bloqueó: ${describePerson(block.blocker)}`,
+    `Bloqueado: ${describePerson(block.blocked)}`,
+  ].join("\n");
+
+  if (!env.RESEND_API_KEY) {
+    console.log(`[block] ${subject}\n${text}`);
+    devSentBlocks.push(block);
+    return;
+  }
+  await deliverToSupport(env, subject, text);
 }

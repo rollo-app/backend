@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { deleteAccount } from "../lib/account";
 import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { hiddenMediaSql } from "../lib/moderation";
 import { presignPut } from "../lib/r2";
 import { isRevealed, publicUser } from "../lib/util";
 import { USERNAME_TAKEN_MESSAGE } from "../lib/username";
@@ -146,7 +147,7 @@ const deleteMeRoute = createRoute({
     "your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. " +
     "If you were the admin, the oldest remaining active member becomes admin. " +
     "If no active members remain, the whole rollo is deleted with all its files. " +
-    "Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
+    "Your reports and blocks (made and received) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
     "The same email can sign up again later as a brand-new user.",
   security: bearerAuth,
   middleware: [requireUser] as const,
@@ -174,13 +175,14 @@ me.openapi(myTripsRoute, async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT t.*, m.role AS my_role,
             (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL) AS total_uploaded,
-            (SELECT thumbhash FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL AND thumbhash IS NOT NULL
-             ORDER BY taken_at DESC, id DESC LIMIT 1) AS cover_thumbhash
+            (SELECT cm.thumbhash FROM media cm JOIN members cmem ON cmem.id = cm.member_id
+             WHERE cm.trip_id = t.id AND cm.status = 'uploaded' AND cm.deleted_at IS NULL AND cm.thumbhash IS NOT NULL AND ${hiddenMediaSql("cm", "cmem")}
+             ORDER BY cm.taken_at DESC, cm.id DESC LIMIT 1) AS cover_thumbhash
      FROM members m JOIN trips t ON t.id = m.trip_id
      WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL
      ORDER BY t.starts_at DESC`,
   )
-    .bind(c.get("user").id)
+    .bind(c.get("user").id, c.get("user").id, c.get("user").id)
     .all<TripRow & { my_role: Role; total_uploaded: number; cover_thumbhash: string | null }>();
 
   return c.json(

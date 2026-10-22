@@ -1,6 +1,8 @@
 import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
+import { sendBlockEmail } from "../lib/email";
+import { withinModerationEmailCap } from "../lib/moderation";
 import { pairKey } from "../lib/friend-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { avatarUrl } from "../lib/util";
@@ -53,7 +55,7 @@ const blockRoute = createRoute({
   tags,
   summary: "Block a user",
   description:
-    "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo.",
+    "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 10 reports and blocks per user per 24 hours are emailed).",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
@@ -64,13 +66,31 @@ blocks.openapi(blockRoute, async (c) => {
   const me = c.get("user").id;
   const target = c.req.valid("param").userId;
   if (target === me) throw new HTTPException(400, { message: "No podés bloquearte" });
-  const exists = await c.env.DB.prepare("SELECT 1 FROM users WHERE id = ?").bind(target).first();
-  if (!exists) throw new HTTPException(404, { message: "No existe ese usuario" });
+  const blocked = await c.env.DB.prepare("SELECT id, email, name, username FROM users WHERE id = ?").bind(target).first<{ id: string; email: string; name: string | null; username: string | null }>();
+  if (!blocked) throw new HTTPException(404, { message: "No existe ese usuario" });
   const [a, b] = pairKey(me, target);
-  await c.env.DB.batch([
+  const [inserted] = await c.env.DB.batch([
     c.env.DB.prepare("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)").bind(me, target, Date.now()),
     c.env.DB.prepare("DELETE FROM friendships WHERE user_a = ? AND user_b = ?").bind(a, b),
+    // Their photos leave the blocker's featured list too (and its cap).
+    c.env.DB.prepare(
+      `DELETE FROM featured WHERE user_id = ? AND media_id IN (
+         SELECT m.id FROM media m JOIN members mem ON mem.id = m.member_id WHERE mem.user_id = ?)`,
+    ).bind(me, target),
   ]);
+  if (inserted!.meta.changes === 1 && (await withinModerationEmailCap(c.env.DB, me))) {
+    try {
+      const blocker = c.get("user");
+      await sendBlockEmail(c.env, {
+        blocker: { id: blocker.id, name: blocker.name, username: blocker.username, email: blocker.email },
+        blocked: { id: blocked.id, name: blocked.name, username: blocked.username, email: blocked.email },
+        adminBase: new URL(c.req.url).origin,
+      });
+    } catch (err) {
+      // The block is already saved; do not fail the request because support was not emailed.
+      console.error("[block] could not email support", err);
+    }
+  }
   return c.body(null, 204);
 });
 
