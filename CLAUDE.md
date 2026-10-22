@@ -95,21 +95,34 @@ URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
 
 ## Estado (octubre 2026)
 
-Hecho: viajes (crear, unirse, detalle, editar, revelar, sacar miembros), media (registrar, confirmar,
-feed, descargar, borrar), contrato OpenAPI, CI.
+Hecho: cuentas por email, perfil y username, amigos, viajes (crear, unirse, detalle, editar, revelar,
+sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar),
+contrato OpenAPI, CI.
 
-**Todavía no está deployado.** Pasos (la cuenta de Cloudflare es de Juani; `wrangler login` lo hace él):
+**Producción** (deployado el 22/10/2026), todo en la cuenta de Cloudflare de Juani:
 
-1. `npx wrangler login`
-2. `npx wrangler d1 create rollo` → pegar el `database_id` en `wrangler.jsonc`
-3. Activar R2 en el dashboard (pide tarjeta; 10 GB gratis) → `npx wrangler r2 bucket create rollo-media`
-4. R2 → Manage API tokens → token Object Read & Write para `rollo-media`
-5. `npx wrangler secret put R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`
-6. `npm run db:migrate:remote && npm run deploy`
+- Worker `rollo-api` en `https://rollo-api.juanifraga.com`. **Se deploya desde `main`** (PR
+  `develop` → `main`; el admin saltea la aprobación desde el PR).
+- D1 `rollo` (región ENAM, id en `wrangler.jsonc`) y bucket R2 `rollo-media`.
+- Secrets del Worker: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (token de R2 con Object
+  Read & Write sobre `rollo-media`) y `RESEND_API_KEY` (Sending access a `juanifraga.com`). Se cargan con
+  `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
+- Mail: dominio `juanifraga.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
+  DMARC `p=none` en `_dmarc`), DNS en Cloudflare. Plan gratis: 100 mails por día y 3.000 por mes.
+- Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
+
+Para deployar una versión nueva, con `main` al día:
+
+```bash
+npm run db:migrate:remote   # si hay migraciones nuevas
+npm run deploy
+```
+
+Logs en vivo: `npx wrangler tail rollo-api`.
 
 ## Próximos pasos del backend
 
-1. Deploy (arriba).
+1. Probar una subida real a R2 en producción (con el primer build de TestFlight).
 2. Lo que pida la etapa de cámara y subida de la app (probablemente nada nuevo).
 3. **Modo viaje:** tabla `prompts`, registro de push tokens de Expo por miembro, cron que cada noche
    sortea para cada miembro un horario del día siguiente (ventana ~10–21 h en la zona del viaje,
