@@ -18,6 +18,9 @@ export type Env = {
 
 export type Role = "admin" | "member";
 
+/** Who can see your bio and featured photos. */
+export type ProfileVisibility = "friends" | "public";
+
 export type TripRow = {
   id: string;
   name: string;
@@ -40,6 +43,7 @@ export type UserRow = {
   avatar_key: string | null;
   pending_avatar_key: string | null;
   bio: string | null;
+  profile_visibility: ProfileVisibility;
   created_at: number;
 };
 
@@ -78,6 +82,8 @@ export type MediaRow = {
   created_at: number;
   uploaded_at: number | null;
   deleted_at: number | null;
+  /** The author does not let others feature this photo. */
+  feature_blocked_at: number | null;
 };
 
 export type AppEnv = {

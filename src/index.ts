@@ -8,6 +8,7 @@ import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
 import trips from "./routes/trips";
+import users from "./routes/users";
 import usernames from "./routes/usernames";
 
 const app = createApp();
@@ -24,6 +25,7 @@ app.route("/auth", auth);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);
+app.route("/users", users);
 app.route("/friends", friends);
 app.route("/friend-links", friendLinks);
 app.route("/trips", trips);

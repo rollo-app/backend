@@ -105,6 +105,9 @@
             ],
             "example": "Viajando por el sur",
             "description": "Profile description (up to 3 lines); null if none"
+          },
+          "profileVisibility": {
+            "$ref": "#/components/schemas/ProfileVisibility"
           }
         },
         "required": [
@@ -113,8 +116,17 @@
           "name",
           "username",
           "avatarUrl",
-          "bio"
+          "bio",
+          "profileVisibility"
         ]
+      },
+      "ProfileVisibility": {
+        "type": "string",
+        "enum": [
+          "friends",
+          "public"
+        ],
+        "description": "Who can see your bio and featured photos: your friends only, or anyone signed in. Name, username and avatar are always visible"
       },
       "EmailVerifyRequest": {
         "type": "object",
@@ -154,6 +166,9 @@
             "type": "string",
             "example": "Viajando por el sur",
             "description": "Profile description, up to 150 characters and 3 lines after trimming. An empty string clears it"
+          },
+          "profileVisibility": {
+            "$ref": "#/components/schemas/ProfileVisibility"
           }
         }
       },
@@ -264,6 +279,74 @@
         "required": [
           "available",
           "username"
+        ]
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/PublicUser"
+          },
+          "isFriend": {
+            "type": "boolean",
+            "description": "Whether you and this user are friends (false for yourself)"
+          },
+          "profileVisibility": {
+            "$ref": "#/components/schemas/ProfileVisibility"
+          },
+          "canSee": {
+            "type": "boolean",
+            "description": "Whether you can see the bio and featured photos: it is you, a friend, or the profile is public"
+          }
+        },
+        "required": [
+          "user",
+          "isFriend",
+          "profileVisibility",
+          "canSee"
+        ]
+      },
+      "PublicUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description; null if none or if you cannot see this profile (canSee is false)"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl",
+          "bio"
         ]
       },
       "FriendLink": {
@@ -1279,7 +1362,7 @@
           "Profile"
         ],
         "summary": "Edit your profile",
-        "description": "Send any of name, username and bio; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it. The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise).",
+        "description": "Send any of name, username, bio and profileVisibility; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it. The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise). profileVisibility is \"friends\" (default) or \"public\"; any other value is a 400.",
         "security": [
           {
             "bearerAuth": []
@@ -1581,6 +1664,62 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{userId}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "A user's profile",
+        "description": "Name, username and avatar are always visible. The bio (and featured photos) only if canSee: it is you, a friend, or the profile is public; otherwise bio is null. Never includes the email. 404 if the user does not exist.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

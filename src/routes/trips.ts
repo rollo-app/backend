@@ -2,7 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
-import { pairKey } from "../lib/friend-code";
+import { areFriends } from "../lib/profile-access";
 import { generateJoinCode, isRevealed, localDate, publicMember, publicTrip } from "../lib/util";
 import {
   AddMembersResponseSchema,
@@ -312,9 +312,7 @@ trips.openapi(addMembersRoute, async (c) => {
       results.push({ userId, status: "already_member" });
       continue;
     }
-    const [a, b] = pairKey(me.id, userId);
-    const friend = await c.env.DB.prepare("SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?").bind(a, b).first();
-    if (!friend) {
+    if (!(await areFriends(c.env.DB, me.id, userId))) {
       results.push({ userId, status: "unavailable" });
       continue;
     }

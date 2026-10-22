@@ -34,6 +34,10 @@ export const TripSchema = z
   })
   .openapi("Trip");
 
+export const ProfileVisibilitySchema = z.enum(["friends", "public"]).openapi("ProfileVisibility", {
+  description: "Who can see your bio and featured photos: your friends only, or anyone signed in. Name, username and avatar are always visible",
+});
+
 export const UserSchema = z
   .object({
     id: z.string().uuid(),
@@ -47,6 +51,7 @@ export const UserSchema = z
       description: "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none",
     }),
     bio: z.string().nullable().openapi({ example: "Viajando por el sur", description: "Profile description (up to 3 lines); null if none" }),
+    profileVisibility: ProfileVisibilitySchema,
   })
   .openapi("User");
 
@@ -151,7 +156,12 @@ export const bioField = z
   });
 
 export const UpdateProfileSchema = z
-  .object({ name: personName.optional(), username: usernameField.optional(), bio: bioField.optional() })
+  .object({
+    name: personName.optional(),
+    username: usernameField.optional(),
+    bio: bioField.optional(),
+    profileVisibility: ProfileVisibilitySchema.optional(),
+  })
   .openapi("UpdateProfileRequest");
 
 export const UsernameParams = z.object({
@@ -291,6 +301,36 @@ export const FriendProfileSchema = z
     }),
   })
   .openapi("FriendProfile");
+
+// ---------- Users ----------
+
+export const UserParams = z.object({
+  userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
+});
+
+export const PublicUserSchema = z
+  .object({
+    id: z.string().uuid().openapi({ description: "User id" }),
+    name: z.string().openapi({ example: "Cami" }),
+    username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
+    avatarUrl: z.string().nullable(),
+    bio: z.string().nullable().openapi({
+      example: "Viajando por el sur",
+      description: "Profile description; null if none or if you cannot see this profile (canSee is false)",
+    }),
+  })
+  .openapi("PublicUser");
+
+export const UserProfileSchema = z
+  .object({
+    user: PublicUserSchema,
+    isFriend: z.boolean().openapi({ description: "Whether you and this user are friends (false for yourself)" }),
+    profileVisibility: ProfileVisibilitySchema,
+    canSee: z.boolean().openapi({
+      description: "Whether you can see the bio and featured photos: it is you, a friend, or the profile is public",
+    }),
+  })
+  .openapi("UserProfile");
 
 export const AddMembersSchema = z
   .object({

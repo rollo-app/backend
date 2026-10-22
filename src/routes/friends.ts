@@ -10,6 +10,7 @@ import {
   pairKey,
 } from "../lib/friend-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { areFriends } from "../lib/profile-access";
 import { avatarUrl, isRevealed } from "../lib/util";
 import {
   ClaimFriendLinkSchema,
@@ -250,14 +251,10 @@ const profileRoute = createRoute({
 friends.openapi(profileRoute, async (c) => {
   const me = c.get("user").id;
   const friendId = c.req.valid("param").userId;
-  const [a, b] = pairKey(me, friendId);
-  // Yourself is never a friendship row (redeem skips it), so it falls into the same 404.
-  const friend = await c.env.DB.prepare(
-    `SELECT u.id, u.name, u.username, u.avatar_key, u.bio
-     FROM friendships f JOIN users u ON u.id = ?3
-     WHERE f.user_a = ?1 AND f.user_b = ?2`,
-  )
-    .bind(a, b, friendId)
+  // Yourself is never a friend, so it falls into the same 404.
+  if (!(await areFriends(c.env.DB, me, friendId))) throw new HTTPException(404, { message: "No es tu amigo" });
+  const friend = await c.env.DB.prepare("SELECT id, name, username, avatar_key, bio FROM users WHERE id = ?")
+    .bind(friendId)
     .first<PublicFriendRow>();
   if (!friend) throw new HTTPException(404, { message: "No es tu amigo" });
 

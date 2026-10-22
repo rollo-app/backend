@@ -29,9 +29,10 @@ const updateMeRoute = createRoute({
   tags,
   summary: "Edit your profile",
   description:
-    "Send any of name, username and bio; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. " +
+    "Send any of name, username, bio and profileVisibility; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. " +
     "The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it. " +
-    "The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise).",
+    "The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise). " +
+    "profileVisibility is \"friends\" (default) or \"public\"; any other value is a 400.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: UpdateProfileSchema } }, required: true } },
@@ -45,6 +46,7 @@ me.openapi(updateMeRoute, async (c) => {
     name: body.name ?? user.name,
     username: body.username ?? user.username,
     bio: body.bio === undefined ? user.bio : body.bio,
+    profile_visibility: body.profileVisibility ?? user.profile_visibility,
   };
   if (body.username !== undefined && body.username !== user.username) {
     const owner = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? AND id != ?")
@@ -53,8 +55,8 @@ me.openapi(updateMeRoute, async (c) => {
     if (owner) throw new HTTPException(409, { message: USERNAME_TAKEN_MESSAGE });
   }
   try {
-    await c.env.DB.prepare("UPDATE users SET name = ?, username = ?, bio = ? WHERE id = ?")
-      .bind(next.name, next.username, next.bio, user.id)
+    await c.env.DB.prepare("UPDATE users SET name = ?, username = ?, bio = ?, profile_visibility = ? WHERE id = ?")
+      .bind(next.name, next.username, next.bio, next.profile_visibility, user.id)
       .run();
   } catch (err) {
     // Lost a race against another account taking the same username.
