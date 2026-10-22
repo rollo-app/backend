@@ -226,13 +226,15 @@ me.openapi(myTripsRoute, async (c) => {
   const now = Date.now();
   const { results } = await c.env.DB.prepare(
     `SELECT t.*, m.role AS my_role,
-            (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL) AS total_uploaded
+            (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL) AS total_uploaded,
+            (SELECT thumbhash FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL AND thumbhash IS NOT NULL
+             ORDER BY taken_at DESC, id DESC LIMIT 1) AS cover_thumbhash
      FROM members m JOIN trips t ON t.id = m.trip_id
      WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL
      ORDER BY t.starts_at DESC`,
   )
     .bind(c.get("user").id)
-    .all<TripRow & { my_role: Role; total_uploaded: number }>();
+    .all<TripRow & { my_role: Role; total_uploaded: number; cover_thumbhash: string | null }>();
 
   return c.json(
     {
@@ -246,6 +248,7 @@ me.openapi(myTripsRoute, async (c) => {
         revealed: isRevealed(t, now),
         role: t.my_role,
         totalUploaded: t.total_uploaded,
+        coverThumbhash: t.cover_thumbhash,
       })),
     },
     200,

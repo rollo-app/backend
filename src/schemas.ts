@@ -203,6 +203,10 @@ export const TripSummarySchema = z
     revealed: z.boolean(),
     role: RoleSchema,
     totalUploaded: z.number().int(),
+    coverThumbhash: z.string().nullable().openapi({
+      description:
+        "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
+    }),
   })
   .openapi("TripSummary");
 

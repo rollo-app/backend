@@ -243,6 +243,13 @@
           },
           "totalUploaded": {
             "type": "integer"
+          },
+          "coverThumbhash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it"
           }
         },
         "required": [
@@ -254,7 +261,8 @@
           "revealAt",
           "revealed",
           "role",
-          "totalUploaded"
+          "totalUploaded",
+          "coverThumbhash"
         ]
       },
       "Role": {
