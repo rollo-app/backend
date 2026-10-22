@@ -1,4 +1,4 @@
-import { DAY, HOUR, Planner, type Shot, type Spot, api, d1, ensureUser, fixedMidnight, jitter, localMidnight, pick, pool, rand, resetUsers, uploadShot, POOL_SIZE } from "./lib";
+import { DAY, HOUR, Planner, type Shot, type Spot, api, d1, ensureUser, seedUserId, fixedMidnight, jitter, localMidnight, pick, pool, rand, resetUsers, uploadShot, POOL_SIZE } from "./lib";
 import { TZ } from "./lib";
 
 /** Test scenarios. Each has a fixed trip name (that's what makes the seed idempotent). */
@@ -55,8 +55,10 @@ type Ctx = { tripId: string; tokens: string[]; names: string[] };
 type Scenario = {
   name: string;
   tests: string;
-  /** Members who take photos (index = `Shot.member`). The admin is the first one. Juani is added on top. */
+  /** Members who take photos (index = `Shot.member`). The admin is the first one. Juani is added on top (see `juani`). */
   members: string[];
+  /** Juani's place: "member" (default, added last), "admin" (creates the trip; index 0) or "absent" (not in the trip). */
+  juani?: "member" | "admin" | "absent";
   trip: () => { startsAt: number; endsAt: number; revealAt: number; dailyPhotoLimit?: number; dailyVideoLimit?: number };
   shots?: () => Shot[];
   /** Extra steps after uploading (`ids` is aligned with `shots`). */
@@ -145,7 +147,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Bariloche 2025 (revelado)",
-    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member",
+    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member; featured photos come from here",
     members: ["Cami", "Tomi", "Fede", "Lu", "Nacho"],
     // Backdated to Jan 2025 right after creating (the API rejects dates in the past). The reveal stays in
     // the future so media can be registered; `after` moves it into the past and reveals it.
@@ -167,6 +169,8 @@ export const SCENARIOS: Scenario[] = [
         const day = Math.floor((i / 60) * 7);
         p.add(i % 5, day, "photo", near(SPOTS[(day + i) % 4]!, 0.004), cap(0.5));
       }
+      // Juani (index 5, added after the members) takes a few too, so she can feature her own.
+      for (let d = 0; d < 4; d++) p.add(5, d, "photo", near(SPOTS[d]!, 0.004), cap(0.5));
       return p.shots;
     },
     async after(ctx) {
@@ -207,20 +211,49 @@ export const SCENARIOS: Scenario[] = [
       }
     },
   },
+  {
+    name: "Finde en Tandil",
+    tests: "Juani is the ADMIN; starts tomorrow. Rama left (left_at), Juani removed Vicky (removed_at): neither counts as a common rollo",
+    juani: "admin",
+    members: ["Cami", "Sofi", "Bruno", "Rama", "Vicky"],
+    trip: () => ({ startsAt: localMidnight(-1) + 10 * HOUR, endsAt: localMidnight(-3) + 18 * HOUR, revealAt: localMidnight(-4) + 20 * HOUR }),
+    async after(ctx) {
+      const tokenOf = (name: string) => ctx.tokens[ctx.names.indexOf(name)]!;
+      await api("DELETE", `/trips/${ctx.tripId}/members/me`, undefined, tokenOf("Rama"));
+      const [vicky] = d1<{ id: string }>(`SELECT id FROM members WHERE trip_id = '${ctx.tripId}' AND user_id = '${seedUserId("Vicky")}'`);
+      await api("DELETE", `/trips/${ctx.tripId}/members/${vicky!.id}`, undefined, tokenOf("Juani"));
+    },
+  },
+  {
+    name: "Escapada sin Juani",
+    tests: "Juani is NOT a member: must not show up as common with Cami or Bruno (privacy)",
+    juani: "absent",
+    members: ["Cami", "Bruno"],
+    trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 2 * DAY, revealAt: Date.now() + 2 * DAY }),
+  },
 ];
 
 // ---------- Execution ----------
 
-export type Row = { name: string; code: string; photos: number; videos: number; tests: string };
+export type Row = {
+  name: string;
+  code: string;
+  photos: number;
+  videos: number;
+  tests: string;
+  juani: "member" | "admin" | "absent";
+  times: { startsAt: number; endsAt: number; revealAt: number; revealedAt: number | null };
+};
 
 const sqlNames = () => SCENARIOS.map((s) => `'${s.name.replace(/'/g, "''")}'`).join(",");
 
 /**
  * Deletes the scenario trips (by name, so orphan trips from older schemas go too) and the seed users from
- * local D1: media → members → trips, then sessions → users. R2 objects are left behind.
+ * local D1: featured → media → members → trips, then sessions → users. R2 objects are left behind.
  */
 export function resetScenarios() {
   const ids = `SELECT id FROM trips WHERE name IN (${sqlNames()})`;
+  d1(`DELETE FROM featured WHERE media_id IN (SELECT id FROM media WHERE trip_id IN (${ids}))`);
   d1(`DELETE FROM media WHERE trip_id IN (${ids})`);
   d1(`DELETE FROM members WHERE trip_id IN (${ids})`);
   d1(`DELETE FROM trips WHERE name IN (${sqlNames()})`);
@@ -228,20 +261,27 @@ export function resetScenarios() {
 }
 
 function stats(name: string) {
-  const [t] = d1<{ id: string; join_code: string }>(`SELECT id, join_code FROM trips WHERE name = '${name.replace(/'/g, "''")}'`);
+  const [t] = d1<{ id: string; join_code: string; starts_at: number; ends_at: number; reveal_at: number; revealed_at: number | null }>(
+    `SELECT id, join_code, starts_at, ends_at, reveal_at, revealed_at FROM trips WHERE name = '${name.replace(/'/g, "''")}'`,
+  );
   if (!t) throw new Error(`Trip "${name}" not found in D1`);
   const rows = d1<{ type: string; n: number }>(
     `SELECT type, COUNT(*) AS n FROM media WHERE trip_id = '${t.id}' AND status = 'uploaded' AND deleted_at IS NULL GROUP BY type`,
   );
   const n = (type: string) => rows.find((r) => r.type === type)?.n ?? 0;
-  return { code: t.join_code, photos: n("photo"), videos: n("video") };
+  return {
+    code: t.join_code,
+    photos: n("photo"),
+    videos: n("video"),
+    times: { startsAt: t.starts_at, endsAt: t.ends_at, revealAt: t.reveal_at, revealedAt: t.revealed_at },
+  };
 }
 
 export async function runScenario(s: Scenario): Promise<Row> {
   const exists = d1(`SELECT id FROM trips WHERE name = '${s.name.replace(/'/g, "''")}'`).length > 0;
   if (exists) {
     console.log(`= ${s.name}: already exists, not recreated`);
-    return { name: s.name, ...stats(s.name), tests: s.tests };
+    return { name: s.name, ...stats(s.name), tests: s.tests, juani: s.juani ?? "member" };
   }
 
   console.log(`+ ${s.name}`);
@@ -258,7 +298,8 @@ export async function runScenario(s: Scenario): Promise<Row> {
     dailyPhotoLimit: dates.dailyPhotoLimit,
     dailyVideoLimit: dates.dailyVideoLimit,
   };
-  const names = [...s.members, JUANI];
+  const juani = s.juani ?? "member";
+  const names = juani === "admin" ? [JUANI, ...s.members] : juani === "absent" ? s.members : [...s.members, JUANI];
   const tokens = await Promise.all(names.map(ensureUser));
   const created = await api("POST", "/trips", body, tokens[0]);
   const tripId: string = created.trip.id;
@@ -276,5 +317,5 @@ export async function runScenario(s: Scenario): Promise<Row> {
     );
   }
   await s.after?.({ tripId, tokens, names }, shots, ids);
-  return { name: s.name, ...stats(s.name), tests: s.tests };
+  return { name: s.name, ...stats(s.name), tests: s.tests, juani: s.juani ?? "member" };
 }

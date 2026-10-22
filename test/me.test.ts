@@ -6,7 +6,7 @@ describe("GET /me", () => {
     const { token, userId, email } = await signUp("fede@rollo.test", "Fede");
     const res = await api("GET", "/me", { token });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: userId, email, name: "Fede", username: expect.any(String), avatarUrl: null });
+    expect(res.body).toEqual({ id: userId, email, name: "Fede", username: expect.any(String), avatarUrl: null, bio: null, profileVisibility: "friends" });
   });
 
   it("name is null until it is set", async () => {
@@ -56,6 +56,29 @@ describe("PATCH /me", () => {
 
   it("requires a session", async () => {
     expect((await api("PATCH", "/me", { body: { name: "x" } })).status).toBe(401);
+  });
+
+  it("changes the profile visibility", async () => {
+    const { token } = await signUp();
+    const res = await api("PATCH", "/me", { token, body: { profileVisibility: "public" } });
+    expect(res.status).toBe(200);
+    expect(res.body.profileVisibility).toBe("public");
+    expect((await api("GET", "/me", { token })).body.profileVisibility).toBe("public");
+    expect((await api("PATCH", "/me", { token, body: { profileVisibility: "friends" } })).body.profileVisibility).toBe("friends");
+  });
+
+  it("keeps the visibility when other fields change", async () => {
+    const { token } = await signUp();
+    await api("PATCH", "/me", { token, body: { profileVisibility: "public" } });
+    expect((await api("PATCH", "/me", { token, body: { name: "Otro" } })).body.profileVisibility).toBe("public");
+  });
+
+  it("rejects an unknown profile visibility", async () => {
+    const { token } = await signUp();
+    for (const profileVisibility of ["everyone", "", null, 1]) {
+      expect((await api("PATCH", "/me", { token, body: { profileVisibility } })).status, String(profileVisibility)).toBe(400);
+    }
+    expect((await api("GET", "/me", { token })).body.profileVisibility).toBe("friends");
   });
 });
 
@@ -150,5 +173,63 @@ describe("usernames", () => {
     expect(detail.body.me.username).toEqual(expect.any(String));
     const feed = await api("GET", `/trips/${tripId}/feed`, { token: adminToken });
     expect(feed.body.items[0].author.username).toEqual(expect.any(String));
+  });
+});
+
+describe("profile bio", () => {
+  const TOO_LONG = "La descripción puede tener hasta 150 caracteres";
+  const TOO_MANY_LINES = "La descripción puede tener hasta 3 renglones";
+
+  it("PATCH /me stores the bio trimmed and GET /me returns it", async () => {
+    const { token } = await signUp();
+    const res = await api("PATCH", "/me", { token, body: { bio: "  Viajando por el sur  " } });
+    expect(res.status).toBe(200);
+    expect(res.body.bio).toBe("Viajando por el sur");
+    expect((await api("GET", "/me", { token })).body.bio).toBe("Viajando por el sur");
+  });
+
+  it("an empty or blank bio clears it", async () => {
+    const { token } = await signUp();
+    await api("PATCH", "/me", { token, body: { bio: "Algo" } });
+    const res = await api("PATCH", "/me", { token, body: { bio: "" } });
+    expect(res.status).toBe(200);
+    expect(res.body.bio).toBeNull();
+    await api("PATCH", "/me", { token, body: { bio: "Algo" } });
+    expect((await api("PATCH", "/me", { token, body: { bio: "  \n " } })).body.bio).toBeNull();
+    expect((await api("GET", "/me", { token })).body.bio).toBeNull();
+  });
+
+  it("accepts 150 characters and rejects 151 with 400", async () => {
+    const { token } = await signUp();
+    expect((await api("PATCH", "/me", { token, body: { bio: "x".repeat(150) } })).status).toBe(200);
+    const res = await api("PATCH", "/me", { token, body: { bio: "x".repeat(151) } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(TOO_LONG);
+    // Surrounding spaces do not count.
+    expect((await api("PATCH", "/me", { token, body: { bio: `  ${"x".repeat(150)}  ` } })).status).toBe(200);
+  });
+
+  it("accepts 3 lines and rejects 4 with 400, counting CRLF as one break", async () => {
+    const { token } = await signUp();
+    const three = await api("PATCH", "/me", { token, body: { bio: "uno\ndos\r\ntres" } });
+    expect(three.status).toBe(200);
+    expect(three.body.bio).toBe("uno\ndos\r\ntres");
+    for (const bio of ["a\nb\nc\nd", "a\r\nb\r\nc\r\nd", "a\n\n\nb"]) {
+      const res = await api("PATCH", "/me", { token, body: { bio } });
+      expect(res.status, JSON.stringify(bio)).toBe(400);
+      expect(res.body.error).toBe(TOO_MANY_LINES);
+    }
+    // Trailing breaks are trimmed away before counting.
+    expect((await api("PATCH", "/me", { token, body: { bio: "a\nb\nc\n\n" } })).body.bio).toBe("a\nb\nc");
+  });
+
+  it("PATCH /me without bio keeps it, and changing the bio keeps name and username", async () => {
+    const { token } = await signUp(undefined, "Fede", "fede.bio");
+    await api("PATCH", "/me", { token, body: { bio: "Hola" } });
+    const res = await api("PATCH", "/me", { token, body: { name: "Federico" } });
+    expect(res.body).toMatchObject({ name: "Federico", username: "fede.bio", bio: "Hola" });
+    expect((await api("GET", "/me", { token })).body.bio).toBe("Hola");
+    const onlyBio = await api("PATCH", "/me", { token, body: { bio: "Chau" } });
+    expect(onlyBio.body).toMatchObject({ name: "Federico", username: "fede.bio", bio: "Chau" });
   });
 });

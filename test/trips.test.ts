@@ -267,6 +267,45 @@ describe("GET /me/trips", () => {
     expect((await api("GET", "/me/trips")).status).toBe(401);
   });
 
+  it("returns the thumbhash of the most recently taken uploaded media as coverThumbhash", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const now = Date.now();
+    await uploadMedia(tripId, adminToken, { takenAt: now - 3 * HOUR, thumbhash: "b2xkZXN0" });
+    await uploadMedia(tripId, adminToken, { type: "video", takenAt: now - HOUR, thumbhash: "bmV3ZXN0" });
+    await uploadMedia(tripId, adminToken, { takenAt: now - 2 * HOUR, thumbhash: "bWlkZGxl" });
+
+    const res = await api("GET", "/me/trips", { token: adminToken });
+    expect(res.body.trips[0].coverThumbhash).toBe("bmV3ZXN0");
+  });
+
+  it("ignores deleted, pending and thumbhash-less media in coverThumbhash", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const now = Date.now();
+    await uploadMedia(tripId, adminToken, { takenAt: now - 5 * HOUR, thumbhash: "dmFsaWQ=" });
+    const member = await env.DB.prepare("SELECT id FROM members WHERE trip_id = ?").bind(tripId).first<{ id: string }>();
+    const insert = (takenAt: number, status: string, deletedAt: number | null, thumbhash: string | null) => {
+      const id = crypto.randomUUID();
+      return env.DB.prepare(
+        `INSERT INTO media (id, trip_id, member_id, type, taken_at, local_date, original_key, thumb_key, status, created_at, width, height, deleted_at, thumbhash)
+         VALUES (?, ?, ?, 'photo', ?, '2027-01-12', ?, ?, ?, ?, 4032, 3024, ?, ?)`,
+      )
+        .bind(id, tripId, member!.id, takenAt, `k/${id}/o.jpg`, `k/${id}/t.jpg`, status, now, deletedAt, thumbhash)
+        .run();
+    };
+    await insert(now - HOUR, "uploaded", now, "ZGVsZXRlZA==");
+    await insert(now - 2 * HOUR, "pending", null, "cGVuZGluZw==");
+    await insert(now - 3 * HOUR, "uploaded", null, null);
+
+    const res = await api("GET", "/me/trips", { token: adminToken });
+    expect(res.body.trips[0].coverThumbhash).toBe("dmFsaWQ=");
+  });
+
+  it("has a null coverThumbhash when the rollo has no media", async () => {
+    const { adminToken } = await newTrip();
+    const res = await api("GET", "/me/trips", { token: adminToken });
+    expect(res.body.trips[0].coverThumbhash).toBeNull();
+  });
+
   it("marks revealed rollos", async () => {
     const { tripId, adminToken } = await newTrip();
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
@@ -442,11 +481,11 @@ describe("DELETE /trips/:id/members/:memberId", () => {
 });
 
 describe("member shape", () => {
-  it("members and me expose id, userId, name, username, avatarUrl and role", async () => {
+  it("members and me expose id, userId, name, username, avatarUrl, role and blockedByMe", async () => {
     const { tripId, code, adminUserId } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const res = await api("GET", `/trips/${tripId}`, { token: fede.token });
-    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member" });
+    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", blockedByMe: false });
     expect(res.body.members[0]).toMatchObject({ userId: adminUserId, name: "Juani", role: "admin" });
   });
 

@@ -2,12 +2,17 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
+import admin from "./routes/admin";
 import auth from "./routes/auth";
+import blocks from "./routes/blocks";
+import featured from "./routes/featured";
 import friends, { friendLinks } from "./routes/friends";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
+import reports from "./routes/reports";
 import trips from "./routes/trips";
+import users from "./routes/users";
 import usernames from "./routes/usernames";
 
 const app = createApp();
@@ -20,14 +25,19 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
   description: "Session token returned by POST /auth/email/verify",
 });
 
+app.route("/admin", admin);
 app.route("/auth", auth);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);
+app.route("/users", users);
 app.route("/friends", friends);
+app.route("/blocks", blocks);
+app.route("/reports", reports);
 app.route("/friend-links", friendLinks);
 app.route("/trips", trips);
 app.route("/", media);
+app.route("/", featured);
 
 // Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {

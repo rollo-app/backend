@@ -1,5 +1,7 @@
 import { AwsClient } from "aws4fetch";
+import { HTTPException } from "hono/http-exception";
 import type { Env, MediaType } from "../types";
+import { InvalidJpegError, stripJpegMetadata } from "./strip-jpeg-metadata";
 
 export const DEV_UPLOAD_PREFIX = "/dev/upload/";
 
@@ -37,6 +39,21 @@ export async function presignPut(env: Env, key: string, origin: string, expiresI
   return signed.url;
 }
 
+/** Presigned GET URL for a stored file (e.g. a link in a support email). With DEV_LOCAL_UPLOADS it is a placeholder that is never used. */
+export async function presignGet(env: Env, key: string, expiresIn = 7 * 24 * 3600): Promise<string> {
+  if (devUploadsEnabled(env)) return `https://dev.invalid/${key}`;
+  const client = new AwsClient({
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    service: "s3",
+    region: "auto",
+  });
+  const url = new URL(`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${key}`);
+  url.searchParams.set("X-Amz-Expires", String(expiresIn));
+  const signed = await client.sign(new Request(url, { method: "GET" }), { aws: { signQuery: true } });
+  return signed.url;
+}
+
 export function mediaKeys(tripId: string, mediaId: string, type: MediaType) {
   const base = `trips/${tripId}/${mediaId}`;
   return {
@@ -62,4 +79,53 @@ export async function verifyDevUpload(env: Env, key: string, exp: string | undef
   const expMs = Number(exp);
   if (!sig || !Number.isFinite(expMs) || expMs < Date.now()) return false;
   return sig === (await devSignature(env, key, expMs));
+}
+
+/**
+ * Streams a media file from R2 with long private caching (keys never change content).
+ * Throws 404 if the object is missing.
+ */
+export async function serveMediaFile(bucket: R2Bucket, key: string): Promise<Response> {
+  const object = await bucket.get(key);
+  if (!object) throw new HTTPException(404, { message: "Archivo no encontrado" });
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", key.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
+  }
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "private, max-age=31536000, immutable");
+  return new Response(object.body, { headers });
+}
+
+/**
+ * Like serveMediaFile, but for files that leave under a profile's permission (featured photos): the JPEG is
+ * buffered and served without metadata (EXIF GPS/date/caption/author, XMP, comments). Fails closed: anything
+ * that isn't a well-formed JPEG is a 404, never the stored bytes.
+ */
+export async function serveStrippedJpeg(bucket: R2Bucket, key: string): Promise<Response> {
+  const notFound = () => new HTTPException(404, { message: "Archivo no encontrado" });
+  const object = await bucket.get(key);
+  if (!object) throw notFound();
+  const contentType = object.httpMetadata?.contentType;
+  if (key.endsWith(".mp4") || (contentType && contentType !== "image/jpeg")) throw notFound();
+
+  let bytes: Uint8Array;
+  try {
+    bytes = stripJpegMetadata(new Uint8Array(await object.arrayBuffer()));
+  } catch (err) {
+    if (err instanceof InvalidJpegError) throw notFound();
+    throw err;
+  }
+
+  return new Response(bytes, {
+    headers: {
+      "content-type": "image/jpeg",
+      "content-length": String(bytes.length),
+      // Stripping is deterministic, so the stored object's etag plus a suffix identifies these bytes.
+      etag: `"${object.etag}-stripped"`,
+      "cache-control": "private, max-age=31536000, immutable",
+    },
+  });
 }

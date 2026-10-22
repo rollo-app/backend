@@ -54,6 +54,13 @@ const PROTECTED_ENDPOINTS = [
   ["delete", "/trips/{tripId}/members/me"],
   ["get", "/friends"],
   ["delete", "/friends/{userId}"],
+  ["get", "/users/{userId}"],
+  ["put", "/me/featured/{mediaId}"],
+  ["delete", "/me/featured/{mediaId}"],
+  ["put", "/media/{mediaId}/feature-block"],
+  ["delete", "/media/{mediaId}/feature-block"],
+  ["get", "/users/{userId}/featured"],
+  ["get", "/featured/{userId}/{mediaId}/{variant}"],
 ] as const;
 
 describe("GET /openapi.json", () => {
@@ -85,7 +92,7 @@ describe("GET /openapi.json", () => {
 
   it("exposes named models to generate the client", async () => {
     const doc = await getDoc();
-    for (const name of ["Trip", "Member", "User", "AuthSession", "TripSummary", "TripCreated", "TripDetail", "MediaRegistered", "FeedItem", "Feed", "Error"]) {
+    for (const name of ["Trip", "Member", "User", "AuthSession", "TripSummary", "TripCreated", "TripDetail", "MediaRegistered", "FeedItem", "Feed", "FeaturedPhoto", "FeaturedPhotos", "Zone", "Error"]) {
       expect(doc.components.schemas[name], name).toBeDefined();
     }
   });

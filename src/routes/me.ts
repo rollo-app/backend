@@ -1,12 +1,14 @@
 import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
+import { deleteAccount } from "../lib/account";
 import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { hiddenMediaSql } from "../lib/moderation";
 import { presignPut } from "../lib/r2";
 import { isRevealed, publicUser } from "../lib/util";
 import { USERNAME_TAKEN_MESSAGE } from "../lib/username";
 import { AvatarUploadSchema, MyTripsSchema, UpdateProfileSchema, UserSchema } from "../schemas";
-import type { MediaRow, Role, TripRow } from "../types";
+import type { Role, TripRow } from "../types";
 
 const me = createApp();
 const tags = ["Profile"];
@@ -29,8 +31,10 @@ const updateMeRoute = createRoute({
   tags,
   summary: "Edit your profile",
   description:
-    "Send name and/or username. The name is shown in every rollo you are part of and does not have to be unique. " +
-    "The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it.",
+    "Send any of name, username, bio and profileVisibility; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. " +
+    "The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it. " +
+    "The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise). " +
+    "profileVisibility is \"friends\" (default) or \"public\"; any other value is a 400.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: UpdateProfileSchema } }, required: true } },
@@ -40,7 +44,12 @@ const updateMeRoute = createRoute({
 me.openapi(updateMeRoute, async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
-  const next = { name: body.name ?? user.name, username: body.username ?? user.username };
+  const next = {
+    name: body.name ?? user.name,
+    username: body.username ?? user.username,
+    bio: body.bio === undefined ? user.bio : body.bio,
+    profile_visibility: body.profileVisibility ?? user.profile_visibility,
+  };
   if (body.username !== undefined && body.username !== user.username) {
     const owner = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? AND id != ?")
       .bind(body.username, user.id)
@@ -48,7 +57,9 @@ me.openapi(updateMeRoute, async (c) => {
     if (owner) throw new HTTPException(409, { message: USERNAME_TAKEN_MESSAGE });
   }
   try {
-    await c.env.DB.prepare("UPDATE users SET name = ?, username = ? WHERE id = ?").bind(next.name, next.username, user.id).run();
+    await c.env.DB.prepare("UPDATE users SET name = ?, username = ?, bio = ?, profile_visibility = ? WHERE id = ?")
+      .bind(next.name, next.username, next.bio, next.profile_visibility, user.id)
+      .run();
   } catch (err) {
     // Lost a race against another account taking the same username.
     if (String(err).includes("UNIQUE")) throw new HTTPException(409, { message: USERNAME_TAKEN_MESSAGE });
@@ -136,69 +147,15 @@ const deleteMeRoute = createRoute({
     "your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. " +
     "If you were the admin, the oldest remaining active member becomes admin. " +
     "If no active members remain, the whole rollo is deleted with all its files. " +
-    "Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
+    "Your reports and blocks (made and received) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
     "The same email can sign up again later as a brand-new user.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   responses: { 204: { description: "Account deleted" }, ...errors(401) },
 });
 
-async function deleteMediaRows(db: D1Database, bucket: R2Bucket, where: string, id: string) {
-  const { results } = await db
-    .prepare(`SELECT original_key, thumb_key FROM media WHERE ${where} = ?`)
-    .bind(id)
-    .all<Pick<MediaRow, "original_key" | "thumb_key">>();
-  const keys = results.flatMap((r) => [r.original_key, r.thumb_key]);
-  // R2 deletes accept at most 1000 keys per call.
-  for (let i = 0; i < keys.length; i += 1000) await bucket.delete(keys.slice(i, i + 1000));
-}
-
 me.openapi(deleteMeRoute, async (c) => {
-  const user = c.get("user");
-  const { DB, MEDIA } = c.env;
-
-  const { results: memberships } = await DB.prepare("SELECT * FROM members WHERE user_id = ?")
-    .bind(user.id)
-    .all<{ id: string; trip_id: string; role: Role; removed_at: number | null; left_at: number | null }>();
-
-  for (const m of memberships) {
-    await deleteMediaRows(DB, MEDIA, "member_id", m.id);
-    await DB.batch([
-      DB.prepare("DELETE FROM media WHERE member_id = ?").bind(m.id),
-      DB.prepare("DELETE FROM members WHERE id = ?").bind(m.id),
-    ]);
-
-    const next = await DB.prepare(
-      "SELECT id, role FROM members WHERE trip_id = ? AND removed_at IS NULL AND left_at IS NULL ORDER BY created_at, id",
-    )
-      .bind(m.trip_id)
-      .all<{ id: string; role: Role }>();
-
-    if (next.results.length === 0) {
-      await deleteMediaRows(DB, MEDIA, "trip_id", m.trip_id);
-      await DB.batch([
-        DB.prepare("DELETE FROM media WHERE trip_id = ?").bind(m.trip_id),
-        DB.prepare("DELETE FROM members WHERE trip_id = ?").bind(m.trip_id),
-        DB.prepare("DELETE FROM trips WHERE id = ?").bind(m.trip_id),
-      ]);
-    } else if (m.role === "admin" && m.removed_at === null && m.left_at === null && !next.results.some((r) => r.role === "admin")) {
-      await DB.prepare("UPDATE members SET role = 'admin' WHERE id = ?").bind(next.results[0]!.id).run();
-    }
-  }
-
-  const avatars = [user.avatar_key, user.pending_avatar_key].filter((k): k is string => k !== null);
-  if (avatars.length) await MEDIA.delete(avatars);
-
-  await DB.batch([
-    DB.prepare("DELETE FROM friendships WHERE user_a = ? OR user_b = ?").bind(user.id, user.id),
-    DB.prepare("DELETE FROM friend_links WHERE user_id = ?").bind(user.id),
-    DB.prepare("DELETE FROM friend_claims WHERE link_user_id = ?").bind(user.id),
-    DB.prepare("DELETE FROM friend_attempts WHERE key = ?").bind(`user:${user.id}`),
-    DB.prepare("UPDATE members SET added_by_user_id = NULL WHERE added_by_user_id = ?").bind(user.id),
-    DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id),
-    DB.prepare("DELETE FROM auth_codes WHERE email = ?").bind(user.email),
-    DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
-  ]);
+  await deleteAccount(c.env, c.get("user"));
   return c.body(null, 204);
 });
 
@@ -217,13 +174,16 @@ me.openapi(myTripsRoute, async (c) => {
   const now = Date.now();
   const { results } = await c.env.DB.prepare(
     `SELECT t.*, m.role AS my_role,
-            (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL) AS total_uploaded
+            (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL) AS total_uploaded,
+            (SELECT cm.thumbhash FROM media cm JOIN members cmem ON cmem.id = cm.member_id
+             WHERE cm.trip_id = t.id AND cm.status = 'uploaded' AND cm.deleted_at IS NULL AND cm.thumbhash IS NOT NULL AND ${hiddenMediaSql("cm", "cmem")}
+             ORDER BY cm.taken_at DESC, cm.id DESC LIMIT 1) AS cover_thumbhash
      FROM members m JOIN trips t ON t.id = m.trip_id
      WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL
      ORDER BY t.starts_at DESC`,
   )
-    .bind(c.get("user").id)
-    .all<TripRow & { my_role: Role; total_uploaded: number }>();
+    .bind(c.get("user").id, c.get("user").id, c.get("user").id)
+    .all<TripRow & { my_role: Role; total_uploaded: number; cover_thumbhash: string | null }>();
 
   return c.json(
     {
@@ -237,6 +197,7 @@ me.openapi(myTripsRoute, async (c) => {
         revealed: isRevealed(t, now),
         role: t.my_role,
         totalUploaded: t.total_uploaded,
+        coverThumbhash: t.cover_thumbhash,
       })),
     },
     200,

@@ -97,6 +97,17 @@
               "null"
             ],
             "description": "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none"
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description (up to 3 lines); null if none"
+          },
+          "profileVisibility": {
+            "$ref": "#/components/schemas/ProfileVisibility"
           }
         },
         "required": [
@@ -104,8 +115,18 @@
           "email",
           "name",
           "username",
-          "avatarUrl"
+          "avatarUrl",
+          "bio",
+          "profileVisibility"
         ]
+      },
+      "ProfileVisibility": {
+        "type": "string",
+        "enum": [
+          "friends",
+          "public"
+        ],
+        "description": "Who can see your bio and featured photos: your friends only, or anyone signed in. Name, username and avatar are always visible"
       },
       "EmailVerifyRequest": {
         "type": "object",
@@ -140,6 +161,14 @@
             "type": "string",
             "example": "juanifraga",
             "description": "Optional leading @, trimmed and lowercased. a-z 0-9 . _ (3 to 30), no leading/trailing dot, no \"..\""
+          },
+          "bio": {
+            "type": "string",
+            "example": "Viajando por el sur",
+            "description": "Profile description, up to 150 characters and 3 lines after trimming. An empty string clears it"
+          },
+          "profileVisibility": {
+            "$ref": "#/components/schemas/ProfileVisibility"
           }
         }
       },
@@ -214,6 +243,13 @@
           },
           "totalUploaded": {
             "type": "integer"
+          },
+          "coverThumbhash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it"
           }
         },
         "required": [
@@ -225,7 +261,8 @@
           "revealAt",
           "revealed",
           "role",
-          "totalUploaded"
+          "totalUploaded",
+          "coverThumbhash"
         ]
       },
       "Role": {
@@ -250,6 +287,152 @@
         "required": [
           "available",
           "username"
+        ]
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/PublicUser"
+          },
+          "isFriend": {
+            "type": "boolean",
+            "description": "Whether you and this user are friends (false for yourself)"
+          },
+          "blockedByMe": {
+            "type": "boolean",
+            "description": "Whether you blocked this user"
+          },
+          "reportedByMe": {
+            "type": "boolean",
+            "description": "Whether you reported this user (their profile, not a photo)"
+          },
+          "profileVisibility": {
+            "$ref": "#/components/schemas/ProfileVisibility"
+          },
+          "canSee": {
+            "type": "boolean",
+            "description": "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other"
+          },
+          "friendCount": {
+            "type": "integer",
+            "description": "How many friends this user has (always public)"
+          },
+          "mutualCount": {
+            "type": "integer",
+            "description": "How many of your friends are also this user's friends (0 for yourself)"
+          }
+        },
+        "required": [
+          "user",
+          "isFriend",
+          "blockedByMe",
+          "reportedByMe",
+          "profileVisibility",
+          "canSee",
+          "friendCount",
+          "mutualCount"
+        ]
+      },
+      "PublicUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description; null if none. Always public, whatever canSee says"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl",
+          "bio"
+        ]
+      },
+      "UserFriends": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "all",
+              "mutual"
+            ],
+            "description": "all: every friend of this user (canSee); mutual: only the friends you have in common"
+          },
+          "friends": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserFriend"
+            },
+            "description": "Sorted by name, case-insensitive"
+          }
+        },
+        "required": [
+          "scope",
+          "friends"
+        ]
+      },
+      "UserFriend": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl"
         ]
       },
       "FriendLink": {
@@ -308,13 +491,22 @@
               "string",
               "null"
             ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description (up to 3 lines); null if none"
           }
         },
         "required": [
           "id",
           "name",
           "username",
-          "avatarUrl"
+          "avatarUrl",
+          "bio"
         ]
       },
       "RedeemFriendRequest": {
@@ -344,6 +536,104 @@
         },
         "required": [
           "friends"
+        ]
+      },
+      "FriendProfile": {
+        "type": "object",
+        "properties": {
+          "friend": {
+            "$ref": "#/components/schemas/Friend"
+          },
+          "commonTrips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommonTrip"
+            },
+            "description": "Rollos both of you are active members of, most recent start first"
+          }
+        },
+        "required": [
+          "friend",
+          "commonTrips"
+        ]
+      },
+      "CommonTrip": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Trip start",
+            "example": 1767225600000
+          },
+          "endsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Trip end",
+            "example": 1767225600000
+          },
+          "revealed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "startsAt",
+          "endsAt",
+          "revealed"
+        ]
+      },
+      "Blocks": {
+        "type": "object",
+        "properties": {
+          "blocked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Friend"
+            }
+          }
+        },
+        "required": [
+          "blocked"
+        ]
+      },
+      "CreateReportRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/ReportReason"
+          },
+          "mediaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Photo or video to report"
+          },
+          "userId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Person to report"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ReportReason": {
+        "type": "string",
+        "enum": [
+          "offensive",
+          "abuse",
+          "other"
         ]
       },
       "ClaimResponse": {
@@ -513,6 +803,10 @@
           },
           "role": {
             "$ref": "#/components/schemas/Role"
+          },
+          "blockedByMe": {
+            "type": "boolean",
+            "description": "Whether you blocked this member"
           }
         },
         "required": [
@@ -521,7 +815,8 @@
           "name",
           "username",
           "avatarUrl",
-          "role"
+          "role",
+          "blockedByMe"
         ]
       },
       "CreateTripRequest": {
@@ -969,6 +1264,11 @@
                 "type": "string",
                 "format": "uuid"
               },
+              "userId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The author's user id (to open their profile)"
+              },
               "name": {
                 "type": "string"
               },
@@ -987,11 +1287,12 @@
             },
             "required": [
               "id",
+              "userId",
               "name",
               "username",
               "avatarUrl"
             ],
-            "description": "`id` is the author's membership id"
+            "description": "`id` is the author's membership id; `userId` their user id"
           },
           "width": {
             "type": [
@@ -1022,6 +1323,14 @@
               "original"
             ],
             "description": "Download paths; only after the reveal"
+          },
+          "featuredByMe": {
+            "type": "boolean",
+            "description": "Only after the reveal: you featured it on your profile"
+          },
+          "featureBlocked": {
+            "type": "boolean",
+            "description": "Only after the reveal: the author does not let others feature it (they still can)"
           }
         },
         "required": [
@@ -1036,6 +1345,132 @@
           "durationS",
           "author"
         ]
+      },
+      "FeaturedPhotos": {
+        "type": "object",
+        "properties": {
+          "photos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeaturedPhoto"
+            },
+            "description": "Most recently featured first"
+          }
+        },
+        "required": [
+          "photos"
+        ]
+      },
+      "FeaturedPhoto": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "takenAt": {
+            "type": "integer"
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "thumbhash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "User id"
+              },
+              "name": {
+                "type": "string"
+              },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "avatarUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "username",
+              "avatarUrl"
+            ],
+            "description": "Who took it; null when it is the profile owner"
+          },
+          "zone": {
+            "$ref": "#/components/schemas/Zone"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/featured/<userId>/<mediaId>/thumb"
+          },
+          "originalPath": {
+            "type": "string",
+            "example": "/featured/<userId>/<mediaId>/original"
+          }
+        },
+        "required": [
+          "mediaId",
+          "takenAt",
+          "width",
+          "height",
+          "thumbhash",
+          "author",
+          "zone",
+          "thumbPath",
+          "originalPath"
+        ],
+        "description": "A photo on someone's profile. Never includes the rollo, the caption or the exact location"
+      },
+      "Zone": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "lat": {
+            "type": "number"
+          },
+          "lng": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "description": "null if the photo has no GPS",
+        "example": {
+          "lat": -41.075,
+          "lng": -71.475
+        }
       }
     },
     "parameters": {}
@@ -1203,7 +1638,7 @@
           "Profile"
         ],
         "summary": "Edit your profile",
-        "description": "Send name and/or username. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it.",
+        "description": "Send any of name, username, bio and profileVisibility; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it. The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise). profileVisibility is \"friends\" (default) or \"public\"; any other value is a 400.",
         "security": [
           {
             "bearerAuth": []
@@ -1267,7 +1702,7 @@
           "Profile"
         ],
         "summary": "Delete your account",
-        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
+        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your reports and blocks (made and received) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
         "security": [
           {
             "bearerAuth": []
@@ -1516,6 +1951,118 @@
         }
       }
     },
+    "/users/{userId}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "A user's profile",
+        "description": "Name, username, avatar, bio and friend counts are always visible. Featured photos and the full friend list only if canSee: it is you, a friend, or the profile is public. Never includes the email. 404 if the user does not exist.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{userId}/friends": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "A user's friends",
+        "description": "If you can see the profile (it is you, a friend, or the profile is public) every friend (scope all); otherwise only the friends you have in common (scope mutual). Sorted by name. Only id, name, username and avatar. 404 if the user does not exist.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User's friends",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFriends"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/friends/link": {
       "post": {
         "tags": [
@@ -1655,6 +2202,60 @@
       }
     },
     "/friends/{userId}": {
+      "get": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "A friend's profile",
+        "description": "The friend and the rollos both of you are active members of (neither left nor was removed), most recent start first. 404 if you are not friends, also for an unknown id or your own.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Friend profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Friends"
@@ -1682,6 +2283,197 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/blocks": {
+      "get": {
+        "tags": [
+          "Blocks"
+        ],
+        "summary": "Users you blocked",
+        "description": "Ordered by name.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocked users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Blocks"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/blocks/{userId}": {
+      "put": {
+        "tags": [
+          "Blocks"
+        ],
+        "summary": "Block a user",
+        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 10 reports and blocks per user per 24 hours are emailed).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Blocked"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Blocks"
+        ],
+        "summary": "Unblock a user",
+        "description": "Only removes your own block; a block the other user made on you stays. Also 204 if you had not blocked them. Friendship is not restored.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unblocked"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports": {
+      "post": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Report a photo or a person",
+        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 10 reports and blocks per user per 24 hours are emailed to support; the rest are stored without email. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Reported"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2497,7 +3289,7 @@
           "Media"
         ],
         "summary": "Trip feed",
-        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions and the download paths.",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
         "security": [
           {
             "bearerAuth": []
@@ -2698,6 +3490,391 @@
           },
           "409": {
             "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{mediaId}/feature-block": {
+      "put": {
+        "tags": [
+          "Media"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Don't let others feature this photo (author only)",
+        "description": "Removes it from everyone else's profile and stops new ones (they get 409). You can still feature it yourself. Idempotent. Works even if you left the rollo or were removed from it. 403 if you did not take it; 404 if it does not exist or you neither took it nor are an active member of its rollo.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Media"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Let others feature this photo again (author only)",
+        "description": "Idempotent. Works even if you left the rollo or were removed from it. Photos removed from other profiles while it was blocked do not come back.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/featured/{mediaId}": {
+      "put": {
+        "tags": [
+          "Featured"
+        ],
+        "summary": "Feature a photo on your profile",
+        "description": "A photo (not a video) of a revealed rollo you are an active member of, yours or someone else's. Idempotent. 404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author does not let others feature it (unless you took it) or if you already have 60; 400 for a video.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Featured"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Featured"
+        ],
+        "summary": "Remove a photo from your profile",
+        "description": "204 also if it was not featured.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Not featured anymore"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{userId}/featured": {
+      "get": {
+        "tags": [
+          "Featured"
+        ],
+        "summary": "A user's featured photos",
+        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos you reported or by authors you blocked, and photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Featured photos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedPhotos"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/featured/{userId}/{mediaId}/{variant}": {
+      "get": {
+        "tags": [
+          "Featured"
+        ],
+        "summary": "File of a featured photo",
+        "description": "Streamed from R2 under the profile's permission (not the rollo's): 403 if you can't see the profile, 404 if that user does not feature this photo (or it no longer shows on their profile). Same caching as the trip download.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "thumb",
+                "original"
+              ]
+            },
+            "required": true,
+            "name": "variant",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

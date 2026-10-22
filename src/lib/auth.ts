@@ -33,7 +33,7 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
 
   const now = Date.now();
   const row = await c.env.DB.prepare(
-    `SELECT s.id AS session_id, s.last_used_at, u.id, u.email, u.name, u.username, u.avatar_key, u.pending_avatar_key, u.created_at
+    `SELECT s.id AS session_id, s.last_used_at, u.id, u.email, u.name, u.username, u.avatar_key, u.pending_avatar_key, u.bio, u.profile_visibility, u.created_at
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
   )

@@ -11,12 +11,19 @@ export type Env = {
   RESEND_API_KEY?: string;
   /** Sender of the login emails, e.g. "Rollo <rollo@juanifraga.com>". */
   EMAIL_FROM?: string;
+  /** Where report emails go. Defaults to soporte@juanifraga.com. */
+  REPORTS_EMAIL?: string;
+  /** Bearer token for the `/admin/*` routes (delete media or accounts). Without it those routes are disabled. */
+  ADMIN_TOKEN?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;
 };
 
 export type Role = "admin" | "member";
+
+/** Who can see your bio and featured photos. */
+export type ProfileVisibility = "friends" | "public";
 
 export type TripRow = {
   id: string;
@@ -39,6 +46,8 @@ export type UserRow = {
   username: string | null;
   avatar_key: string | null;
   pending_avatar_key: string | null;
+  bio: string | null;
+  profile_visibility: ProfileVisibility;
   created_at: number;
 };
 
@@ -77,6 +86,8 @@ export type MediaRow = {
   created_at: number;
   uploaded_at: number | null;
   deleted_at: number | null;
+  /** The author does not let others feature this photo. */
+  feature_blocked_at: number | null;
 };
 
 export type AppEnv = {

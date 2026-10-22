@@ -2,7 +2,8 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
-import { pairKey } from "../lib/friend-code";
+import { blockedIdsFor } from "../lib/moderation";
+import { areFriends } from "../lib/profile-access";
 import { generateJoinCode, isRevealed, localDate, publicMember, publicTrip } from "../lib/util";
 import {
   AddMembersResponseSchema,
@@ -182,7 +183,7 @@ trips.openapi(getTripRoute, async (c) => {
   const now = Date.now();
   const today = localDate(now, trip.timezone);
 
-  const [members, usage, totals] = await Promise.all([
+  const [members, usage, totals, blocked] = await Promise.all([
     c.env.DB.prepare(
       `SELECT m.id, m.user_id, m.role, u.name, u.username, u.avatar_key
        FROM members m JOIN users u ON u.id = m.user_id
@@ -195,6 +196,7 @@ trips.openapi(getTripRoute, async (c) => {
     c.env.DB.prepare(
       `SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL`,
     ).bind(trip.id).first<{ n: number }>(),
+    blockedIdsFor(c.env.DB, c.get("user").id),
   ]);
 
   // Outside the rollo's dates (or once revealed) nothing can be shot.
@@ -205,7 +207,7 @@ trips.openapi(getTripRoute, async (c) => {
     {
       trip: publicTrip(trip, now),
       me: publicMember(me, c.get("user")),
-      members: members.results.map((m) => publicMember(m, m)),
+      members: members.results.map((m) => publicMember(m, m, blocked.has(m.user_id))),
       today: {
         date: today,
         photosLeft: !active ? 0 : Math.max(0, trip.daily_photo_limit - used("photo")),
@@ -312,9 +314,7 @@ trips.openapi(addMembersRoute, async (c) => {
       results.push({ userId, status: "already_member" });
       continue;
     }
-    const [a, b] = pairKey(me.id, userId);
-    const friend = await c.env.DB.prepare("SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?").bind(a, b).first();
-    if (!friend) {
+    if (!(await areFriends(c.env.DB, me.id, userId))) {
       results.push({ userId, status: "unavailable" });
       continue;
     }
