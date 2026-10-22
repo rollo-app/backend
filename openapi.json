@@ -296,14 +296,24 @@
           },
           "canSee": {
             "type": "boolean",
-            "description": "Whether you can see the bio and featured photos: it is you, a friend, or the profile is public"
+            "description": "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public"
+          },
+          "friendCount": {
+            "type": "integer",
+            "description": "How many friends this user has (always public)"
+          },
+          "mutualCount": {
+            "type": "integer",
+            "description": "How many of your friends are also this user's friends (0 for yourself)"
           }
         },
         "required": [
           "user",
           "isFriend",
           "profileVisibility",
-          "canSee"
+          "canSee",
+          "friendCount",
+          "mutualCount"
         ]
       },
       "PublicUser": {
@@ -338,7 +348,7 @@
               "null"
             ],
             "example": "Viajando por el sur",
-            "description": "Profile description; null if none or if you cannot see this profile (canSee is false)"
+            "description": "Profile description; null if none. Always public, whatever canSee says"
           }
         },
         "required": [
@@ -347,6 +357,64 @@
           "username",
           "avatarUrl",
           "bio"
+        ]
+      },
+      "UserFriends": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "all",
+              "mutual"
+            ],
+            "description": "all: every friend of this user (canSee); mutual: only the friends you have in common"
+          },
+          "friends": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserFriend"
+            },
+            "description": "Sorted by name, case-insensitive"
+          }
+        },
+        "required": [
+          "scope",
+          "friends"
+        ]
+      },
+      "UserFriend": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl"
         ]
       },
       "FriendLink": {
@@ -1821,7 +1889,7 @@
           "Users"
         ],
         "summary": "A user's profile",
-        "description": "Name, username and avatar are always visible. The bio (and featured photos) only if canSee: it is you, a friend, or the profile is public; otherwise bio is null. Never includes the email. 404 if the user does not exist.",
+        "description": "Name, username, avatar, bio and friend counts are always visible. Featured photos and the full friend list only if canSee: it is you, a friend, or the profile is public. Never includes the email. 404 if the user does not exist.",
         "security": [
           {
             "bearerAuth": []
@@ -1844,6 +1912,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{userId}/friends": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "A user's friends",
+        "description": "If you can see the profile (it is you, a friend, or the profile is public) every friend (scope all); otherwise only the friends you have in common (scope mutual). Sorted by name. Only id, name, username and avatar. 404 if the user does not exist.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User's friends",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFriends"
                 }
               }
             }
