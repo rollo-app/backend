@@ -426,14 +426,24 @@ export const FeedItemSchema = z
     }),
     durationS: nullableNumber,
     author: z
-      .object({ id: z.string().uuid(), name: z.string(), username: z.string().nullable(), avatarUrl: z.string().nullable() })
-      .openapi({ description: "`id` is the author's membership id" }),
+      .object({
+        id: z.string().uuid(),
+        userId: z.string().uuid().openapi({ description: "The author's user id (to open their profile)" }),
+        name: z.string(),
+        username: z.string().nullable(),
+        avatarUrl: z.string().nullable(),
+      })
+      .openapi({ description: "`id` is the author's membership id; `userId` their user id" }),
     width: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
     height: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
     files: z
       .object({ thumb: z.string(), original: z.string() })
       .optional()
       .openapi({ description: "Download paths; only after the reveal" }),
+    featuredByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you featured it on your profile" }),
+    featureBlocked: z.boolean().optional().openapi({
+      description: "Only after the reveal: the author does not let others feature it (they still can)",
+    }),
   })
   .openapi("FeedItem");
 
@@ -445,6 +455,45 @@ export const FeedResponseSchema = z
   })
   .openapi("Feed");
 
+// ---------- Featured photos ----------
+
+export const MAX_FEATURED = 60;
+
+export const ZoneSchema = z
+  .object({ lat: z.number(), lng: z.number() })
+  .openapi("Zone", {
+    description: "Center of the ~5 km cell (0.05°) where the photo was taken. Never the exact coordinates",
+    example: { lat: -41.075, lng: -71.475 },
+  });
+
+export const FeaturedPhotoSchema = z
+  .object({
+    mediaId: z.string().uuid(),
+    takenAt: z.number().int(),
+    width: nullableNumber,
+    height: nullableNumber,
+    thumbhash: z.string().nullable(),
+    author: z
+      .object({
+        id: z.string().uuid().openapi({ description: "User id" }),
+        name: z.string(),
+        username: z.string().nullable(),
+        avatarUrl: z.string().nullable(),
+      })
+      .nullable()
+      .openapi({ description: "Who took it; null when it is the profile owner" }),
+    zone: ZoneSchema.nullable().openapi({ description: "null if the photo has no GPS" }),
+    thumbPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/thumb" }),
+    originalPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/original" }),
+  })
+  .openapi("FeaturedPhoto", {
+    description: "A photo on someone's profile. Never includes the rollo, the caption or the exact location",
+  });
+
+export const FeaturedPhotosSchema = z
+  .object({ photos: z.array(FeaturedPhotoSchema).openapi({ description: "Most recently featured first" }) })
+  .openapi("FeaturedPhotos");
+
 // ---------- Path params ----------
 
 const pathParam = (name: string) => z.string().openapi({ param: { name, in: "path" } });
@@ -454,6 +503,11 @@ export const TripMemberParams = z.object({ tripId: pathParam("tripId"), memberId
 export const MediaParams = z.object({ mediaId: pathParam("mediaId") });
 export const MediaFileParams = z.object({
   tripId: pathParam("tripId"),
+  mediaId: pathParam("mediaId"),
+  variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
+});
+export const FeaturedFileParams = z.object({
+  userId: pathParam("userId"),
   mediaId: pathParam("mediaId"),
   variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
 });

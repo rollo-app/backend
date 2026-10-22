@@ -31,7 +31,7 @@ export function isBase64(s: string): boolean {
   }
 }
 
-export function isRevealed(trip: TripRow, now = Date.now()): boolean {
+export function isRevealed(trip: Pick<TripRow, "revealed_at" | "reveal_at">, now = Date.now()): boolean {
   return trip.revealed_at !== null || now >= trip.reveal_at;
 }
 

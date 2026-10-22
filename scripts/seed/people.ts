@@ -75,3 +75,32 @@ export function tripPhase(t: TripTimes, now = Date.now()): string {
   if (now < t.endsAt) return "en curso";
   return "terminado, sin revelar";
 }
+
+/** Seed users with a public profile (anyone signed in sees their featured photos and bio). Everyone else: "friends". */
+export const PUBLIC_PROFILES = new Set(["Tomi"]);
+
+/** The revealed rollo whose photos get featured. */
+export const FEATURED_TRIP = "Bariloche 2025 (revelado)";
+
+export type SeedPhoto = { id: string; author: string };
+export type FeaturedPlan = { blocked: string | null; byUser: Record<string, string[]> };
+
+/**
+ * Featured photos of the seed, from FEATURED_TRIP's photos (in time order):
+ * - Cami doesn't let others feature her first photo (feature block).
+ * - Juani: 2 by others (Tomi's and Fede's first) and 3 of her own; if she has fewer than 3, other people's fill in up to 5.
+ * - Tomi (public profile): 1 of Juani's (if any) and 2 of his own.
+ * Nobody but its author ever gets the blocked photo. The order is the order they are featured in (last = newest).
+ */
+export function planFeatured(photos: SeedPhoto[]): FeaturedPlan {
+  const blocked = photos.find((p) => p.author === "Cami")?.id ?? null;
+  const by = (author: string) => photos.filter((p) => p.author === author && p.id !== blocked).map((p) => p.id);
+
+  const juani = [by("Tomi")[0], by("Fede")[0]].filter((id): id is string => id !== undefined);
+  const own = by("Juani").slice(0, 3);
+  const fill = photos.filter((p) => p.author !== "Juani" && p.id !== blocked && !juani.includes(p.id)).map((p) => p.id);
+  juani.push(...fill.slice(0, Math.max(0, 5 - juani.length - own.length)), ...own);
+
+  const tomi = [...by("Juani").slice(0, 1), ...by("Tomi").slice(0, 2)];
+  return { blocked, byUser: { Juani: juani, Tomi: tomi } };
+}

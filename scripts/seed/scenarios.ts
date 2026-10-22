@@ -147,7 +147,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Bariloche 2025 (revelado)",
-    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member",
+    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member; featured photos come from here",
     members: ["Cami", "Tomi", "Fede", "Lu", "Nacho"],
     // Backdated to Jan 2025 right after creating (the API rejects dates in the past). The reveal stays in
     // the future so media can be registered; `after` moves it into the past and reveals it.
@@ -169,6 +169,8 @@ export const SCENARIOS: Scenario[] = [
         const day = Math.floor((i / 60) * 7);
         p.add(i % 5, day, "photo", near(SPOTS[(day + i) % 4]!, 0.004), cap(0.5));
       }
+      // Juani (index 5, added after the members) takes a few too, so she can feature her own.
+      for (let d = 0; d < 4; d++) p.add(5, d, "photo", near(SPOTS[d]!, 0.004), cap(0.5));
       return p.shots;
     },
     async after(ctx) {
@@ -247,10 +249,11 @@ const sqlNames = () => SCENARIOS.map((s) => `'${s.name.replace(/'/g, "''")}'`).j
 
 /**
  * Deletes the scenario trips (by name, so orphan trips from older schemas go too) and the seed users from
- * local D1: media → members → trips, then sessions → users. R2 objects are left behind.
+ * local D1: featured → media → members → trips, then sessions → users. R2 objects are left behind.
  */
 export function resetScenarios() {
   const ids = `SELECT id FROM trips WHERE name IN (${sqlNames()})`;
+  d1(`DELETE FROM featured WHERE media_id IN (SELECT id FROM media WHERE trip_id IN (${ids}))`);
   d1(`DELETE FROM media WHERE trip_id IN (${ids})`);
   d1(`DELETE FROM members WHERE trip_id IN (${ids})`);
   d1(`DELETE FROM trips WHERE name IN (${sqlNames()})`);

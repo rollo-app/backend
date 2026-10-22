@@ -1,4 +1,5 @@
 import { AwsClient } from "aws4fetch";
+import { HTTPException } from "hono/http-exception";
 import type { Env, MediaType } from "../types";
 
 export const DEV_UPLOAD_PREFIX = "/dev/upload/";
@@ -62,4 +63,22 @@ export async function verifyDevUpload(env: Env, key: string, exp: string | undef
   const expMs = Number(exp);
   if (!sig || !Number.isFinite(expMs) || expMs < Date.now()) return false;
   return sig === (await devSignature(env, key, expMs));
+}
+
+/**
+ * Streams a media file from R2 with long private caching (keys never change content).
+ * Throws 404 if the object is missing.
+ */
+export async function serveMediaFile(bucket: R2Bucket, key: string): Promise<Response> {
+  const object = await bucket.get(key);
+  if (!object) throw new HTTPException(404, { message: "Archivo no encontrado" });
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", key.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
+  }
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "private, max-age=31536000, immutable");
+  return new Response(object.body, { headers });
 }
