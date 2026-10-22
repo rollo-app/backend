@@ -272,6 +272,90 @@
           "member"
         ]
       },
+      "UserSettings": {
+        "type": "object",
+        "properties": {
+          "notifications": {
+            "$ref": "#/components/schemas/NotificationSettings"
+          }
+        },
+        "required": [
+          "notifications"
+        ]
+      },
+      "NotificationSettings": {
+        "type": "object",
+        "properties": {
+          "addedToTrip": {
+            "type": "boolean",
+            "description": "Someone adds you to a rollo"
+          },
+          "newFriend": {
+            "type": "boolean",
+            "description": "Someone redeems your friend link"
+          },
+          "tripStarted": {
+            "type": "boolean",
+            "description": "A rollo you are in starts"
+          },
+          "tripRevealed": {
+            "type": "boolean",
+            "description": "A rollo you are in is revealed"
+          },
+          "photoFeatured": {
+            "type": "boolean",
+            "description": "Someone features a photo of yours on their profile"
+          },
+          "photoLiked": {
+            "type": "boolean",
+            "description": "Someone likes a photo of yours"
+          }
+        },
+        "required": [
+          "addedToTrip",
+          "newFriend",
+          "tripStarted",
+          "tripRevealed",
+          "photoFeatured",
+          "photoLiked"
+        ]
+      },
+      "UpdateUserSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "notifications": {
+            "type": "object",
+            "properties": {
+              "addedToTrip": {
+                "type": "boolean",
+                "description": "Someone adds you to a rollo"
+              },
+              "newFriend": {
+                "type": "boolean",
+                "description": "Someone redeems your friend link"
+              },
+              "tripStarted": {
+                "type": "boolean",
+                "description": "A rollo you are in starts"
+              },
+              "tripRevealed": {
+                "type": "boolean",
+                "description": "A rollo you are in is revealed"
+              },
+              "photoFeatured": {
+                "type": "boolean",
+                "description": "Someone features a photo of yours on their profile"
+              },
+              "photoLiked": {
+                "type": "boolean",
+                "description": "Someone likes a photo of yours"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "UsernameAvailability": {
         "type": "object",
         "properties": {
@@ -1702,7 +1786,7 @@
           "Profile"
         ],
         "summary": "Delete your account",
-        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your reports and blocks (made and received) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
+        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your reports and blocks (made and received), push tokens, settings and likes (yours, and the ones on your photos) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
         "security": [
           {
             "bearerAuth": []
@@ -1826,6 +1910,196 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MyTrips"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/push-tokens/{token}": {
+      "put": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Register this phone's push token",
+        "description": "Registers an Expo push token (ExponentPushToken[...] or ExpoPushToken[...], URL-encoded in the path) for your account. Idempotent: calling it again only refreshes when it was last seen. A token belongs to one account at a time: if another account had it (same phone, another account), it moves to yours. 400 if it is not an Expo push token.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^Expo(nent)?PushToken\\[[A-Za-z0-9_-]+\\]$",
+              "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Token registered"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Unregister a push token",
+        "description": "Stops sending pushes to this token for your account (call it when signing out). Idempotent; another account's token is left alone.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^Expo(nent)?PushToken\\[[A-Za-z0-9_-]+\\]$",
+              "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Token removed"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/settings": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Your settings",
+        "description": "Your notification preferences, one per kind of push. Every one is on by default.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Your settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Change your settings",
+        "description": "Send any subset of the notification preferences; the ones left out do not change. Unknown keys or non-boolean values are a 400. Returns the full settings.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

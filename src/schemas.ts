@@ -223,6 +223,35 @@ export const AvatarParams = z.object({
   file: z.string().openapi({ param: { name: "file", in: "path" }, example: "3f1c2a.jpg" }),
 });
 
+// ---------- Push tokens and settings ----------
+
+/** Expo push token as returned by getExpoPushTokenAsync. */
+export const EXPO_PUSH_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/;
+
+export const PushTokenParams = z.object({
+  token: z
+    .string()
+    .regex(EXPO_PUSH_TOKEN, "El token de notificaciones no es válido")
+    .openapi({ param: { name: "token", in: "path" }, example: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" }),
+});
+
+export const NotificationSettingsSchema = z
+  .object({
+    addedToTrip: z.boolean().openapi({ description: "Someone adds you to a rollo" }),
+    newFriend: z.boolean().openapi({ description: "Someone redeems your friend link" }),
+    tripStarted: z.boolean().openapi({ description: "A rollo you are in starts" }),
+    tripRevealed: z.boolean().openapi({ description: "A rollo you are in is revealed" }),
+    photoFeatured: z.boolean().openapi({ description: "Someone features a photo of yours on their profile" }),
+    photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
+  })
+  .openapi("NotificationSettings");
+
+export const UserSettingsSchema = z.object({ notifications: NotificationSettingsSchema }).openapi("UserSettings");
+
+export const UpdateUserSettingsSchema = z
+  .strictObject({ notifications: NotificationSettingsSchema.partial().strict().optional() })
+  .openapi("UpdateUserSettingsRequest");
+
 export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");
 
 export const TripDetailSchema = z
