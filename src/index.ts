@@ -2,6 +2,7 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
+import admin from "./routes/admin";
 import auth from "./routes/auth";
 import blocks from "./routes/blocks";
 import featured from "./routes/featured";
@@ -24,6 +25,7 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
   description: "Session token returned by POST /auth/email/verify",
 });
 
+app.route("/admin", admin);
 app.route("/auth", auth);
 app.route("/me", me);
 app.route("/avatars", avatars);

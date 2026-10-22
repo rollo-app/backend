@@ -1,6 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { deleteTripMedia } from "../lib/account";
 import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { hiddenMediaSql } from "../lib/moderation";
@@ -273,13 +274,8 @@ media.openapi(deleteRoute, async (c) => {
   if (isRevealed(trip)) throw new HTTPException(409, { message: "El rollo ya se reveló" });
 
   const { mediaId } = c.req.valid("param");
-  const row = await c.env.DB.prepare("SELECT * FROM media WHERE id = ? AND trip_id = ? AND deleted_at IS NULL")
-    .bind(mediaId, trip.id)
-    .first<MediaRow>();
-  if (!row) throw new HTTPException(404, { message: "No encontrado" });
-
-  await c.env.MEDIA.delete([row.original_key, row.thumb_key]);
-  await c.env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), row.id).run();
+  const inTrip = await c.env.DB.prepare("SELECT 1 FROM media WHERE id = ? AND trip_id = ?").bind(mediaId, trip.id).first();
+  if (!inTrip || !(await deleteTripMedia(c.env, mediaId))) throw new HTTPException(404, { message: "No encontrado" });
   return c.body(null, 204);
 });
 
