@@ -31,7 +31,7 @@ export function isBase64(s: string): boolean {
   }
 }
 
-export function isRevealed(trip: TripRow, now = Date.now()): boolean {
+export function isRevealed(trip: Pick<TripRow, "revealed_at" | "reveal_at">, now = Date.now()): boolean {
   return trip.revealed_at !== null || now >= trip.reveal_at;
 }
 
@@ -61,7 +61,9 @@ export function avatarUrl(userId: string, avatarKey: string | null): string | nu
 }
 
 /** Public shape of a user. */
-export function publicUser(user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio">) {
+export function publicUser(
+  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "profile_visibility">,
+) {
   return {
     id: user.id,
     email: user.email,
@@ -69,6 +71,7 @@ export function publicUser(user: Pick<UserRow, "id" | "email" | "name" | "userna
     username: user.username,
     avatarUrl: avatarUrl(user.id, user.avatar_key),
     bio: user.bio,
+    profileVisibility: user.profile_visibility,
   };
 }
 

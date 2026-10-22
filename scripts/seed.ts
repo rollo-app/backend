@@ -1,3 +1,4 @@
+import { seedFeatured, verifyFeatured } from "./seed/featured";
 import { api, befriendSeed, clearFriendsSeed, ensureUser, seedEmail, seedUserId, unfriendSeed } from "./seed/lib";
 import { EXPECTED_COMMON, SEED_FRIENDSHIPS, commonTripsProblem, tripPhase } from "./seed/people";
 import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenarios";
@@ -13,6 +14,8 @@ import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenari
  * Users: <name>@rollo.test created straight in D1 with a session each; bios set through PATCH /me (scripts/seed/people.ts).
  * Friends and the "rollos en común" each friend of Juani must have: scripts/seed/people.ts (checked at the end of every run).
  * Avatars: generated JPEGs (scripts/seed/avatars.ts) uploaded through the real /me/avatar flow; Lu, Mateo, Nuevo and Rocío have none.
+ * Featured photos (scripts/seed/featured.ts): from Bariloche, Juani 5 (2 by others), Tomi 3 with a public profile, and one of
+ * Cami's photos blocked from being featured by others. Redone and checked on every run.
  * Every run: Lu gets a fresh friend link (1 h) and is un-friended from Juani, and Nuevo loses any friends, so both can be retested.
  * Videos are placeholders: there is no ffmpeg, the original is a jpeg uploaded as video/mp4.
  */
@@ -39,6 +42,7 @@ async function main() {
 
   const link = await api<{ code: string; expiresAt: number }>("POST", "/friends/link", undefined, await ensureUser(LINK_OWNER));
   await verifyFriends();
+  await verifyFeatured(await seedFeatured());
 
   const pad = (v: string | number, n: number) => String(v).padEnd(n);
   const juaniRole = { member: "miembro", admin: "ADMIN", absent: "no está" } as const;
@@ -52,9 +56,9 @@ async function main() {
 
   console.log("\n=== Cuentas (el código de login aparece en la consola de wrangler) ===");
   const accounts: [string, string][] = [
-    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta."],
-    ["Cami", "Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\")."],
-    ["Tomi", "Amigo con varios rollos en común; descripción de 150 caracteres justos (el tope)."],
+    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros)."],
+    ["Cami", "Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche."],
+    ["Tomi", "Amigo con varios rollos en común; descripción de 150 caracteres justos (el tope). Perfil PÚBLICO con 3 destacadas."],
     ["Fede", "Amigo con varios rollos en común; descripción de 3 renglones."],
     ["Bruno", "Amigo: 1 rollo en común (Tandil) y otro sin Juani (Escapada) que NO tiene que aparecer; descripción de 2 renglones."],
     ["Pilar", "Amiga sin ningún rollo: perfil sin rollos en común; \"Sumar a un rollo\" ofrece los de Juani sin revelar."],

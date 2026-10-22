@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
 import { NO_AVATAR, renderAvatar } from "./avatars";
-import { NO_USERNAME, SEED_BIOS } from "./people";
+import { NO_USERNAME, PUBLIC_PROFILES, SEED_BIOS } from "./people";
 
 /** Seed helpers: API, local D1, images (disk-cached), times and daily quota. */
 
@@ -91,7 +91,8 @@ export function ensureUser(name: string): Promise<string> {
       );
       if (!NO_AVATAR.has(name)) await uploadAvatar(name, token);
       // Through the API, so the bios go through the same validation as the app's. "" clears a bio from an earlier run.
-      await api("PATCH", "/me", { bio: SEED_BIOS[name] ?? "" }, token);
+      // Visibility is reset too, in case it was toggled while testing on the phone.
+      await api("PATCH", "/me", { bio: SEED_BIOS[name] ?? "", profileVisibility: PUBLIC_PROFILES.has(name) ? "public" : "friends" }, token);
       return token;
     })();
     sessions.set(name, p);
@@ -139,10 +140,11 @@ export function clearFriendsSeed(name: string) {
   if (id) d1(`DELETE FROM friendships WHERE user_a = ${sqlStr(id)} OR user_b = ${sqlStr(id)}`);
 }
 
-/** Deletes the seed users (`@rollo.test`) with their memberships, media, friendships, friend links, claims, attempts, sessions and login codes (bios go with the users). */
+/** Deletes the seed users (`@rollo.test`) with their memberships, media, featured photos, friendships, friend links, claims, attempts, sessions and login codes (bios go with the users). */
 export function resetUsers() {
   const users = `SELECT id FROM users WHERE email LIKE '%@rollo.test'`;
   const members = `SELECT id FROM members WHERE user_id IN (${users})`;
+  d1(`DELETE FROM featured WHERE user_id IN (${users}) OR media_id IN (SELECT id FROM media WHERE member_id IN (${members}))`);
   d1(`DELETE FROM media WHERE member_id IN (${members})`);
   d1(`DELETE FROM members WHERE user_id IN (${users})`);
   d1(`DELETE FROM friendships WHERE user_a IN (${users}) OR user_b IN (${users})`);

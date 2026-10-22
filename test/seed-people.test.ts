@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BIO_MAX_LENGTH, BIO_MAX_LINES, bioField } from "../src/schemas";
-import { EXPECTED_COMMON, NO_USERNAME, SEED_BIOS, SEED_FRIENDSHIPS, commonTripsProblem, tripPhase } from "../scripts/seed/people";
+import { type SeedPhoto, planFeatured, EXPECTED_COMMON, NO_USERNAME, SEED_BIOS, SEED_FRIENDSHIPS, commonTripsProblem, tripPhase } from "../scripts/seed/people";
 
 const lines = (s: string) => s.split(/\r\n|\r|\n/).length;
 
@@ -62,5 +62,31 @@ describe("tripPhase", () => {
     expect(tripPhase(trip(now - 30, now - 20, now + 30), now)).toBe("terminado, sin revelar");
     expect(tripPhase(trip(now - 30, now - 20, now - 10), now)).toBe("revelado");
     expect(tripPhase(trip(now - 10, now + 20, now + 30, now - 1), now)).toBe("revelado");
+  });
+});
+
+describe("planFeatured", () => {
+  const photos = (spec: [string, number][]): SeedPhoto[] =>
+    spec.flatMap(([author, n]) => Array.from({ length: n }, (_, i) => ({ id: `${author}-${i}`, author })));
+
+  it("Cami blocks her first photo; Juani features 3 of her own and 2 of others (Tomi and Fede); Tomi 2 of his and 1 of Juani's", () => {
+    const plan = planFeatured(photos([["Cami", 3], ["Tomi", 3], ["Fede", 3], ["Juani", 4], ["Lu", 2]]));
+    expect(plan.blocked).toBe("Cami-0");
+    expect(plan.byUser.Juani).toEqual(["Tomi-0", "Fede-0", "Juani-0", "Juani-1", "Juani-2"]);
+    expect(plan.byUser.Tomi).toEqual(["Juani-0", "Tomi-0", "Tomi-1"]);
+  });
+
+  it("falls back to other people's photos when Juani has none (a Bariloche seeded before she took photos there)", () => {
+    const plan = planFeatured(photos([["Cami", 3], ["Tomi", 3], ["Fede", 3], ["Lu", 2]]));
+    expect(plan.byUser.Juani).toHaveLength(5);
+    expect(plan.byUser.Juani).not.toContain("Cami-0");
+    expect(new Set(plan.byUser.Juani).size).toBe(5);
+    expect(plan.byUser.Tomi).toEqual(["Tomi-0", "Tomi-1"]);
+  });
+
+  it("never plans the blocked photo for anyone but its author", () => {
+    const plan = planFeatured(photos([["Cami", 1], ["Juani", 1]]));
+    expect(plan.blocked).toBe("Cami-0");
+    expect(Object.values(plan.byUser).flat()).not.toContain("Cami-0");
   });
 });

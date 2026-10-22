@@ -6,7 +6,7 @@ describe("GET /me", () => {
     const { token, userId, email } = await signUp("fede@rollo.test", "Fede");
     const res = await api("GET", "/me", { token });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: userId, email, name: "Fede", username: expect.any(String), avatarUrl: null, bio: null });
+    expect(res.body).toEqual({ id: userId, email, name: "Fede", username: expect.any(String), avatarUrl: null, bio: null, profileVisibility: "friends" });
   });
 
   it("name is null until it is set", async () => {
@@ -56,6 +56,29 @@ describe("PATCH /me", () => {
 
   it("requires a session", async () => {
     expect((await api("PATCH", "/me", { body: { name: "x" } })).status).toBe(401);
+  });
+
+  it("changes the profile visibility", async () => {
+    const { token } = await signUp();
+    const res = await api("PATCH", "/me", { token, body: { profileVisibility: "public" } });
+    expect(res.status).toBe(200);
+    expect(res.body.profileVisibility).toBe("public");
+    expect((await api("GET", "/me", { token })).body.profileVisibility).toBe("public");
+    expect((await api("PATCH", "/me", { token, body: { profileVisibility: "friends" } })).body.profileVisibility).toBe("friends");
+  });
+
+  it("keeps the visibility when other fields change", async () => {
+    const { token } = await signUp();
+    await api("PATCH", "/me", { token, body: { profileVisibility: "public" } });
+    expect((await api("PATCH", "/me", { token, body: { name: "Otro" } })).body.profileVisibility).toBe("public");
+  });
+
+  it("rejects an unknown profile visibility", async () => {
+    const { token } = await signUp();
+    for (const profileVisibility of ["everyone", "", null, 1]) {
+      expect((await api("PATCH", "/me", { token, body: { profileVisibility } })).status, String(profileVisibility)).toBe(400);
+    }
+    expect((await api("GET", "/me", { token })).body.profileVisibility).toBe("friends");
   });
 });
 

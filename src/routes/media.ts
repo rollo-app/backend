@@ -1,8 +1,9 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
-import { mediaKeys, presignPut } from "../lib/r2";
+import { mediaKeys, presignPut, serveMediaFile } from "../lib/r2";
 import { avatarUrl, isRevealed, localDate } from "../lib/util";
 import {
   FeedResponseSchema,
@@ -153,7 +154,8 @@ const feedRoute = createRoute({
   summary: "Trip feed",
   description:
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
-    "After: includes dimensions and the download paths.",
+    "After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. " +
+    "Every item carries the author's user id (`author.userId`).",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
@@ -163,17 +165,21 @@ const feedRoute = createRoute({
 media.openapi(feedRoute, async (c) => {
   const trip = c.get("trip");
   const revealed = isRevealed(trip);
+  const viewerId = c.get("user").id;
 
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.type, m.taken_at, m.local_date, m.lat, m.lng, m.caption, m.thumbhash, m.duration_s,
-            m.width, m.height, mem.id AS author_id, u.name AS author_name, u.username AS author_username, mem.user_id AS author_user_id, u.avatar_key AS author_avatar_key
+            m.width, m.height, mem.id AS author_id, u.name AS author_name, u.username AS author_username, mem.user_id AS author_user_id, u.avatar_key AS author_avatar_key,
+            m.feature_blocked_at, f.media_id IS NOT NULL AS featured_by_me
      FROM media m JOIN members mem ON mem.id = m.member_id JOIN users u ON u.id = mem.user_id
+     LEFT JOIN featured f ON f.media_id = m.id AND f.user_id = ?
      WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL
      ORDER BY m.taken_at`,
-  ).bind(trip.id).all<{
+  ).bind(viewerId, trip.id).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
     caption: string | null; thumbhash: string | null; duration_s: number | null; width: number | null; height: number | null;
     author_id: string; author_name: string | null; author_username: string | null; author_user_id: string; author_avatar_key: string | null;
+    feature_blocked_at: number | null; featured_by_me: number;
   }>();
 
   const items = results.map((r) => ({
@@ -186,7 +192,13 @@ media.openapi(feedRoute, async (c) => {
     caption: r.caption,
     thumbhash: r.thumbhash,
     durationS: r.duration_s,
-    author: { id: r.author_id, name: r.author_name ?? "", username: r.author_username, avatarUrl: avatarUrl(r.author_user_id, r.author_avatar_key) },
+    author: {
+      id: r.author_id,
+      userId: r.author_user_id,
+      name: r.author_name ?? "",
+      username: r.author_username,
+      avatarUrl: avatarUrl(r.author_user_id, r.author_avatar_key),
+    },
     ...(revealed && {
       width: r.width,
       height: r.height,
@@ -194,6 +206,8 @@ media.openapi(feedRoute, async (c) => {
         thumb: `/trips/${trip.id}/media/${r.id}/thumb`,
         original: `/trips/${trip.id}/media/${r.id}/original`,
       },
+      featuredByMe: r.featured_by_me === 1,
+      featureBlocked: r.feature_blocked_at !== null,
     }),
   }));
 
@@ -233,18 +247,7 @@ media.openapi(downloadRoute, async (c) => {
   ).bind(mediaId, trip.id).first<Pick<MediaRow, "original_key" | "thumb_key">>();
   if (!row) throw new HTTPException(404, { message: "No encontrado" });
 
-  const key = variant === "thumb" ? row.thumb_key : row.original_key;
-  const object = await c.env.MEDIA.get(key);
-  if (!object) throw new HTTPException(404, { message: "Archivo no encontrado" });
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  if (!headers.has("content-type")) {
-    headers.set("content-type", key.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
-  }
-  headers.set("etag", object.httpEtag);
-  headers.set("cache-control", "private, max-age=31536000, immutable");
-  return new Response(object.body, { headers });
+  return serveMediaFile(c.env.MEDIA, variant === "thumb" ? row.thumb_key : row.original_key);
 });
 
 // ---------- Delete ----------
@@ -276,6 +279,79 @@ media.openapi(deleteRoute, async (c) => {
 
   await c.env.MEDIA.delete([row.original_key, row.thumb_key]);
   await c.env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), row.id).run();
+  return c.body(null, 204);
+});
+
+// ---------- Feature block (author) ----------
+
+/**
+ * The photo must be yours (you took it) and not deleted. Authorship is the media's member → user, so it holds
+ * even after you left the rollo or were removed from it. 404 if it doesn't exist (or you aren't in its rollo
+ * and didn't take it), 403 if an active member who didn't take it.
+ */
+async function requireOwnMedia(c: Context<AppEnv>, mediaId: string): Promise<string> {
+  const userId = c.get("user").id;
+  const row = await c.env.DB.prepare(
+    `SELECT m.id, m.trip_id, author.user_id AS author_user_id
+     FROM media m JOIN members author ON author.id = m.member_id
+     WHERE m.id = ? AND m.deleted_at IS NULL`,
+  )
+    .bind(mediaId)
+    .first<Pick<MediaRow, "id" | "trip_id"> & { author_user_id: string }>();
+  if (!row) throw new HTTPException(404, { message: "No encontrado" });
+  if (row.author_user_id === userId) return row.id;
+
+  const member = await c.env.DB.prepare(
+    "SELECT 1 FROM members WHERE trip_id = ? AND user_id = ? AND removed_at IS NULL AND left_at IS NULL",
+  )
+    .bind(row.trip_id, userId)
+    .first();
+  if (!member) throw new HTTPException(404, { message: "No encontrado" });
+  throw new HTTPException(403, { message: "Solo quien sacó la foto puede cambiar esto" });
+}
+
+const blockFeatureRoute = createRoute({
+  method: "put",
+  path: "/media/{mediaId}/feature-block",
+  tags,
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  request: { params: MediaParams },
+  responses: { 204: { description: "Done" }, ...errors(401, 403, 404) },
+  summary: "Don't let others feature this photo (author only)",
+  description:
+    "Removes it from everyone else's profile and stops new ones (they get 409). You can still feature it yourself. " +
+    "Idempotent. Works even if you left the rollo or were removed from it. " +
+    "403 if you did not take it; 404 if it does not exist or you neither took it nor are an active member of its rollo.",
+});
+
+media.openapi(blockFeatureRoute, async (c) => {
+  const id = await requireOwnMedia(c, c.req.valid("param").mediaId);
+  const { DB } = c.env;
+  await DB.batch([
+    DB.prepare("UPDATE media SET feature_blocked_at = COALESCE(feature_blocked_at, ?) WHERE id = ?").bind(Date.now(), id),
+    DB.prepare("DELETE FROM featured WHERE media_id = ? AND user_id != ?").bind(id, c.get("user").id),
+  ]);
+  return c.body(null, 204);
+});
+
+const unblockFeatureRoute = createRoute({
+  method: "delete",
+  path: "/media/{mediaId}/feature-block",
+  tags,
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  request: { params: MediaParams },
+  responses: { 204: { description: "Done" }, ...errors(401, 403, 404) },
+  summary: "Let others feature this photo again (author only)",
+  description:
+    "Idempotent. Works even if you left the rollo or were removed from it. " +
+    "Photos removed from other profiles while it was blocked do not come back.",
+});
+
+media.openapi(unblockFeatureRoute, async (c) => {
+  const id = await requireOwnMedia(c, c.req.valid("param").mediaId);
+  await c.env.DB.prepare("UPDATE media SET feature_blocked_at = NULL WHERE id = ?").bind(id).run();
   return c.body(null, 204);
 });
 

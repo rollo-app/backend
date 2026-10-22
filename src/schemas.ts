@@ -34,6 +34,10 @@ export const TripSchema = z
   })
   .openapi("Trip");
 
+export const ProfileVisibilitySchema = z.enum(["friends", "public"]).openapi("ProfileVisibility", {
+  description: "Who can see your bio and featured photos: your friends only, or anyone signed in. Name, username and avatar are always visible",
+});
+
 export const UserSchema = z
   .object({
     id: z.string().uuid(),
@@ -47,6 +51,7 @@ export const UserSchema = z
       description: "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none",
     }),
     bio: z.string().nullable().openapi({ example: "Viajando por el sur", description: "Profile description (up to 3 lines); null if none" }),
+    profileVisibility: ProfileVisibilitySchema,
   })
   .openapi("User");
 
@@ -151,7 +156,12 @@ export const bioField = z
   });
 
 export const UpdateProfileSchema = z
-  .object({ name: personName.optional(), username: usernameField.optional(), bio: bioField.optional() })
+  .object({
+    name: personName.optional(),
+    username: usernameField.optional(),
+    bio: bioField.optional(),
+    profileVisibility: ProfileVisibilitySchema.optional(),
+  })
   .openapi("UpdateProfileRequest");
 
 export const UsernameParams = z.object({
@@ -193,6 +203,10 @@ export const TripSummarySchema = z
     revealed: z.boolean(),
     role: RoleSchema,
     totalUploaded: z.number().int(),
+    coverThumbhash: z.string().nullable().openapi({
+      description:
+        "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
+    }),
   })
   .openapi("TripSummary");
 
@@ -292,6 +306,56 @@ export const FriendProfileSchema = z
   })
   .openapi("FriendProfile");
 
+// ---------- Users ----------
+
+export const UserParams = z.object({
+  userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
+});
+
+export const PublicUserSchema = z
+  .object({
+    id: z.string().uuid().openapi({ description: "User id" }),
+    name: z.string().openapi({ example: "Cami" }),
+    username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
+    avatarUrl: z.string().nullable(),
+    bio: z.string().nullable().openapi({
+      example: "Viajando por el sur",
+      description: "Profile description; null if none. Always public, whatever canSee says",
+    }),
+  })
+  .openapi("PublicUser");
+
+export const UserProfileSchema = z
+  .object({
+    user: PublicUserSchema,
+    isFriend: z.boolean().openapi({ description: "Whether you and this user are friends (false for yourself)" }),
+    profileVisibility: ProfileVisibilitySchema,
+    canSee: z.boolean().openapi({
+      description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public",
+    }),
+    friendCount: z.number().int().openapi({ description: "How many friends this user has (always public)" }),
+    mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends (0 for yourself)" }),
+  })
+  .openapi("UserProfile");
+
+export const UserFriendSchema = z
+  .object({
+    id: z.string().uuid().openapi({ description: "User id" }),
+    name: z.string().openapi({ example: "Cami" }),
+    username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
+    avatarUrl: z.string().nullable(),
+  })
+  .openapi("UserFriend");
+
+export const UserFriendsSchema = z
+  .object({
+    scope: z.enum(["all", "mutual"]).openapi({
+      description: "all: every friend of this user (canSee); mutual: only the friends you have in common",
+    }),
+    friends: z.array(UserFriendSchema).openapi({ description: "Sorted by name, case-insensitive" }),
+  })
+  .openapi("UserFriends");
+
 export const AddMembersSchema = z
   .object({
     friendIds: z.array(z.string().min(1).max(64)).min(1).max(50).openapi({ description: "User ids of your friends (1 to 50)" }),
@@ -386,14 +450,24 @@ export const FeedItemSchema = z
     }),
     durationS: nullableNumber,
     author: z
-      .object({ id: z.string().uuid(), name: z.string(), username: z.string().nullable(), avatarUrl: z.string().nullable() })
-      .openapi({ description: "`id` is the author's membership id" }),
+      .object({
+        id: z.string().uuid(),
+        userId: z.string().uuid().openapi({ description: "The author's user id (to open their profile)" }),
+        name: z.string(),
+        username: z.string().nullable(),
+        avatarUrl: z.string().nullable(),
+      })
+      .openapi({ description: "`id` is the author's membership id; `userId` their user id" }),
     width: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
     height: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
     files: z
       .object({ thumb: z.string(), original: z.string() })
       .optional()
       .openapi({ description: "Download paths; only after the reveal" }),
+    featuredByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you featured it on your profile" }),
+    featureBlocked: z.boolean().optional().openapi({
+      description: "Only after the reveal: the author does not let others feature it (they still can)",
+    }),
   })
   .openapi("FeedItem");
 
@@ -405,6 +479,45 @@ export const FeedResponseSchema = z
   })
   .openapi("Feed");
 
+// ---------- Featured photos ----------
+
+export const MAX_FEATURED = 60;
+
+export const ZoneSchema = z
+  .object({ lat: z.number(), lng: z.number() })
+  .openapi("Zone", {
+    description: "Center of the ~5 km cell (0.05°) where the photo was taken. Never the exact coordinates",
+    example: { lat: -41.075, lng: -71.475 },
+  });
+
+export const FeaturedPhotoSchema = z
+  .object({
+    mediaId: z.string().uuid(),
+    takenAt: z.number().int(),
+    width: nullableNumber,
+    height: nullableNumber,
+    thumbhash: z.string().nullable(),
+    author: z
+      .object({
+        id: z.string().uuid().openapi({ description: "User id" }),
+        name: z.string(),
+        username: z.string().nullable(),
+        avatarUrl: z.string().nullable(),
+      })
+      .nullable()
+      .openapi({ description: "Who took it; null when it is the profile owner" }),
+    zone: ZoneSchema.nullable().openapi({ description: "null if the photo has no GPS" }),
+    thumbPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/thumb" }),
+    originalPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/original" }),
+  })
+  .openapi("FeaturedPhoto", {
+    description: "A photo on someone's profile. Never includes the rollo, the caption or the exact location",
+  });
+
+export const FeaturedPhotosSchema = z
+  .object({ photos: z.array(FeaturedPhotoSchema).openapi({ description: "Most recently featured first" }) })
+  .openapi("FeaturedPhotos");
+
 // ---------- Path params ----------
 
 const pathParam = (name: string) => z.string().openapi({ param: { name, in: "path" } });
@@ -414,6 +527,11 @@ export const TripMemberParams = z.object({ tripId: pathParam("tripId"), memberId
 export const MediaParams = z.object({ mediaId: pathParam("mediaId") });
 export const MediaFileParams = z.object({
   tripId: pathParam("tripId"),
+  mediaId: pathParam("mediaId"),
+  variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
+});
+export const FeaturedFileParams = z.object({
+  userId: pathParam("userId"),
   mediaId: pathParam("mediaId"),
   variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
 });

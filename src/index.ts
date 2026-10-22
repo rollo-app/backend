@@ -3,11 +3,13 @@ import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import auth from "./routes/auth";
+import featured from "./routes/featured";
 import friends, { friendLinks } from "./routes/friends";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
 import trips from "./routes/trips";
+import users from "./routes/users";
 import usernames from "./routes/usernames";
 
 const app = createApp();
@@ -24,10 +26,12 @@ app.route("/auth", auth);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);
+app.route("/users", users);
 app.route("/friends", friends);
 app.route("/friend-links", friendLinks);
 app.route("/trips", trips);
 app.route("/", media);
+app.route("/", featured);
 
 // Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {
