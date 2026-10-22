@@ -242,3 +242,26 @@ describe("blocks and friend links", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("blocked pair sees a header-only profile", () => {
+  it("returns no friends and no mutual count, in both directions", async () => {
+    const a = await signUp(undefined, "Ana");
+    const b = await signUp(undefined, "Beto");
+    const common = await signUp(undefined, "Comun");
+    await befriend(a.token, common.token);
+    await befriend(b.token, common.token);
+    const before = await api("GET", `/users/${b.userId}`, { token: a.token });
+    expect(before.body.mutualCount).toBe(1);
+    await api("PUT", `/blocks/${a.userId}`, { token: b.token });
+
+    for (const [viewer, owner] of [[a, b], [b, a]] as const) {
+      const friends = await api("GET", `/users/${owner.userId}/friends`, { token: viewer.token });
+      expect(friends.status).toBe(200);
+      expect(friends.body).toEqual({ scope: "mutual", friends: [] });
+      const profile = await api("GET", `/users/${owner.userId}`, { token: viewer.token });
+      expect(profile.body.mutualCount).toBe(0);
+      expect(profile.body.friendCount).toBe(1);
+      expect(profile.body.canSee).toBe(false);
+    }
+  });
+});

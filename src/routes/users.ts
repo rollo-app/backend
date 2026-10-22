@@ -49,9 +49,16 @@ users.openapi(profileRoute, async (c) => {
     .first<Pick<UserRow, "id" | "name" | "username" | "avatar_key" | "bio" | "profile_visibility">>();
   if (!owner) throw new HTTPException(404, { message: "No existe" });
 
-  const canSee = await canSeeProfile(c.env.DB, viewerId, owner);
-  const blocked = await isBlockedEitherWay(c.env.DB, viewerId, owner.id);
   const flag = async (sql: string) => (await c.env.DB.prepare(sql).bind(viewerId, owner.id).first()) !== null;
+  const [blocked, blockedByMe, reportedByMe, counts] = await Promise.all([
+    isBlockedEitherWay(c.env.DB, viewerId, owner.id),
+    flag("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?"),
+    flag("SELECT 1 FROM reports WHERE reporter_id = ? AND target_user_id = ? AND media_id IS NULL"),
+    friendCounts(c.env.DB, viewerId, owner.id),
+  ]);
+  // A blocked pair (either direction) sees a header-only profile: no access, no friendship, no mutual friends.
+  const canSee = !blocked && (await canSeeProfile(c.env.DB, viewerId, owner));
+  const isFriend = !blocked && (await areFriends(c.env.DB, viewerId, owner.id));
   return c.json(
     {
       user: {
@@ -61,12 +68,13 @@ users.openapi(profileRoute, async (c) => {
         avatarUrl: avatarUrl(owner.id, owner.avatar_key),
         bio: owner.bio,
       },
-      isFriend: !blocked && (await areFriends(c.env.DB, viewerId, owner.id)),
-      blockedByMe: await flag("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?"),
-      reportedByMe: await flag("SELECT 1 FROM reports WHERE reporter_id = ? AND target_user_id = ? AND media_id IS NULL"),
+      isFriend,
+      blockedByMe,
+      reportedByMe,
       profileVisibility: owner.profile_visibility,
       canSee,
-      ...(await friendCounts(c.env.DB, viewerId, owner.id)),
+      friendCount: counts.friendCount,
+      mutualCount: blocked ? 0 : counts.mutualCount,
     },
     200,
   );
@@ -93,6 +101,8 @@ users.openapi(friendsRoute, async (c) => {
     .bind(c.req.valid("param").userId)
     .first<Pick<UserRow, "id" | "profile_visibility">>();
   if (!owner) throw new HTTPException(404, { message: "No existe" });
+
+  if (await isBlockedEitherWay(c.env.DB, viewerId, owner.id)) return c.json({ scope: "mutual" as const, friends: [] }, 200);
 
   const scope = (await canSeeProfile(c.env.DB, viewerId, owner)) ? "all" : "mutual";
   const { results } = await c.env.DB.prepare(
