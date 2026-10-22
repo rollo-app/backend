@@ -229,12 +229,14 @@ describe("GET /users/{userId}/featured", () => {
     expect(res.body.photos[0]).toMatchObject({ mediaId: id, author: null, zone: null });
   });
 
-  it("orders by when they were featured, newest first", async () => {
+  it("orders by when each photo was taken, newest first, not by when it was featured", async () => {
     const t = await revealedTrip();
-    await feature(t.juani.token, t.juaniPhoto);
-    await env.DB.prepare("UPDATE featured SET created_at = created_at - 1000").run();
-    await feature(t.juani.token, t.fedePhoto);
-    expect(ids(await list(t.juani.token, t.juani.userId))).toEqual([t.fedePhoto, t.juaniPhoto]);
+    const [oldest, middle, newest] = (await insertPhotos(t.tripId, t.fede.memberId, 3)) as [string, string, string];
+    await env.DB.prepare("UPDATE media SET taken_at = ? WHERE id = ?").bind(1000, oldest).run();
+    await env.DB.prepare("UPDATE media SET taken_at = ? WHERE id = ?").bind(2000, middle).run();
+    await env.DB.prepare("UPDATE media SET taken_at = ? WHERE id = ?").bind(3000, newest).run();
+    for (const id of [newest, middle, oldest]) await feature(t.juani.token, id);
+    expect(ids(await list(t.juani.token, t.juani.userId))).toEqual([newest, middle, oldest]);
   });
 
   it("is visible to the owner and to friends of a private profile", async () => {

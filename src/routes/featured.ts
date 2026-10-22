@@ -135,7 +135,7 @@ const listRoute = createRoute({
   tags,
   summary: "A user's featured photos",
   description:
-    "Most recently featured first. Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. " +
+    "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. " +
     "Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. " +
     "Photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
   security: bearerAuth,
@@ -152,7 +152,7 @@ featured.openapi(listRoute, async (c) => {
             author.user_id AS author_user_id, u.name AS author_name, u.username AS author_username, u.avatar_key AS author_avatar_key
      FROM ${VISIBLE_FROM} JOIN users u ON u.id = author.user_id
      WHERE ${VISIBLE_WHERE} AND f.user_id = ?
-     ORDER BY f.created_at DESC, f.media_id`,
+     ORDER BY m.taken_at DESC, m.id`,
   )
     .bind(Date.now(), owner.id)
     .all<{

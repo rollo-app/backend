@@ -3346,7 +3346,7 @@
           "Featured"
         ],
         "summary": "A user's featured photos",
-        "description": "Most recently featured first. Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
+        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
         "security": [
           {
             "bearerAuth": []
