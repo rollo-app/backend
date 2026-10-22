@@ -1,5 +1,7 @@
 -- Push notifications, user settings and likes.
--- push_tokens: Expo push tokens; a token belongs to one user at a time (same phone, another account → it moves).
+-- push_tokens: Expo push tokens; a token belongs to one user and one session at a time (same phone, another
+--   account or a new login → it moves). Deleting the session (logout, account deletion) deletes its tokens, so
+--   a phone that logged out offline stops getting that account's pushes; sendPush only uses unexpired sessions.
 -- user_settings: one column per preference, 1 = on. No row means every default.
 -- likes: one per user and photo. media.like_notified_at / likes_since_notified: anti-spam window for like pushes.
 -- trips.started_notified_at / revealed_notified_at: the "started" and "revealed" pushes were already sent.
@@ -7,11 +9,13 @@
 CREATE TABLE push_tokens (
   token        TEXT PRIMARY KEY,
   user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   created_at   INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL
 );
 
 CREATE INDEX idx_push_tokens_user ON push_tokens (user_id);
+CREATE INDEX idx_push_tokens_session ON push_tokens (session_id);
 
 CREATE TABLE user_settings (
   user_id               TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

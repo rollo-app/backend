@@ -59,6 +59,16 @@ export async function signUp(
   return { token, userId: user.id, email: user.email };
 }
 
+/** Logs an existing account in again: a new session (another phone). Returns its token. */
+export async function logIn(email: string): Promise<string> {
+  // Skip the resend throttle: pretend the previous codes were requested an hour ago.
+  await env.DB.prepare("UPDATE auth_codes SET created_at = created_at - ? WHERE email = ?").bind(2 * HOUR, email.trim().toLowerCase()).run();
+  const code = await requestCode(email);
+  const res = await api("POST", "/auth/email/verify", { body: { email, code } });
+  if (res.status !== 200) throw new Error(`verify failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.token;
+}
+
 /** Calls start and returns the code that "was emailed". */
 export async function requestCode(email: string): Promise<string> {
   devSentCodes.delete(email.trim().toLowerCase());

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { getNotificationSettings } from "../src/lib/settings";
-import { DAY, api, join, newTrip, signUp, uploadMedia } from "./helpers";
+import { DAY, api, join, logIn, newTrip, signUp, uploadMedia } from "./helpers";
 
 const TOKEN = "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]";
 const path = (token: string) => `/me/push-tokens/${encodeURIComponent(token)}`;
@@ -55,6 +55,16 @@ describe("PUT /me/push-tokens/{token}", () => {
     expect(await tokensOf(b.userId)).toEqual([TOKEN]);
   });
 
+  it("binds the token to the session that registered it, and re-registering from another session moves it", async () => {
+    const u = await signUp();
+    const second = await logIn(u.email);
+    await api("PUT", path(TOKEN), { token: u.token });
+    await api("PUT", path(TOKEN), { token: second });
+    // The first session logs out: the token now belongs to the second one and survives.
+    expect((await api("POST", "/auth/logout", { token: u.token })).status).toBe(204);
+    expect(await tokensOf(u.userId)).toEqual([TOKEN]);
+  });
+
   it("rejects anything that is not an Expo push token", async () => {
     const u = await signUp();
     for (const bad of ["abc", "ExponentPushToken[]", "ExponentPushToken[abc", "FooPushToken[abc]", `${TOKEN}x`, "ExponentPushToken[a b]"]) {
@@ -75,6 +85,20 @@ describe("PUT /me/push-tokens/{token}", () => {
 
   it("requires a session", async () => {
     expect((await api("PUT", path(TOKEN))).status).toBe(401);
+  });
+});
+
+describe("POST /auth/logout and push tokens", () => {
+  it("deletes the tokens of that session, even if the app never called DELETE (offline logout)", async () => {
+    const u = await signUp();
+    const otherPhone = await logIn(u.email);
+    const other = "ExponentPushToken[otherphone]";
+    await api("PUT", path(TOKEN), { token: u.token });
+    await api("PUT", path(other), { token: otherPhone });
+
+    expect((await api("POST", "/auth/logout", { token: u.token })).status).toBe(204);
+
+    expect(await tokensOf(u.userId)).toEqual([other]);
   });
 });
 

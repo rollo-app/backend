@@ -80,11 +80,17 @@ export async function sendPush(
     ids = ids.filter((id) => settings.get(id)?.[kind] !== false);
     if (!ids.length) return;
 
+    // Only tokens of a live session (the same validity requireUser checks): a phone that logged out or whose
+    // session expired never gets pushes, even if the app could not unregister its token.
     const tokens: string[] = [];
+    const now = Date.now();
     for (const chunk of chunks(ids, CHUNK)) {
       const { results } = await db
-        .prepare(`SELECT token FROM push_tokens WHERE user_id IN (${chunk.map(() => "?").join(", ")})`)
-        .bind(...chunk)
+        .prepare(
+          `SELECT t.token FROM push_tokens t JOIN sessions s ON s.id = t.session_id AND s.user_id = t.user_id
+           WHERE s.expires_at > ? AND t.user_id IN (${chunk.map(() => "?").join(", ")})`,
+        )
+        .bind(now, ...chunk)
         .all<{ token: string }>();
       tokens.push(...results.map((r) => r.token));
     }

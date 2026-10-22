@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { checkPushReceipts, sendPush } from "../src/lib/push";
-import { MINUTE, api, mockExpo, registerToken, signUp } from "./helpers";
+import { MINUTE, api, logIn, mockExpo, registerToken, signUp } from "./helpers";
 
 const message = { body: "Cami te sumó a Bariloche", url: "/roll?trip=t1" };
 
@@ -83,6 +83,34 @@ describe("sendPush", () => {
     expect(expo.sent.map((m) => m.to)).toEqual([fineToken]);
   });
 
+  it("never sends to a token whose session expired", async () => {
+    const expo = mockExpo();
+    const a = await signUp();
+    const otherPhone = await logIn(a.email);
+    const expired = await registerToken(a.token, "expired");
+    const valid = await registerToken(otherPhone, "valid");
+    await env.DB.prepare(
+      "UPDATE sessions SET expires_at = ? WHERE id = (SELECT session_id FROM push_tokens WHERE token = ?)",
+    ).bind(Date.now() - 1, expired).run();
+
+    await sendPush(env, [a.userId], "addedToTrip", message);
+
+    expect(expo.sent.map((m) => m.to)).toEqual([valid]);
+  });
+
+  it("after another account registers the same token, the previous account no longer gets pushes there", async () => {
+    const expo = mockExpo();
+    const a = await signUp();
+    const b = await signUp();
+    const shared = await registerToken(a.token, "samephone");
+    expect(await registerToken(b.token, "samephone")).toBe(shared);
+
+    await sendPush(env, [a.userId], "addedToTrip", message);
+    expect(expo.sent).toEqual([]);
+    await sendPush(env, [b.userId], "addedToTrip", message);
+    expect(expo.sent.map((m) => m.to)).toEqual([shared]);
+  });
+
   it("does not call Expo when nobody has a token", async () => {
     const expo = mockExpo();
     const a = await signUp();
@@ -94,10 +122,11 @@ describe("sendPush", () => {
     const expo = mockExpo();
     const a = await signUp();
     const now = Date.now();
+    const session = await env.DB.prepare("SELECT id FROM sessions WHERE user_id = ?").bind(a.userId).first<{ id: string }>();
     await env.DB.batch(
       Array.from({ length: 150 }, (_, i) =>
-        env.DB.prepare("INSERT INTO push_tokens (token, user_id, created_at, last_seen_at) VALUES (?, ?, ?, ?)").bind(
-          `ExponentPushToken[t${i}]`, a.userId, now, now,
+        env.DB.prepare("INSERT INTO push_tokens (token, user_id, session_id, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)").bind(
+          `ExponentPushToken[t${i}]`, a.userId, session!.id, now, now,
         ),
       ),
     );

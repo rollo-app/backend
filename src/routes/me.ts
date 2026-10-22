@@ -232,13 +232,14 @@ me.openapi(putPushTokenRoute, async (c) => {
   const { token } = c.req.valid("param");
   const now = Date.now();
   await c.env.DB.prepare(
-    `INSERT INTO push_tokens (token, user_id, created_at, last_seen_at) VALUES (?, ?, ?, ?)
+    `INSERT INTO push_tokens (token, user_id, session_id, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT (token) DO UPDATE SET
        created_at = CASE WHEN push_tokens.user_id = excluded.user_id THEN push_tokens.created_at ELSE excluded.created_at END,
        user_id = excluded.user_id,
+       session_id = excluded.session_id,
        last_seen_at = excluded.last_seen_at`,
   )
-    .bind(token, c.get("user").id, now, now)
+    .bind(token, c.get("user").id, c.get("sessionId"), now, now)
     .run();
   return c.body(null, 204);
 });
