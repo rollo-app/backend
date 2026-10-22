@@ -61,8 +61,15 @@ export function avatarUrl(userId: string, avatarKey: string | null): string | nu
 }
 
 /** Public shape of a user. */
-export function publicUser(user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key">) {
-  return { id: user.id, email: user.email, name: user.name, username: user.username, avatarUrl: avatarUrl(user.id, user.avatar_key) };
+export function publicUser(user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio">) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    username: user.username,
+    avatarUrl: avatarUrl(user.id, user.avatar_key),
+    bio: user.bio,
+  };
 }
 
 /** Public shape of a membership (what the app sees as a trip member). */

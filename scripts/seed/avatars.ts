@@ -6,7 +6,7 @@ import sharp from "sharp";
  */
 
 /** Seed users that deliberately have no photo, to keep testing the initial + color fallback. */
-export const NO_AVATAR = new Set(["Lu", "Mateo"]);
+export const NO_AVATAR = new Set(["Lu", "Mateo", "Nuevo", "Rocío"]);
 
 const SIZE = 256;
 const hash = (s: string) => [...s].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);

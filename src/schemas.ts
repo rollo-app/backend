@@ -46,6 +46,7 @@ export const UserSchema = z
     avatarUrl: z.string().nullable().openapi({
       description: "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none",
     }),
+    bio: z.string().nullable().openapi({ example: "Viajando por el sur", description: "Profile description (up to 3 lines); null if none" }),
   })
   .openapi("User");
 
@@ -133,8 +134,24 @@ export const usernameField = z
     description: "Optional leading @, trimmed and lowercased. a-z 0-9 . _ (3 to 30), no leading/trailing dot, no \"..\"",
   });
 
+export const BIO_MAX_LENGTH = 150;
+export const BIO_MAX_LINES = 3;
+
+/** Trimmed; an empty bio is stored as null. A CRLF (or a lone CR) counts as one line break. */
+export const bioField = z
+  .string()
+  .trim()
+  .refine((s) => s.length <= BIO_MAX_LENGTH, `La descripción puede tener hasta ${BIO_MAX_LENGTH} caracteres`)
+  .refine((s) => s.split(/\r\n|\r|\n/).length <= BIO_MAX_LINES, `La descripción puede tener hasta ${BIO_MAX_LINES} renglones`)
+  .transform((s) => (s === "" ? null : s))
+  .openapi({
+    type: "string",
+    example: "Viajando por el sur",
+    description: `Profile description, up to ${BIO_MAX_LENGTH} characters and ${BIO_MAX_LINES} lines after trimming. An empty string clears it`,
+  });
+
 export const UpdateProfileSchema = z
-  .object({ name: personName.optional(), username: usernameField.optional() })
+  .object({ name: personName.optional(), username: usernameField.optional(), bio: bioField.optional() })
   .openapi("UpdateProfileRequest");
 
 export const UsernameParams = z.object({
@@ -217,6 +234,7 @@ export const FriendSchema = z
     name: z.string().openapi({ example: "Cami" }),
     username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
     avatarUrl: z.string().nullable(),
+    bio: z.string().nullable().openapi({ example: "Viajando por el sur", description: "Profile description (up to 3 lines); null if none" }),
   })
   .openapi("Friend");
 
@@ -254,6 +272,25 @@ export const RedeemFriendSchema = z
   .openapi("RedeemFriendRequest");
 
 export const FriendResponseSchema = z.object({ friend: FriendSchema }).openapi("FriendResponse");
+
+export const CommonTripSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    startsAt: epochMs("Trip start"),
+    endsAt: epochMs("Trip end"),
+    revealed: z.boolean(),
+  })
+  .openapi("CommonTrip");
+
+export const FriendProfileSchema = z
+  .object({
+    friend: FriendSchema,
+    commonTrips: z.array(CommonTripSchema).openapi({
+      description: "Rollos both of you are active members of, most recent start first",
+    }),
+  })
+  .openapi("FriendProfile");
 
 export const AddMembersSchema = z
   .object({

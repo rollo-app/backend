@@ -97,6 +97,14 @@
               "null"
             ],
             "description": "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none"
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description (up to 3 lines); null if none"
           }
         },
         "required": [
@@ -104,7 +112,8 @@
           "email",
           "name",
           "username",
-          "avatarUrl"
+          "avatarUrl",
+          "bio"
         ]
       },
       "EmailVerifyRequest": {
@@ -140,6 +149,11 @@
             "type": "string",
             "example": "juanifraga",
             "description": "Optional leading @, trimmed and lowercased. a-z 0-9 . _ (3 to 30), no leading/trailing dot, no \"..\""
+          },
+          "bio": {
+            "type": "string",
+            "example": "Viajando por el sur",
+            "description": "Profile description, up to 150 characters and 3 lines after trimming. An empty string clears it"
           }
         }
       },
@@ -308,13 +322,22 @@
               "string",
               "null"
             ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description (up to 3 lines); null if none"
           }
         },
         "required": [
           "id",
           "name",
           "username",
-          "avatarUrl"
+          "avatarUrl",
+          "bio"
         ]
       },
       "RedeemFriendRequest": {
@@ -344,6 +367,59 @@
         },
         "required": [
           "friends"
+        ]
+      },
+      "FriendProfile": {
+        "type": "object",
+        "properties": {
+          "friend": {
+            "$ref": "#/components/schemas/Friend"
+          },
+          "commonTrips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommonTrip"
+            },
+            "description": "Rollos both of you are active members of, most recent start first"
+          }
+        },
+        "required": [
+          "friend",
+          "commonTrips"
+        ]
+      },
+      "CommonTrip": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Trip start",
+            "example": 1767225600000
+          },
+          "endsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Trip end",
+            "example": 1767225600000
+          },
+          "revealed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "startsAt",
+          "endsAt",
+          "revealed"
         ]
       },
       "ClaimResponse": {
@@ -1203,7 +1279,7 @@
           "Profile"
         ],
         "summary": "Edit your profile",
-        "description": "Send name and/or username. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it.",
+        "description": "Send any of name, username and bio; fields left out are not changed. The name is shown in every rollo you are part of and does not have to be unique. The username must be unique (case-insensitive); setting your own current one is a no-op. 409 if someone else has it. The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise).",
         "security": [
           {
             "bearerAuth": []
@@ -1655,6 +1731,60 @@
       }
     },
     "/friends/{userId}": {
+      "get": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "A friend's profile",
+        "description": "The friend and the rollos both of you are active members of (neither left nor was removed), most recent start first. 404 if you are not friends, also for an unknown id or your own.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Friend profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Friends"
