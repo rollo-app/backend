@@ -24,14 +24,14 @@ const PRIVATE_PROFILE = "Este perfil es privado";
  * rollo the owner is still an active member of, not blocked by its author (unless the owner is the author).
  * VISIBLE_FROM joins `m` (media), `t` (trips) and `author` (the author's membership); VISIBLE_WHERE binds `now`.
  */
-const VISIBLE_FROM = `
+export const VISIBLE_FROM = `
   featured f
   JOIN media m ON m.id = f.media_id
   JOIN trips t ON t.id = m.trip_id
   JOIN members author ON author.id = m.member_id
   JOIN members owner ON owner.trip_id = m.trip_id AND owner.user_id = f.user_id
                     AND owner.removed_at IS NULL AND owner.left_at IS NULL`;
-const VISIBLE_WHERE = `
+export const VISIBLE_WHERE = `
   m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL
   AND (t.revealed_at IS NOT NULL OR t.reveal_at <= ?)
   AND (m.feature_blocked_at IS NULL OR author.user_id = f.user_id)`;

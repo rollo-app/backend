@@ -10,3 +10,6 @@ DEV_LOCAL_UPLOADS=1
 # Cuenta de App Review (a ese email no se le manda nada; REVIEW_CODE es su código)
 # REVIEW_EMAIL=review@example.com
 # REVIEW_CODE=K7M2QX
+# Denuncias: destino del mail (default soporte@juanifraga.com) y token de /admin/*
+# REPORTS_EMAIL=soporte@example.com
+# ADMIN_TOKEN=un_token_largo_y_secreto

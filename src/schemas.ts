@@ -288,6 +288,17 @@ export const RedeemFriendSchema = z
   .refine((b) => (b.code !== undefined) !== (b.claimToken !== undefined), "Mandá el código o el permiso de canje, no los dos")
   .openapi("RedeemFriendRequest");
 
+export const ReportReasonSchema = z.enum(["offensive", "abuse", "other"]).openapi("ReportReason");
+
+export const CreateReportSchema = z
+  .object({
+    reason: ReportReasonSchema,
+    mediaId: z.string().trim().min(1).max(64).optional().openapi({ description: "Photo or video to report" }),
+    userId: z.string().trim().min(1).max(64).optional().openapi({ description: "Person to report" }),
+  })
+  .refine((b) => (b.mediaId !== undefined) !== (b.userId !== undefined), "Mandá la foto o la persona, no las dos")
+  .openapi("CreateReportRequest");
+
 export const FriendResponseSchema = z.object({ friend: FriendSchema }).openapi("FriendResponse");
 
 export const CommonTripSchema = z

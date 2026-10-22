@@ -605,6 +605,37 @@
           "blocked"
         ]
       },
+      "CreateReportRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/ReportReason"
+          },
+          "mediaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Photo or video to report"
+          },
+          "userId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Person to report"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ReportReason": {
+        "type": "string",
+        "enum": [
+          "offensive",
+          "abuse",
+          "other"
+        ]
+      },
       "ClaimResponse": {
         "type": "object",
         "properties": {
@@ -2384,6 +2415,65 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports": {
+      "post": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Report a photo or a person",
+        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Reported"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

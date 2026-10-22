@@ -11,6 +11,10 @@ export type Env = {
   RESEND_API_KEY?: string;
   /** Sender of the login emails, e.g. "Rollo <rollo@juanifraga.com>". */
   EMAIL_FROM?: string;
+  /** Where report emails go. Defaults to soporte@juanifraga.com. */
+  REPORTS_EMAIL?: string;
+  /** Bearer token for the `/admin/*` routes (delete media or accounts). Without it those routes are disabled. */
+  ADMIN_TOKEN?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;
