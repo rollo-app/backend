@@ -254,6 +254,8 @@ export const FriendSchema = z
 
 export const FriendsSchema = z.object({ friends: z.array(FriendSchema) }).openapi("Friends");
 
+export const BlocksSchema = z.object({ blocked: z.array(FriendSchema) }).openapi("Blocks");
+
 export const FriendLinkSchema = z
   .object({
     code: z.string().openapi({ example: "K7M2QX9A", description: "8-character code; the link is rollo://friends/<code>" }),
