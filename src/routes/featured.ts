@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { hiddenMediaSql } from "../lib/moderation";
+import { actorName, deferPush, sendPush } from "../lib/push";
 import { canSeeProfile } from "../lib/profile-access";
 import { serveStrippedJpeg } from "../lib/r2";
 import { avatarUrl, isRevealed } from "../lib/util";
@@ -94,6 +95,13 @@ featured.openapi(featureRoute, async (c) => {
   if (!inserted.meta.changes) {
     const raced = await DB.prepare("SELECT 1 FROM featured WHERE user_id = ? AND media_id = ?").bind(user.id, row.id).first();
     if (!raced) throw new HTTPException(409, { message: `Podés destacar hasta ${MAX_FEATURED} fotos` });
+    return c.body(null, 204);
+  }
+  if (row.author_user_id !== user.id) {
+    deferPush(
+      c,
+      sendPush(c.env, [row.author_user_id], "photoFeatured", { body: `${actorName(user)} destacó una foto tuya`, url: `/user/${user.id}` }, { actorId: user.id }),
+    );
   }
   return c.body(null, 204);
 });

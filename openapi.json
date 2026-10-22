@@ -1943,6 +1943,7 @@
           {
             "schema": {
               "type": "string",
+              "maxLength": 200,
               "pattern": "^Expo(nent)?PushToken\\[[A-Za-z0-9_-]+\\]$",
               "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
             },
@@ -1992,6 +1993,7 @@
           {
             "schema": {
               "type": "string",
+              "maxLength": 200,
               "pattern": "^Expo(nent)?PushToken\\[[A-Za-z0-9_-]+\\]$",
               "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
             },

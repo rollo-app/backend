@@ -3,6 +3,8 @@ import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { blockedIdsFor } from "../lib/moderation";
+import { actorName, deferPush, sendPush } from "../lib/push";
+import { claimRevealed, sendTripRevealed } from "../lib/trip-notices";
 import { areFriends } from "../lib/profile-access";
 import { generateJoinCode, isRevealed, localDate, publicMember, publicTrip } from "../lib/util";
 import {
@@ -279,6 +281,8 @@ trips.openapi(revealRoute, async (c) => {
   if (trip.revealed_at === null) {
     await c.env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(now, trip.id).run();
   }
+  // Claimed before answering, so the cron can't send it too; sent after the response.
+  if (await claimRevealed(c.env.DB, trip.id, now)) deferPush(c, sendTripRevealed(c.env, trip, c.get("user").id));
   return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) }, 200);
 });
 
@@ -320,6 +324,13 @@ trips.openapi(addMembersRoute, async (c) => {
     }
     const added = await addMember(c.env.DB, trip.id, userId, me.id, Date.now(), c.get("member").role === "admin");
     results.push({ userId, status: added.status === "removed" ? "unavailable" : added.status });
+  }
+  const addedIds = results.filter((r) => r.status === "added").map((r) => r.userId);
+  if (addedIds.length) {
+    deferPush(
+      c,
+      sendPush(c.env, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id }),
+    );
   }
   return c.json({ results }, 200);
 });

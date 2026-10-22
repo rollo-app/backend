@@ -231,6 +231,7 @@ export const EXPO_PUSH_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/;
 export const PushTokenParams = z.object({
   token: z
     .string()
+    .max(200, "El token de notificaciones no es válido")
     .regex(EXPO_PUSH_TOKEN, "El token de notificaciones no es válido")
     .openapi({ param: { name: "token", in: "path" }, example: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" }),
 });

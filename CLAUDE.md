@@ -29,6 +29,17 @@ Decisiones de producto que el backend tiene que respetar:
   sirven por `/featured/{userId}/{mediaId}/{variant}` con el permiso del perfil, no del rollo. No se ven (ni sus archivos) si la foto se
   borró, se bloqueó o el dueño ya no es miembro activo de ese rollo. El feed revelado trae `featuredByMe` y `featureBlocked`, y todo
   ítem del feed trae `author.userId`.
+- **Notificaciones push** (`src/lib/push.ts`, `src/lib/trip-notices.ts`): se mandan con Expo Push Service
+  (`POST https://exp.host/--/api/v2/push/send`, lotes de 100, sin access token). `sendPush(env, userIds, kind, message, { actorId })`
+  es el único lugar que manda: saca al actor, a quien tenga un bloqueo con él (cualquier sentido) y a quien apagó ese tipo
+  (`user_settings`); cada push lleva `data.url` (deep link de la app). Nunca tira error: en las rutas se corre con `deferPush(c, ...)`
+  (`waitUntil`) **después** de guardar. Eventos: sumar a un rollo (`addedToTrip`), canjear tu link (`newFriend`), destacar una foto
+  ajena (`photoFeatured`), revelado manual (`tripRevealed`, al resto de los miembros activos). El **Cron Trigger** (cada 5 min,
+  `scheduled` en `src/index.ts`) manda "Arrancó" y "Se reveló" a los miembros activos y revisa los recibos de Expo (`push_receipts`,
+  ~15 min después) para borrar tokens con `DeviceNotRegistered`. Para no avisar dos veces se "reclama" el rollo con
+  `started_notified_at` / `revealed_notified_at` en un solo `UPDATE ... WHERE ... IS NULL`; un rollo ya revelado (o terminado)
+  cuando arranca se marca sin avisar. En tests, `mockExpo()` (`test/helpers.ts`) reemplaza a Expo (sin él, llamar a Expo falla) y
+  `flushPendingPushes()` espera las push diferidas.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
@@ -56,7 +67,7 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 ```
 src/index.ts          app, /openapi.json, /docs, manejo de errores
 src/schemas.ts        contrato (zod + OpenAPI)
-src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km)
+src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron)
 src/routes/           auth.ts, me.ts, users.ts, friends.ts, trips.ts, media.ts, featured.ts
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
@@ -85,11 +96,12 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 378 tests
+npm test              # 479 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
+npm run dev -- --test-scheduled   # + correr el cron a mano: curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"
 npm run seed          # 9 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
 npm run seed -- --reset   # borra rollos y usuarios de prueba de D1 local (con amistades, links y descripciones) y los recrea (cambian los códigos)
 ```

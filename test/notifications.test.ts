@@ -63,6 +63,16 @@ describe("PUT /me/push-tokens/{token}", () => {
     expect(await tokensOf(u.userId)).toEqual([]);
   });
 
+  it("rejects a token longer than 200 characters", async () => {
+    const u = await signUp();
+    const long = `ExponentPushToken[${"a".repeat(200 - 19)}]`;
+    expect(long.length).toBe(200);
+    expect((await api("PUT", path(long), { token: u.token })).status).toBe(204);
+    const tooLong = `ExponentPushToken[${"a".repeat(201 - 19)}]`;
+    expect((await api("PUT", path(tooLong), { token: u.token })).status).toBe(400);
+    expect(await tokensOf(u.userId)).toEqual([long]);
+  });
+
   it("requires a session", async () => {
     expect((await api("PUT", path(TOKEN))).status).toBe(401);
   });
