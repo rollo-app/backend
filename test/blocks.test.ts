@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { hiddenMediaSql } from "../src/lib/moderation";
+import { photoWithMetadata } from "./jpeg-fixture";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 
 const friendsOf = async (token: string) => (await api("GET", "/friends", { token })).body.friends as any[];
@@ -105,5 +106,139 @@ describe("hiddenMediaSql", () => {
     expect(forViewer).not.toContain(blockedId);
     // Another user is unaffected.
     expect((await visibleTo(other.userId)).sort()).toEqual([reportedId, blockedId, otherId].sort());
+  });
+});
+
+describe("blocks hide content", () => {
+  const feedIds = async (token: string, tripId: string) =>
+    ((await api("GET", `/trips/${tripId}/feed`, { token })).body.items as any[]).map((i) => i.id);
+
+  it("the feed hides photos of people you blocked, only for you", async () => {
+    const trip = await newTrip();
+    const a = { token: trip.adminToken, userId: trip.adminUserId };
+    const b = await joinAs(trip.code, "Beto");
+    const c = await joinAs(trip.code, "Cami");
+    const photo = await uploadMedia(trip.tripId, b.token);
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+
+    expect(await feedIds(a.token, trip.tripId)).not.toContain(photo);
+    expect(await feedIds(c.token, trip.tripId)).toContain(photo);
+  });
+
+  it("the feed hides photos you reported", async () => {
+    const trip = await newTrip();
+    const b = await joinAs(trip.code, "Beto");
+    const photo = await uploadMedia(trip.tripId, b.token);
+    await env.DB.prepare(
+      "INSERT INTO reports (id, reporter_id, media_id, target_user_id, trip_id, reason, created_at) VALUES (?, ?, ?, ?, ?, 'offensive', ?)",
+    )
+      .bind(crypto.randomUUID(), trip.adminUserId, photo, b.userId, trip.tripId, Date.now())
+      .run();
+    expect(await feedIds(trip.adminToken, trip.tripId)).not.toContain(photo);
+    expect(await feedIds(b.token, trip.tripId)).toContain(photo);
+  });
+
+  it("members show blockedByMe for the viewer", async () => {
+    const trip = await newTrip();
+    const b = await joinAs(trip.code, "Beto");
+    const c = await joinAs(trip.code, "Cami");
+    await api("PUT", `/blocks/${b.userId}`, { token: trip.adminToken });
+
+    const members = async (token: string) => (await api("GET", `/trips/${trip.tripId}`, { token })).body.members as any[];
+    const forA = await members(trip.adminToken);
+    expect(forA.find((m) => m.userId === b.userId).blockedByMe).toBe(true);
+    expect(forA.find((m) => m.userId === c.userId).blockedByMe).toBe(false);
+    expect((await members(c.token)).find((m) => m.userId === b.userId).blockedByMe).toBe(false);
+  });
+
+  it("a blocker's profile is private to the blocked user", async () => {
+    const a = await signUp(undefined, "Ana");
+    const b = await signUp(undefined, "Beto");
+    await env.DB.prepare("UPDATE users SET profile_visibility = 'public' WHERE id = ?").bind(a.userId).run();
+    await befriend(a.token, b.token);
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+
+    const res = await api("GET", `/users/${a.userId}`, { token: b.token });
+    expect(res.body.canSee).toBe(false);
+    expect(res.body.isFriend).toBe(false);
+    expect((await api("GET", `/users/${a.userId}/featured`, { token: b.token })).status).toBe(403);
+    // The blocker cannot see the blocked user's featured photos either.
+    expect((await api("GET", `/users/${b.userId}/featured`, { token: a.token })).status).toBe(403);
+  });
+
+  it("profile shows blockedByMe and reportedByMe", async () => {
+    const a = await signUp();
+    const b = await signUp();
+    const before = await api("GET", `/users/${b.userId}`, { token: a.token });
+    expect(before.body.blockedByMe).toBe(false);
+    expect(before.body.reportedByMe).toBe(false);
+
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+    await env.DB.prepare(
+      "INSERT INTO reports (id, reporter_id, media_id, target_user_id, trip_id, reason, created_at) VALUES (?, ?, NULL, ?, NULL, 'abuse', ?)",
+    )
+      .bind(crypto.randomUUID(), a.userId, b.userId, Date.now())
+      .run();
+    const after = await api("GET", `/users/${b.userId}`, { token: a.token });
+    expect(after.body.blockedByMe).toBe(true);
+    expect(after.body.reportedByMe).toBe(true);
+    // Neither flag leaks to the other side.
+    const other = await api("GET", `/users/${a.userId}`, { token: b.token });
+    expect(other.body.blockedByMe).toBe(false);
+    expect(other.body.reportedByMe).toBe(false);
+  });
+
+  it("featured lists hide photos by authors you blocked", async () => {
+    const trip = await newTrip({ dailyPhotoLimit: 10 });
+    const a = { token: trip.adminToken, userId: trip.adminUserId };
+    const b = await joinAs(trip.code, "Beto");
+    const c = await joinAs(trip.code, "Cami");
+    const d = await joinAs(trip.code, "Dani");
+    const photo = await uploadMedia(trip.tripId, b.token);
+    const own = await uploadMedia(trip.tripId, a.token);
+    await env.MEDIA.put(`trips/${trip.tripId}/${photo}/thumb.jpg`, photoWithMetadata("x", "Beto"));
+    await api("POST", `/trips/${trip.tripId}/reveal`, { token: a.token });
+    await api("PUT", `/me/featured/${photo}`, { token: a.token });
+    await api("PUT", `/me/featured/${own}`, { token: a.token });
+    for (const u of [c, d]) await befriend(a.token, u.token);
+    await api("PUT", `/blocks/${b.userId}`, { token: c.token });
+
+    const listFor = async (token: string) =>
+      ((await api("GET", `/users/${a.userId}/featured`, { token })).body.photos as any[]).map((p) => p.mediaId);
+    expect(await listFor(c.token)).toEqual([own]);
+    expect((await listFor(d.token)).sort()).toEqual([photo, own].sort());
+
+    const file = (token: string) => api("GET", `/featured/${a.userId}/${photo}/thumb`, { token });
+    expect((await file(c.token)).status).toBe(404);
+    expect((await file(d.token)).status).toBe(200);
+  });
+});
+
+describe("blocks and friend links", () => {
+  it("a blocked user cannot redeem the blocker's friend link", async () => {
+    const a = await signUp();
+    const b = await signUp();
+    const invalid = await api("POST", "/friends/redeem", { token: b.token, body: { code: "ZZZZZZZZ" } });
+    const { body: link } = await api("POST", "/friends/link", { token: a.token });
+    const claim = await api("POST", "/friend-links/claim", { body: { code: link.code } });
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+
+    const byCode = await api("POST", "/friends/redeem", { token: b.token, body: { code: link.code } });
+    expect(byCode.status).toBe(400);
+    expect(byCode.body).toEqual(invalid.body);
+    const byToken = await api("POST", "/friends/redeem", { token: b.token, body: { claimToken: claim.body.claimToken } });
+    expect(byToken.status).toBe(400);
+    expect(byToken.body).toEqual(invalid.body);
+    expect(await friendsOf(a.token)).toEqual([]);
+    expect(await friendsOf(b.token)).toEqual([]);
+  });
+
+  it("the blocker cannot redeem the blocked user's friend link either", async () => {
+    const a = await signUp();
+    const b = await signUp();
+    await api("PUT", `/blocks/${b.userId}`, { token: a.token });
+    const { body: link } = await api("POST", "/friends/link", { token: b.token });
+    const res = await api("POST", "/friends/redeem", { token: a.token, body: { code: link.code } });
+    expect(res.status).toBe(400);
   });
 });

@@ -481,11 +481,11 @@ describe("DELETE /trips/:id/members/:memberId", () => {
 });
 
 describe("member shape", () => {
-  it("members and me expose id, userId, name, username, avatarUrl and role", async () => {
+  it("members and me expose id, userId, name, username, avatarUrl, role and blockedByMe", async () => {
     const { tripId, code, adminUserId } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const res = await api("GET", `/trips/${tripId}`, { token: fede.token });
-    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member" });
+    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", blockedByMe: false });
     expect(res.body.members[0]).toMatchObject({ userId: adminUserId, name: "Juani", role: "admin" });
   });
 

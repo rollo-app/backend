@@ -63,6 +63,7 @@ export const MemberSchema = z
     username: z.string().nullable().openapi({ example: "fede", description: "Unique handle without the @" }),
     avatarUrl: z.string().nullable(),
     role: RoleSchema,
+    blockedByMe: z.boolean().openapi({ description: "Whether you blocked this member" }),
   })
   .openapi("Member");
 
@@ -331,9 +332,11 @@ export const UserProfileSchema = z
   .object({
     user: PublicUserSchema,
     isFriend: z.boolean().openapi({ description: "Whether you and this user are friends (false for yourself)" }),
+    blockedByMe: z.boolean().openapi({ description: "Whether you blocked this user" }),
+    reportedByMe: z.boolean().openapi({ description: "Whether you reported this user (their profile, not a photo)" }),
     profileVisibility: ProfileVisibilitySchema,
     canSee: z.boolean().openapi({
-      description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public",
+      description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other",
     }),
     friendCount: z.number().int().openapi({ description: "How many friends this user has (always public)" }),
     mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends (0 for yourself)" }),

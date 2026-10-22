@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { isBlockedEitherWay } from "../lib/moderation";
 import { areFriends, canSeeProfile } from "../lib/profile-access";
 import { avatarUrl } from "../lib/util";
 import { UserFriendsSchema, UserParams, UserProfileSchema } from "../schemas";
@@ -49,6 +50,8 @@ users.openapi(profileRoute, async (c) => {
   if (!owner) throw new HTTPException(404, { message: "No existe" });
 
   const canSee = await canSeeProfile(c.env.DB, viewerId, owner);
+  const blocked = await isBlockedEitherWay(c.env.DB, viewerId, owner.id);
+  const flag = async (sql: string) => (await c.env.DB.prepare(sql).bind(viewerId, owner.id).first()) !== null;
   return c.json(
     {
       user: {
@@ -58,7 +61,9 @@ users.openapi(profileRoute, async (c) => {
         avatarUrl: avatarUrl(owner.id, owner.avatar_key),
         bio: owner.bio,
       },
-      isFriend: await areFriends(c.env.DB, viewerId, owner.id),
+      isFriend: !blocked && (await areFriends(c.env.DB, viewerId, owner.id)),
+      blockedByMe: await flag("SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?"),
+      reportedByMe: await flag("SELECT 1 FROM reports WHERE reporter_id = ? AND target_user_id = ? AND media_id IS NULL"),
       profileVisibility: owner.profile_visibility,
       canSee,
       ...(await friendCounts(c.env.DB, viewerId, owner.id)),

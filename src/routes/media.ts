@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { hiddenMediaSql } from "../lib/moderation";
 import { mediaKeys, presignPut, serveMediaFile } from "../lib/r2";
 import { avatarUrl, isRevealed, localDate } from "../lib/util";
 import {
@@ -155,7 +156,7 @@ const feedRoute = createRoute({
   description:
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
     "After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. " +
-    "Every item carries the author's user id (`author.userId`).",
+    "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
@@ -173,9 +174,9 @@ media.openapi(feedRoute, async (c) => {
             m.feature_blocked_at, f.media_id IS NOT NULL AS featured_by_me
      FROM media m JOIN members mem ON mem.id = m.member_id JOIN users u ON u.id = mem.user_id
      LEFT JOIN featured f ON f.media_id = m.id AND f.user_id = ?
-     WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL
+     WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "mem")}
      ORDER BY m.taken_at`,
-  ).bind(viewerId, trip.id).all<{
+  ).bind(viewerId, trip.id, viewerId, viewerId).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
     caption: string | null; thumbhash: string | null; duration_s: number | null; width: number | null; height: number | null;
     author_id: string; author_name: string | null; author_username: string | null; author_user_id: string; author_avatar_key: string | null;

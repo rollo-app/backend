@@ -2,6 +2,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { hiddenMediaSql } from "../lib/moderation";
 import { canSeeProfile } from "../lib/profile-access";
 import { serveStrippedJpeg } from "../lib/r2";
 import { avatarUrl, isRevealed } from "../lib/util";
@@ -137,7 +138,7 @@ const listRoute = createRoute({
   description:
     "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. " +
     "Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. " +
-    "Photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
+    "Photos you reported or by authors you blocked, and photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: UserParams },
@@ -145,16 +146,17 @@ const listRoute = createRoute({
 });
 
 featured.openapi(listRoute, async (c) => {
-  const owner = await visibleOwner(c.env.DB, c.get("user").id, c.req.valid("param").userId);
+  const viewerId = c.get("user").id;
+  const owner = await visibleOwner(c.env.DB, viewerId, c.req.valid("param").userId);
 
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.taken_at, m.width, m.height, m.thumbhash, m.lat, m.lng,
             author.user_id AS author_user_id, u.name AS author_name, u.username AS author_username, u.avatar_key AS author_avatar_key
      FROM ${VISIBLE_FROM} JOIN users u ON u.id = author.user_id
-     WHERE ${VISIBLE_WHERE} AND f.user_id = ?
+     WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND ${hiddenMediaSql("m", "author")}
      ORDER BY m.taken_at DESC, m.id`,
   )
-    .bind(Date.now(), owner.id)
+    .bind(Date.now(), owner.id, viewerId, viewerId)
     .all<{
       id: string; taken_at: number; width: number | null; height: number | null; thumbhash: string | null;
       lat: number | null; lng: number | null;
@@ -204,11 +206,13 @@ const fileRoute = createRoute({
 
 featured.openapi(fileRoute, async (c) => {
   const { userId, mediaId, variant } = c.req.valid("param");
-  const owner = await visibleOwner(c.env.DB, c.get("user").id, userId);
+  const viewerId = c.get("user").id;
+  const owner = await visibleOwner(c.env.DB, viewerId, userId);
   const row = await c.env.DB.prepare(
-    `SELECT m.original_key, m.thumb_key FROM ${VISIBLE_FROM} WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND f.media_id = ?`,
+    `SELECT m.original_key, m.thumb_key FROM ${VISIBLE_FROM}
+     WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND f.media_id = ? AND ${hiddenMediaSql("m", "author")}`,
   )
-    .bind(Date.now(), owner.id, mediaId)
+    .bind(Date.now(), owner.id, mediaId, viewerId, viewerId)
     .first<Pick<MediaRow, "original_key" | "thumb_key">>();
   if (!row) throw new HTTPException(404, { message: "No encontrado" });
   return serveStrippedJpeg(c.env.MEDIA, variant === "thumb" ? row.thumb_key : row.original_key);

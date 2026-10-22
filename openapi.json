@@ -299,12 +299,20 @@
             "type": "boolean",
             "description": "Whether you and this user are friends (false for yourself)"
           },
+          "blockedByMe": {
+            "type": "boolean",
+            "description": "Whether you blocked this user"
+          },
+          "reportedByMe": {
+            "type": "boolean",
+            "description": "Whether you reported this user (their profile, not a photo)"
+          },
           "profileVisibility": {
             "$ref": "#/components/schemas/ProfileVisibility"
           },
           "canSee": {
             "type": "boolean",
-            "description": "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public"
+            "description": "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other"
           },
           "friendCount": {
             "type": "integer",
@@ -318,6 +326,8 @@
         "required": [
           "user",
           "isFriend",
+          "blockedByMe",
+          "reportedByMe",
           "profileVisibility",
           "canSee",
           "friendCount",
@@ -762,6 +772,10 @@
           },
           "role": {
             "$ref": "#/components/schemas/Role"
+          },
+          "blockedByMe": {
+            "type": "boolean",
+            "description": "Whether you blocked this member"
           }
         },
         "required": [
@@ -770,7 +784,8 @@
           "name",
           "username",
           "avatarUrl",
-          "role"
+          "role",
+          "blockedByMe"
         ]
       },
       "CreateTripRequest": {
@@ -3184,7 +3199,7 @@
           "Media"
         ],
         "summary": "Trip feed",
-        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. Every item carries the author's user id (`author.userId`).",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
         "security": [
           {
             "bearerAuth": []
@@ -3624,7 +3639,7 @@
           "Featured"
         ],
         "summary": "A user's featured photos",
-        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
+        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos you reported or by authors you blocked, and photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
         "security": [
           {
             "bearerAuth": []
