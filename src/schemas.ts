@@ -63,6 +63,7 @@ export const MemberSchema = z
     username: z.string().nullable().openapi({ example: "fede", description: "Unique handle without the @" }),
     avatarUrl: z.string().nullable(),
     role: RoleSchema,
+    blockedByMe: z.boolean().openapi({ description: "Whether you blocked this member" }),
   })
   .openapi("Member");
 
@@ -254,6 +255,8 @@ export const FriendSchema = z
 
 export const FriendsSchema = z.object({ friends: z.array(FriendSchema) }).openapi("Friends");
 
+export const BlocksSchema = z.object({ blocked: z.array(FriendSchema) }).openapi("Blocks");
+
 export const FriendLinkSchema = z
   .object({
     code: z.string().openapi({ example: "K7M2QX9A", description: "8-character code; the link is rollo://friends/<code>" }),
@@ -284,6 +287,17 @@ export const RedeemFriendSchema = z
   })
   .refine((b) => (b.code !== undefined) !== (b.claimToken !== undefined), "Mandá el código o el permiso de canje, no los dos")
   .openapi("RedeemFriendRequest");
+
+export const ReportReasonSchema = z.enum(["offensive", "abuse", "other"]).openapi("ReportReason");
+
+export const CreateReportSchema = z
+  .object({
+    reason: ReportReasonSchema,
+    mediaId: z.string().trim().min(1).max(64).optional().openapi({ description: "Photo or video to report" }),
+    userId: z.string().trim().min(1).max(64).optional().openapi({ description: "Person to report" }),
+  })
+  .refine((b) => (b.mediaId !== undefined) !== (b.userId !== undefined), "Mandá la foto o la persona, no las dos")
+  .openapi("CreateReportRequest");
 
 export const FriendResponseSchema = z.object({ friend: FriendSchema }).openapi("FriendResponse");
 
@@ -329,9 +343,11 @@ export const UserProfileSchema = z
   .object({
     user: PublicUserSchema,
     isFriend: z.boolean().openapi({ description: "Whether you and this user are friends (false for yourself)" }),
+    blockedByMe: z.boolean().openapi({ description: "Whether you blocked this user" }),
+    reportedByMe: z.boolean().openapi({ description: "Whether you reported this user (their profile, not a photo)" }),
     profileVisibility: ProfileVisibilitySchema,
     canSee: z.boolean().openapi({
-      description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public",
+      description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other",
     }),
     friendCount: z.number().int().openapi({ description: "How many friends this user has (always public)" }),
     mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends (0 for yourself)" }),

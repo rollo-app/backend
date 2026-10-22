@@ -65,6 +65,8 @@ describe("GET /users/{userId}", () => {
     expect(res.body).toEqual({
       user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña" },
       isFriend: false,
+      blockedByMe: false,
+      reportedByMe: false,
       profileVisibility: "friends",
       canSee: true,
       friendCount: 0,
@@ -90,6 +92,8 @@ describe("GET /users/{userId}", () => {
     expect(res.body).toEqual({
       user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña" },
       isFriend: false,
+      blockedByMe: false,
+      reportedByMe: false,
       profileVisibility: "friends",
       canSee: false,
       friendCount: 0,

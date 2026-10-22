@@ -1,8 +1,10 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { deleteTripMedia } from "../lib/account";
 import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { hiddenMediaSql } from "../lib/moderation";
 import { mediaKeys, presignPut, serveMediaFile } from "../lib/r2";
 import { avatarUrl, isRevealed, localDate } from "../lib/util";
 import {
@@ -155,7 +157,7 @@ const feedRoute = createRoute({
   description:
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
     "After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. " +
-    "Every item carries the author's user id (`author.userId`).",
+    "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
@@ -173,9 +175,9 @@ media.openapi(feedRoute, async (c) => {
             m.feature_blocked_at, f.media_id IS NOT NULL AS featured_by_me
      FROM media m JOIN members mem ON mem.id = m.member_id JOIN users u ON u.id = mem.user_id
      LEFT JOIN featured f ON f.media_id = m.id AND f.user_id = ?
-     WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL
+     WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "mem")}
      ORDER BY m.taken_at`,
-  ).bind(viewerId, trip.id).all<{
+  ).bind(viewerId, trip.id, viewerId, viewerId).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
     caption: string | null; thumbhash: string | null; duration_s: number | null; width: number | null; height: number | null;
     author_id: string; author_name: string | null; author_username: string | null; author_user_id: string; author_avatar_key: string | null;
@@ -272,13 +274,8 @@ media.openapi(deleteRoute, async (c) => {
   if (isRevealed(trip)) throw new HTTPException(409, { message: "El rollo ya se reveló" });
 
   const { mediaId } = c.req.valid("param");
-  const row = await c.env.DB.prepare("SELECT * FROM media WHERE id = ? AND trip_id = ? AND deleted_at IS NULL")
-    .bind(mediaId, trip.id)
-    .first<MediaRow>();
-  if (!row) throw new HTTPException(404, { message: "No encontrado" });
-
-  await c.env.MEDIA.delete([row.original_key, row.thumb_key]);
-  await c.env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), row.id).run();
+  const inTrip = await c.env.DB.prepare("SELECT 1 FROM media WHERE id = ? AND trip_id = ?").bind(mediaId, trip.id).first();
+  if (!inTrip || !(await deleteTripMedia(c.env, mediaId))) throw new HTTPException(404, { message: "No encontrado" });
   return c.body(null, 204);
 });
 

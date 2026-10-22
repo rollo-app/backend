@@ -134,6 +134,7 @@ contrato OpenAPI, CI.
   `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
 - Mail: dominio `juanifraga.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
   DMARC `p=none` en `_dmarc`), DNS en Cloudflare. Plan gratis: 100 mails por día y 3.000 por mes.
+- Secrets de moderación: `ADMIN_TOKEN` (habilita las rutas `/admin/*`; sin él dan 404) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/routes/admin.ts`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
 - Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
 
 Para deployar una versión nueva, con `main` al día:

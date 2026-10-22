@@ -10,6 +10,7 @@ import {
   pairKey,
 } from "../lib/friend-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
+import { isBlockedEitherWay } from "../lib/moderation";
 import { areFriends } from "../lib/profile-access";
 import { avatarUrl, isRevealed } from "../lib/util";
 import {
@@ -194,6 +195,9 @@ friends.openapi(redeemRoute, async (c) => {
     }
   }
   if (!creatorId) return failAttempt(c, keys);
+
+  // A block in either direction fails exactly like an invalid link.
+  if (creatorId !== me.id && (await isBlockedEitherWay(c.env.DB, me.id, creatorId))) return failAttempt(c, keys);
 
   const creator = (await c.env.DB.prepare("SELECT id, name, username, avatar_key, bio FROM users WHERE id = ?")
     .bind(creatorId)

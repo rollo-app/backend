@@ -38,5 +38,7 @@
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
   // Opcionales:
   //   RESEND_API_KEY            envío de los códigos de login (sin esto solo se loguean en consola)
+  //   REPORTS_EMAIL             destino de las denuncias (default soporte@juanifraga.com)
+  //   ADMIN_TOKEN               token de las rutas /admin/* (borrar fotos y cuentas denunciadas)
   //   REVIEW_EMAIL, REVIEW_CODE cuenta para App Review: a ese email no se le manda nada y REVIEW_CODE es su código
 }

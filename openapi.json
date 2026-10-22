@@ -299,12 +299,20 @@
             "type": "boolean",
             "description": "Whether you and this user are friends (false for yourself)"
           },
+          "blockedByMe": {
+            "type": "boolean",
+            "description": "Whether you blocked this user"
+          },
+          "reportedByMe": {
+            "type": "boolean",
+            "description": "Whether you reported this user (their profile, not a photo)"
+          },
           "profileVisibility": {
             "$ref": "#/components/schemas/ProfileVisibility"
           },
           "canSee": {
             "type": "boolean",
-            "description": "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public"
+            "description": "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other"
           },
           "friendCount": {
             "type": "integer",
@@ -318,6 +326,8 @@
         "required": [
           "user",
           "isFriend",
+          "blockedByMe",
+          "reportedByMe",
           "profileVisibility",
           "canSee",
           "friendCount",
@@ -581,6 +591,51 @@
           "revealed"
         ]
       },
+      "Blocks": {
+        "type": "object",
+        "properties": {
+          "blocked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Friend"
+            }
+          }
+        },
+        "required": [
+          "blocked"
+        ]
+      },
+      "CreateReportRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/ReportReason"
+          },
+          "mediaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Photo or video to report"
+          },
+          "userId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Person to report"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ReportReason": {
+        "type": "string",
+        "enum": [
+          "offensive",
+          "abuse",
+          "other"
+        ]
+      },
       "ClaimResponse": {
         "type": "object",
         "properties": {
@@ -748,6 +803,10 @@
           },
           "role": {
             "$ref": "#/components/schemas/Role"
+          },
+          "blockedByMe": {
+            "type": "boolean",
+            "description": "Whether you blocked this member"
           }
         },
         "required": [
@@ -756,7 +815,8 @@
           "name",
           "username",
           "avatarUrl",
-          "role"
+          "role",
+          "blockedByMe"
         ]
       },
       "CreateTripRequest": {
@@ -1642,7 +1702,7 @@
           "Profile"
         ],
         "summary": "Delete your account",
-        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
+        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your reports and blocks (made and received) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
         "security": [
           {
             "bearerAuth": []
@@ -2223,6 +2283,197 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/blocks": {
+      "get": {
+        "tags": [
+          "Blocks"
+        ],
+        "summary": "Users you blocked",
+        "description": "Ordered by name.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocked users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Blocks"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/blocks/{userId}": {
+      "put": {
+        "tags": [
+          "Blocks"
+        ],
+        "summary": "Block a user",
+        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 10 reports and blocks per user per 24 hours are emailed).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Blocked"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Blocks"
+        ],
+        "summary": "Unblock a user",
+        "description": "Only removes your own block; a block the other user made on you stays. Also 204 if you had not blocked them. Friendship is not restored.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unblocked"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports": {
+      "post": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Report a photo or a person",
+        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 10 reports and blocks per user per 24 hours are emailed to support; the rest are stored without email. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Reported"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3038,7 +3289,7 @@
           "Media"
         ],
         "summary": "Trip feed",
-        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. Every item carries the author's user id (`author.userId`).",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
         "security": [
           {
             "bearerAuth": []
@@ -3478,7 +3729,7 @@
           "Featured"
         ],
         "summary": "A user's featured photos",
-        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
+        "description": "Newest photo first (by when it was taken). Only if you can see the profile (it is you, a friend, or it is public); otherwise 403. Each photo carries a ~5 km zone instead of its location, and its author when it is not the owner; never the rollo or the caption. Photos you reported or by authors you blocked, and photos that were deleted, blocked by their author, or whose rollo the owner left do not show up.",
         "security": [
           {
             "bearerAuth": []

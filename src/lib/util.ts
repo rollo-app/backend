@@ -76,7 +76,7 @@ export function publicUser(
 }
 
 /** Public shape of a membership (what the app sees as a trip member). */
-export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">, user: Pick<UserRow, "name" | "username" | "avatar_key">) {
+export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">, user: Pick<UserRow, "name" | "username" | "avatar_key">, blocked = false) {
   return {
     id: member.id,
     userId: member.user_id,
@@ -84,6 +84,7 @@ export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">,
     username: user.username,
     avatarUrl: avatarUrl(member.user_id, user.avatar_key),
     role: member.role,
+    blockedByMe: blocked,
   };
 }
 

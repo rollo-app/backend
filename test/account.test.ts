@@ -420,3 +420,22 @@ describe("DELETE /me with friends", () => {
     expect(detail.body.me.role).toBe("admin");
   });
 });
+
+describe("DELETE /me with moderation data", () => {
+  it("deleting the account removes reports and blocks on both sides", async () => {
+    const t = await newTrip();
+    const a = await joinAs(t.code, "Ana");
+    const b = await joinAs(t.code, "Beto");
+    const mediaB = await uploadMedia(t.tripId, b.token);
+    const mediaA = await uploadMedia(t.tripId, a.token);
+    expect((await api("POST", "/reports", { token: a.token, body: { mediaId: mediaB, reason: "offensive" } })).status).toBe(204);
+    expect((await api("PUT", `/blocks/${b.userId}`, { token: a.token })).status).toBe(204);
+    expect((await api("POST", "/reports", { token: b.token, body: { mediaId: mediaA, reason: "abuse" } })).status).toBe(204);
+    expect((await api("PUT", `/blocks/${a.userId}`, { token: b.token })).status).toBe(204);
+
+    expect((await api("DELETE", "/me", { token: a.token })).status).toBe(204);
+    const count = async (sql: string) => (await env.DB.prepare(sql).bind(a.userId, a.userId).first<{ n: number }>())!.n;
+    expect(await count("SELECT COUNT(*) n FROM reports WHERE reporter_id = ? OR target_user_id = ?")).toBe(0);
+    expect(await count("SELECT COUNT(*) n FROM blocks WHERE blocker_id = ? OR blocked_id = ?")).toBe(0);
+  });
+});

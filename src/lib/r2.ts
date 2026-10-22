@@ -39,6 +39,21 @@ export async function presignPut(env: Env, key: string, origin: string, expiresI
   return signed.url;
 }
 
+/** Presigned GET URL for a stored file (e.g. a link in a support email). With DEV_LOCAL_UPLOADS it is a placeholder that is never used. */
+export async function presignGet(env: Env, key: string, expiresIn = 7 * 24 * 3600): Promise<string> {
+  if (devUploadsEnabled(env)) return `https://dev.invalid/${key}`;
+  const client = new AwsClient({
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    service: "s3",
+    region: "auto",
+  });
+  const url = new URL(`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${key}`);
+  url.searchParams.set("X-Amz-Expires", String(expiresIn));
+  const signed = await client.sign(new Request(url, { method: "GET" }), { aws: { signQuery: true } });
+  return signed.url;
+}
+
 export function mediaKeys(tripId: string, mediaId: string, type: MediaType) {
   const base = `trips/${tripId}/${mediaId}`;
   return {
