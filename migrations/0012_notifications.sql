@@ -1,7 +1,8 @@
 -- Push notifications, user settings and likes.
 -- push_tokens: Expo push tokens; a token belongs to one user and one session at a time (same phone, another
---   account or a new login → it moves). Deleting the session (logout, account deletion) deletes its tokens, so
---   a phone that logged out offline stops getting that account's pushes; sendPush only uses unexpired sessions.
+--   account or a new login → it moves). Deleting the session (a logout that reaches the server, account
+--   deletion) deletes its tokens, and sendPush only uses unexpired sessions: the server stops sending once the
+--   session is deleted or expires. A logout made offline does not reach the server; the app retries it later.
 -- user_settings: one column per preference, 1 = on. No row means every default.
 -- likes: one per user and photo. media.like_notified_at / likes_since_notified: anti-spam window for like pushes.
 -- trips.started_notified_at / revealed_notified_at: the "started" and "revealed" pushes were already sent.

@@ -30,9 +30,14 @@ async function claimStarted(db: D1Database, tripId: string, now: number): Promis
   return res.meta.changes > 0;
 }
 
+/** Statement that marks the trip as "revealed" notified; it changes a row only for the caller that flipped it. */
+export function claimRevealedStatement(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET revealed_notified_at = ? WHERE id = ? AND revealed_notified_at IS NULL").bind(now, tripId);
+}
+
 /** Marks the trip as "revealed" notified. True only for the caller that flipped it. */
-export async function claimRevealed(db: D1Database, tripId: string, now = Date.now()): Promise<boolean> {
-  const res = await db.prepare("UPDATE trips SET revealed_notified_at = ? WHERE id = ? AND revealed_notified_at IS NULL").bind(now, tripId).run();
+async function claimRevealed(db: D1Database, tripId: string, now: number): Promise<boolean> {
+  const res = await claimRevealedStatement(db, tripId, now).run();
   return res.meta.changes > 0;
 }
 

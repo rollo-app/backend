@@ -202,6 +202,31 @@ describe("tripRevealed by the admin", () => {
     await runCron(Date.now() + 20 * DAY);
     expect(expo.sent.filter((m) => m.body.startsWith("Se reveló"))).toHaveLength(1);
   });
+
+  it("claims the notice before (or with) writing revealed_at, so the cron can't notify the admin in between", async () => {
+    // Fails any write of revealed_at while the notice is still unclaimed: the window a cron run could win.
+    await env.DB.prepare(
+      `CREATE TRIGGER reveal_claim_order BEFORE UPDATE OF revealed_at ON trips
+       WHEN NEW.revealed_at IS NOT NULL AND NEW.revealed_notified_at IS NULL
+       BEGIN SELECT RAISE(ABORT, 'revealed_at written before the claim'); END`,
+    ).run();
+    try {
+      const expo = mockExpo();
+      const t = await newTrip();
+      const cami = await joinAs(t.code, "Cami");
+      await registerToken(t.adminToken);
+      const camiToken = await registerToken(cami.token);
+
+      expect((await api("POST", `/trips/${t.tripId}/reveal`, { token: t.adminToken })).status).toBe(200);
+      await flushPendingPushes();
+      await runCron();
+
+      expect(received(expo)).toEqual([`${camiToken}: Se reveló Viaje al sur → /reveal?trip=${t.tripId}`]);
+      expect((await tripRow(t.tripId)).revealed_at).not.toBeNull();
+    } finally {
+      await env.DB.prepare("DROP TRIGGER IF EXISTS reveal_claim_order").run();
+    }
+  });
 });
 
 // ---------- Cron ----------
@@ -251,6 +276,38 @@ describe("cron: tripStarted", () => {
     await runCron(Date.now() + 2 * HOUR);
     expect(expo.sent).toEqual([]);
     expect((await tripRow(t.tripId)).started_notified_at).not.toBeNull();
+  });
+
+  it("does not announce a rollo created already started (\"Empezar ahora\") to its creator", async () => {
+    const expo = mockExpo();
+    const admin = await signUp(undefined, "Juani");
+    await registerToken(admin.token);
+    const now = Date.now();
+    const res = await api("POST", "/trips", {
+      token: admin.token,
+      body: { name: "Ya", timezone: "America/Argentina/Buenos_Aires", startsAt: now, endsAt: now + DAY, revealAt: now + 2 * DAY, dailyPhotoLimit: 2, dailyVideoLimit: 1 },
+    });
+    expect(res.status).toBe(201);
+    expect((await tripRow(res.body.trip.id)).started_notified_at).not.toBeNull();
+
+    await runCron(now + MINUTE);
+    expect(expo.sent).toEqual([]);
+  });
+
+  it("a rollo created to start in the future still gets announced", async () => {
+    const expo = mockExpo();
+    const admin = await signUp(undefined, "Juani");
+    const adminToken = await registerToken(admin.token);
+    const now = Date.now();
+    const res = await api("POST", "/trips", {
+      token: admin.token,
+      body: { name: "Luego", timezone: "America/Argentina/Buenos_Aires", startsAt: now + HOUR, endsAt: now + DAY, revealAt: now + 2 * DAY, dailyPhotoLimit: 2, dailyVideoLimit: 1 },
+    });
+    expect(res.status).toBe(201);
+    expect((await tripRow(res.body.trip.id)).started_notified_at).toBeNull();
+
+    await runCron(now + 2 * HOUR);
+    expect(received(expo)).toEqual([`${adminToken}: Arrancó Luego. Tenés 2 fotos hoy. → /roll?trip=${res.body.trip.id}`]);
   });
 
   it("respects the tripStarted preference", async () => {
