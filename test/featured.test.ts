@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { FeaturedPhotosSchema, FeedResponseSchema } from "../src/schemas";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
+import { BASELINE_JPEG, photoWithMetadata } from "./jpeg-fixture";
 
 const BLOCKED = "Quien sacó esta foto no quiere que se destaque";
 const PRIVATE = "Este perfil es privado";
@@ -13,6 +14,12 @@ async function revealedTrip() {
   const juaniPhoto = await uploadMedia(trip.tripId, trip.adminToken, { caption: "mi foto" });
   const fedePhoto = await uploadMedia(trip.tripId, fede.token, { lat: -41.0806, lng: -71.495, caption: "secreto" });
   const fedeVideo = await uploadMedia(trip.tripId, fede.token, { type: "video" });
+  // Real JPEGs, like the app uploads them: the original carries EXIF (GPS, caption, author) and XMP.
+  const photos: [string, string, string][] = [[juaniPhoto, "mi foto", "Juani"], [fedePhoto, "secreto", "Fede"]];
+  for (const [id, caption, author] of photos) {
+    await env.MEDIA.put(`trips/${trip.tripId}/${id}/original.jpg`, photoWithMetadata(caption, author));
+    await env.MEDIA.put(`trips/${trip.tripId}/${id}/thumb.jpg`, photoWithMetadata(caption, author));
+  }
   await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken });
   const juani = { token: trip.adminToken, userId: trip.adminUserId };
   return { ...trip, juani, fede, juaniPhoto, fedePhoto, fedeVideo };
@@ -137,6 +144,29 @@ describe("feature block (author only)", () => {
     const res = await block(t.juani.token, t.fedePhoto);
     expect(res.status).toBe(403);
     expect((await unblock(t.juani.token, t.fedePhoto)).status).toBe(403);
+  });
+
+  it("the author can block and unblock after leaving the rollo or being removed from it", async () => {
+    const t = await revealedTrip();
+    await feature(t.juani.token, t.fedePhoto);
+    expect((await api("DELETE", `/trips/${t.tripId}/members/me`, { token: t.fede.token })).status).toBe(204);
+    expect((await block(t.fede.token, t.fedePhoto)).status).toBe(204);
+    expect(ids(await list(t.juani.token, t.juani.userId))).toEqual([]);
+    expect((await feature(t.juani.token, t.fedePhoto)).body).toEqual({ error: BLOCKED });
+    expect((await unblock(t.fede.token, t.fedePhoto)).status).toBe(204);
+    expect((await feature(t.juani.token, t.fedePhoto)).status).toBe(204);
+
+    const r = await revealedTrip();
+    await api("DELETE", `/trips/${r.tripId}/members/${r.fede.memberId}`, { token: r.juani.token });
+    expect((await block(r.fede.token, r.fedePhoto)).status).toBe(204);
+    expect((await unblock(r.fede.token, r.fedePhoto)).status).toBe(204);
+  });
+
+  it("someone who left the rollo still can't block a photo they didn't take", async () => {
+    const t = await revealedTrip();
+    await api("DELETE", `/trips/${t.tripId}/members/me`, { token: t.fede.token });
+    expect((await block(t.fede.token, t.juaniPhoto)).status).toBe(404);
+    expect((await block(t.juani.token, t.fedePhoto)).status).toBe(403);
   });
 
   it("404 for someone who is not a member of the rollo", async () => {
@@ -281,14 +311,69 @@ describe("GET /featured/{userId}/{mediaId}/{variant}", () => {
 
     const thumb = await file(friend.token, t.juani.userId, t.fedePhoto, "thumb");
     expect(thumb.status).toBe(200);
-    expect(thumb.body).toBe(`thumb-${t.fedePhoto}`);
     expect(thumb.headers.get("content-type")).toBe("image/jpeg");
     expect(thumb.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
     expect(thumb.headers.get("etag")).toBeTruthy();
 
     const original = await file(friend.token, t.juani.userId, t.fedePhoto, "original");
     expect(original.status).toBe(200);
-    expect(original.body).toBe(`original-${t.fedePhoto}`);
+    expect(original.headers.get("content-type")).toBe("image/jpeg");
+  });
+
+  it("serves both variants without metadata: no EXIF (GPS, caption, author), no XMP, no comment", async () => {
+    const t = await revealedTrip();
+    await feature(t.juani.token, t.fedePhoto);
+    await api("PATCH", "/me", { token: t.juani.token, body: { profileVisibility: "public" } });
+    const stranger = await signUp();
+    const stored = await env.MEDIA.get(`trips/${t.tripId}/${t.fedePhoto}/original.jpg`);
+    const storedEtag = stored!.httpEtag;
+    expect(new TextDecoder().decode(await stored!.arrayBuffer())).toContain("secreto");
+
+    for (const variant of ["original", "thumb"]) {
+      const res = await api("GET", `/featured/${t.juani.userId}/${t.fedePhoto}/${variant}`, { token: stranger.token });
+      expect(res.status).toBe(200);
+      const body = res.body as string;
+      expect(body).not.toContain("secreto");
+      expect(body).not.toContain("Fede");
+      expect(body).not.toContain("Exif\0\0");
+      expect(body).not.toContain("http://ns.adobe.com/xap/1.0/");
+      expect(body.startsWith("\uFFFD\uFFFD")).toBe(true); // FF D8 is not valid UTF-8
+      expect(Number(res.headers.get("content-length"))).toBeLessThan(photoWithMetadata("secreto", "Fede").length);
+      expect(Number(res.headers.get("content-length"))).toBeGreaterThanOrEqual(BASELINE_JPEG.length);
+      // The bytes differ from the stored object, so the etag can't be the stored one.
+      expect(res.headers.get("etag")).toBeTruthy();
+      expect(res.headers.get("etag")).not.toBe(storedEtag);
+    }
+  });
+
+  it("the trip download still serves the original with its metadata to co-members", async () => {
+    const t = await revealedTrip();
+    const res = await api("GET", `/trips/${t.tripId}/media/${t.fedePhoto}/original`, { token: t.juani.token });
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("secreto");
+    expect(res.body).toContain("Exif\0\0");
+  });
+
+  it("404 rather than serving a stored file that isn't a well-formed JPEG", async () => {
+    const t = await revealedTrip();
+    await feature(t.juani.token, t.fedePhoto);
+    await env.MEDIA.put(`trips/${t.tripId}/${t.fedePhoto}/original.jpg`, "secreto: not a jpeg");
+    const cut = photoWithMetadata("secreto").subarray(0, 60);
+    await env.MEDIA.put(`trips/${t.tripId}/${t.fedePhoto}/thumb.jpg`, cut);
+    for (const variant of ["original", "thumb"]) {
+      const res = await file(t.juani.token, t.juani.userId, t.fedePhoto, variant);
+      expect(res.status).toBe(404);
+      expect(JSON.stringify(res.body)).not.toContain("secreto");
+    }
+  });
+
+  it("404 for a stored object whose content type isn't JPEG", async () => {
+    const t = await revealedTrip();
+    await feature(t.juani.token, t.fedePhoto);
+    await env.MEDIA.put(`trips/${t.tripId}/${t.fedePhoto}/original.jpg`, photoWithMetadata("secreto"), {
+      httpMetadata: { contentType: "video/mp4" },
+    });
+    expect((await file(t.juani.token, t.juani.userId, t.fedePhoto, "original")).status).toBe(404);
   });
 
   it("403 for a stranger when the profile is private", async () => {

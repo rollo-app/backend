@@ -284,16 +284,30 @@ media.openapi(deleteRoute, async (c) => {
 
 // ---------- Feature block (author) ----------
 
-/** The photo must be yours (you took it) and not deleted: 404 if it doesn't exist, 403 if someone else took it. */
+/**
+ * The photo must be yours (you took it) and not deleted. Authorship is the media's member → user, so it holds
+ * even after you left the rollo or were removed from it. 404 if it doesn't exist (or you aren't in its rollo
+ * and didn't take it), 403 if an active member who didn't take it.
+ */
 async function requireOwnMedia(c: Context<AppEnv>, mediaId: string): Promise<string> {
-  const row = await c.env.DB.prepare("SELECT id, member_id FROM media WHERE id = ? AND deleted_at IS NULL")
+  const userId = c.get("user").id;
+  const row = await c.env.DB.prepare(
+    `SELECT m.id, m.trip_id, author.user_id AS author_user_id
+     FROM media m JOIN members author ON author.id = m.member_id
+     WHERE m.id = ? AND m.deleted_at IS NULL`,
+  )
     .bind(mediaId)
-    .first<Pick<MediaRow, "id" | "member_id">>();
+    .first<Pick<MediaRow, "id" | "trip_id"> & { author_user_id: string }>();
   if (!row) throw new HTTPException(404, { message: "No encontrado" });
-  if (row.member_id !== c.get("member").id) {
-    throw new HTTPException(403, { message: "Solo quien sacó la foto puede cambiar esto" });
-  }
-  return row.id;
+  if (row.author_user_id === userId) return row.id;
+
+  const member = await c.env.DB.prepare(
+    "SELECT 1 FROM members WHERE trip_id = ? AND user_id = ? AND removed_at IS NULL AND left_at IS NULL",
+  )
+    .bind(row.trip_id, userId)
+    .first();
+  if (!member) throw new HTTPException(404, { message: "No encontrado" });
+  throw new HTTPException(403, { message: "Solo quien sacó la foto puede cambiar esto" });
 }
 
 const blockFeatureRoute = createRoute({
@@ -301,13 +315,14 @@ const blockFeatureRoute = createRoute({
   path: "/media/{mediaId}/feature-block",
   tags,
   security: bearerAuth,
-  middleware: [requireUser, requireMediaMember] as const,
+  middleware: [requireUser] as const,
   request: { params: MediaParams },
   responses: { 204: { description: "Done" }, ...errors(401, 403, 404) },
   summary: "Don't let others feature this photo (author only)",
   description:
     "Removes it from everyone else's profile and stops new ones (they get 409). You can still feature it yourself. " +
-    "Idempotent. 403 if you did not take it; 404 if it does not exist or you are not an active member of its rollo.",
+    "Idempotent. Works even if you left the rollo or were removed from it. " +
+    "403 if you did not take it; 404 if it does not exist or you neither took it nor are an active member of its rollo.",
 });
 
 media.openapi(blockFeatureRoute, async (c) => {
@@ -325,11 +340,13 @@ const unblockFeatureRoute = createRoute({
   path: "/media/{mediaId}/feature-block",
   tags,
   security: bearerAuth,
-  middleware: [requireUser, requireMediaMember] as const,
+  middleware: [requireUser] as const,
   request: { params: MediaParams },
   responses: { 204: { description: "Done" }, ...errors(401, 403, 404) },
   summary: "Let others feature this photo again (author only)",
-  description: "Idempotent. Photos removed from other profiles while it was blocked do not come back.",
+  description:
+    "Idempotent. Works even if you left the rollo or were removed from it. " +
+    "Photos removed from other profiles while it was blocked do not come back.",
 });
 
 media.openapi(unblockFeatureRoute, async (c) => {

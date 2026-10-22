@@ -1,6 +1,7 @@
 import { AwsClient } from "aws4fetch";
 import { HTTPException } from "hono/http-exception";
 import type { Env, MediaType } from "../types";
+import { InvalidJpegError, stripJpegMetadata } from "./strip-jpeg-metadata";
 
 export const DEV_UPLOAD_PREFIX = "/dev/upload/";
 
@@ -81,4 +82,35 @@ export async function serveMediaFile(bucket: R2Bucket, key: string): Promise<Res
   headers.set("etag", object.httpEtag);
   headers.set("cache-control", "private, max-age=31536000, immutable");
   return new Response(object.body, { headers });
+}
+
+/**
+ * Like serveMediaFile, but for files that leave under a profile's permission (featured photos): the JPEG is
+ * buffered and served without metadata (EXIF GPS/date/caption/author, XMP, comments). Fails closed: anything
+ * that isn't a well-formed JPEG is a 404, never the stored bytes.
+ */
+export async function serveStrippedJpeg(bucket: R2Bucket, key: string): Promise<Response> {
+  const notFound = () => new HTTPException(404, { message: "Archivo no encontrado" });
+  const object = await bucket.get(key);
+  if (!object) throw notFound();
+  const contentType = object.httpMetadata?.contentType;
+  if (key.endsWith(".mp4") || (contentType && contentType !== "image/jpeg")) throw notFound();
+
+  let bytes: Uint8Array;
+  try {
+    bytes = stripJpegMetadata(new Uint8Array(await object.arrayBuffer()));
+  } catch (err) {
+    if (err instanceof InvalidJpegError) throw notFound();
+    throw err;
+  }
+
+  return new Response(bytes, {
+    headers: {
+      "content-type": "image/jpeg",
+      "content-length": String(bytes.length),
+      // Stripping is deterministic, so the stored object's etag plus a suffix identifies these bytes.
+      etag: `"${object.etag}-stripped"`,
+      "cache-control": "private, max-age=31536000, immutable",
+    },
+  });
 }

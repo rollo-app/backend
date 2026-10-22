@@ -3129,7 +3129,7 @@
           }
         ],
         "summary": "Don't let others feature this photo (author only)",
-        "description": "Removes it from everyone else's profile and stops new ones (they get 409). You can still feature it yourself. Idempotent. 403 if you did not take it; 404 if it does not exist or you are not an active member of its rollo.",
+        "description": "Removes it from everyone else's profile and stops new ones (they get 409). You can still feature it yourself. Idempotent. Works even if you left the rollo or were removed from it. 403 if you did not take it; 404 if it does not exist or you neither took it nor are an active member of its rollo.",
         "parameters": [
           {
             "schema": {
@@ -3186,7 +3186,7 @@
           }
         ],
         "summary": "Let others feature this photo again (author only)",
-        "description": "Idempotent. Photos removed from other profiles while it was blocked do not come back.",
+        "description": "Idempotent. Works even if you left the rollo or were removed from it. Photos removed from other profiles while it was blocked do not come back.",
         "parameters": [
           {
             "schema": {

@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { canSeeProfile } from "../lib/profile-access";
-import { serveMediaFile } from "../lib/r2";
+import { serveStrippedJpeg } from "../lib/r2";
 import { avatarUrl, isRevealed } from "../lib/util";
 import { zoneOf } from "../lib/zone";
 import { FeaturedFileParams, FeaturedPhotosSchema, MAX_FEATURED, MediaParams, UserParams } from "../schemas";
@@ -211,7 +211,7 @@ featured.openapi(fileRoute, async (c) => {
     .bind(Date.now(), owner.id, mediaId)
     .first<Pick<MediaRow, "original_key" | "thumb_key">>();
   if (!row) throw new HTTPException(404, { message: "No encontrado" });
-  return serveMediaFile(c.env.MEDIA, variant === "thumb" ? row.thumb_key : row.original_key);
+  return serveStrippedJpeg(c.env.MEDIA, variant === "thumb" ? row.thumb_key : row.original_key);
 });
 
 export default featured;
