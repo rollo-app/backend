@@ -17,6 +17,8 @@ const baseTrip: TripRow = {
   daily_photo_limit: 10,
   daily_video_limit: 3,
   created_at: 0,
+  started_notified_at: null,
+  revealed_notified_at: null,
 };
 
 describe("localDate", () => {

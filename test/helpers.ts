@@ -1,4 +1,5 @@
 import { env, exports } from "cloudflare:workers";
+import { vi } from "vitest";
 import app from "../src/index";
 import { devSentCodes } from "../src/lib/email";
 
@@ -56,6 +57,16 @@ export async function signUp(
     if (patched.status !== 200) throw new Error(`PATCH /me failed: ${patched.status} ${JSON.stringify(patched.body)}`);
   }
   return { token, userId: user.id, email: user.email };
+}
+
+/** Logs an existing account in again: a new session (another phone). Returns its token. */
+export async function logIn(email: string): Promise<string> {
+  // Skip the resend throttle: pretend the previous codes were requested an hour ago.
+  await env.DB.prepare("UPDATE auth_codes SET created_at = created_at - ? WHERE email = ?").bind(2 * HOUR, email.trim().toLowerCase()).run();
+  const code = await requestCode(email);
+  const res = await api("POST", "/auth/email/verify", { body: { email, code } });
+  if (res.status !== 200) throw new Error(`verify failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.token;
 }
 
 /** Calls start and returns the code that "was emailed". */
@@ -180,4 +191,58 @@ export async function befriend(tokenA: string, tokenB: string): Promise<void> {
   if (link.status !== 200) throw new Error(`link failed: ${link.status} ${JSON.stringify(link.body)}`);
   const res = await api("POST", "/friends/redeem", { token: tokenB, body: { code: link.body.code } });
   if (res.status !== 200) throw new Error(`redeem failed: ${res.status} ${JSON.stringify(res.body)}`);
+}
+
+// ---------- Push notifications ----------
+
+export type SentPush = { to: string; title?: string; body: string; sound?: string; data: { url: string } };
+
+type Ticket = { status: "ok"; id: string } | { status: "error"; message: string; details?: { error?: string } };
+type Receipt = { status: "ok" } | { status: "error"; message: string; details?: { error?: string } };
+
+/**
+ * Replaces the Expo Push API for this test (restored after each test by test/setup.ts).
+ * `sent` collects every message sent; `ticketFor` decides each ticket (default: ok with a random id);
+ * `receipts` answers getReceipts by id (missing ids are left out, like Expo does while they are not ready).
+ */
+export function mockExpo(
+  opts: {
+    ticketFor?: (message: SentPush) => Ticket;
+    receipts?: Record<string, Receipt>;
+    fail?: boolean;
+  } = {},
+) {
+  const sent: SentPush[] = [];
+  const sendBatches: number[] = [];
+  const receiptRequests: string[][] = [];
+  const original = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (!url.startsWith("https://exp.host/")) return original(input, init);
+    if (opts.fail) return new Response("boom", { status: 500 });
+    const body = JSON.parse(String(init?.body));
+    if (url.endsWith("/push/send")) {
+      const messages = body as SentPush[];
+      sent.push(...messages);
+      sendBatches.push(messages.length);
+      const data = messages.map((m) => opts.ticketFor?.(m) ?? { status: "ok" as const, id: crypto.randomUUID() });
+      return Response.json({ data });
+    }
+    if (url.endsWith("/push/getReceipts")) {
+      const ids = body.ids as string[];
+      receiptRequests.push(ids);
+      const data = Object.fromEntries(ids.filter((id) => opts.receipts?.[id]).map((id) => [id, opts.receipts![id]]));
+      return Response.json({ data });
+    }
+    return new Response("not found", { status: 404 });
+  });
+  return { sent, sendBatches, receiptRequests };
+}
+
+/** Registers a push token for the user through the API and returns it. */
+export async function registerToken(token: string, name = crypto.randomUUID().replaceAll("-", "")): Promise<string> {
+  const pushToken = `ExponentPushToken[${name}]`;
+  const res = await api("PUT", `/me/push-tokens/${encodeURIComponent(pushToken)}`, { token });
+  if (res.status !== 204) throw new Error(`register token failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return pushToken;
 }

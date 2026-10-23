@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { renderLoginEmail } from "./login-email";
 
 /**
  * Login codes "sent" without a Resend key (local dev and tests), by email.
@@ -6,11 +7,31 @@ import type { Env } from "../types";
  */
 export const devSentCodes = new Map<string, string>();
 
-/** Sends the login code. Without `RESEND_API_KEY` it only logs it (and keeps it in `devSentCodes`). */
-export async function sendLoginCode(env: Env, email: string, code: string): Promise<void> {
+/** Magic-link URLs "sent" without a Resend key (local dev and tests), by email. */
+export const devSentLinks = new Map<string, string>();
+
+export const DEFAULT_LOGIN_LINK_URL = "https://rollo.juanifraga.com/entrar";
+
+/**
+ * The magic-link URL. Token and email go in the fragment, which browsers never send to a server,
+ * so mail scanners and link previewers that open it can't see (or burn) the token.
+ */
+export function loginLinkUrl(env: Env, email: string, token: string): string {
+  const base = env.LOGIN_LINK_URL || DEFAULT_LOGIN_LINK_URL;
+  return `${base}#t=${token}&e=${encodeURIComponent(email)}`;
+}
+
+/**
+ * Sends the login code and, when there is a link token, the magic link (without one, only the code: old app builds).
+ * Without `RESEND_API_KEY` it only logs them (and keeps them in `devSentCodes`/`devSentLinks`).
+ */
+export async function sendLoginCode(env: Env, email: string, code: string, linkToken: string | null): Promise<void> {
+  const url = linkToken ? loginLinkUrl(env, email, linkToken) : null;
   if (!env.RESEND_API_KEY) {
-    console.log(`[auth] código para ${email}: ${code}`);
+    console.log(`[auth] código para ${email}: ${code}${url ? ` · link: ${url}` : ""}`);
     devSentCodes.set(email, code);
+    if (url) devSentLinks.set(email, url);
+    else devSentLinks.delete(email);
     return;
   }
 
@@ -20,11 +41,7 @@ export async function sendLoginCode(env: Env, email: string, code: string): Prom
     body: JSON.stringify({
       from: env.EMAIL_FROM ?? "Rollo <rollo@juanifraga.com>",
       to: [email],
-      subject: `Tu código de Rollo: ${code}`,
-      text: `Tu código de Rollo es ${code}. Vence en 5 minutos.\n\nSi no lo pediste, ignorá este mensaje.`,
-      html:
-        `<p>Tu código de Rollo es:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px">${code}</p>` +
-        `<p>Vence en 5 minutos. Si no lo pediste, ignorá este mensaje.</p>`,
+      ...renderLoginEmail({ code, url }),
     }),
   });
   if (!res.ok) throw new Error(`Resend responded ${res.status}`);

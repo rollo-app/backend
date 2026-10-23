@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BIO_MAX_LENGTH, BIO_MAX_LINES, bioField } from "../src/schemas";
-import { type SeedPhoto, planFeatured, EXPECTED_COMMON, NO_USERNAME, SEED_BIOS, SEED_FRIENDSHIPS, commonTripsProblem, tripPhase } from "../scripts/seed/people";
+import { type SeedPhoto, planFeatured, planLikes, EXPECTED_COMMON, NO_USERNAME, SEED_BIOS, SEED_FRIENDSHIPS, commonTripsProblem, tripPhase } from "../scripts/seed/people";
 
 const lines = (s: string) => s.split(/\r\n|\r|\n/).length;
 
@@ -88,5 +88,31 @@ describe("planFeatured", () => {
     const plan = planFeatured(photos([["Cami", 1], ["Juani", 1]]));
     expect(plan.blocked).toBe("Cami-0");
     expect(Object.values(plan.byUser).flat()).not.toContain("Cami-0");
+  });
+});
+
+describe("planLikes", () => {
+  const photos = (spec: [string, number][]): SeedPhoto[] =>
+    spec.flatMap(([author, n]) => Array.from({ length: n }, (_, i) => ({ id: `${author}-${i}`, author })));
+  const members = ["Juani", "Cami", "Tomi", "Fede", "Lu", "Nacho"];
+
+  it("Juani's first photo gets several likes (not hers), and Juani likes a few photos of others", () => {
+    const plan = planLikes(photos([["Cami", 3], ["Tomi", 3], ["Fede", 3], ["Juani", 4], ["Lu", 2]]), members);
+    const on = (id: string) => plan.filter((l) => l.mediaId === id).map((l) => l.user).sort();
+    expect(on("Juani-0")).toEqual(["Cami", "Fede", "Lu", "Nacho", "Tomi"]);
+    expect(on("Tomi-0")).toEqual(["Cami", "Juani"]);
+    expect(on("Fede-0")).toEqual(["Juani"]);
+  });
+
+  it("never plans a like twice, and every liker is a member", () => {
+    const plan = planLikes(photos([["Cami", 3], ["Tomi", 3], ["Fede", 3], ["Juani", 4]]), members);
+    const keys = plan.map((l) => `${l.user}|${l.mediaId}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const l of plan) expect(members).toContain(l.user);
+  });
+
+  it("works when some authors have no photos", () => {
+    expect(planLikes([], members)).toEqual([]);
+    expect(planLikes(photos([["Tomi", 1]]), members).map((l) => l.user)).toEqual(["Juani", "Cami"]);
   });
 });

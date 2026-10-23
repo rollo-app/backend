@@ -3,6 +3,8 @@ import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireTripMember, requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { blockedIdsFor } from "../lib/moderation";
+import { actorName, deferPush, sendPush } from "../lib/push";
+import { claimRevealedStatement, sendTripRevealed } from "../lib/trip-notices";
 import { areFriends } from "../lib/profile-access";
 import { generateJoinCode, isRevealed, localDate, publicMember, publicTrip } from "../lib/util";
 import {
@@ -63,11 +65,13 @@ trips.openapi(createTripRoute, async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
-                          daily_photo_limit, daily_video_limit, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          daily_photo_limit, daily_video_limit, created_at, started_notified_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       tripId, body.name, joinCode, body.timezone, body.startsAt, body.endsAt, body.revealAt,
       body.dailyPhotoLimit, body.dailyVideoLimit, now,
+      // Starting now ("Empezar ahora"): the creator is the only member and just did it, so no "Arrancó" push.
+      body.startsAt <= now ? now : null,
     ),
     c.env.DB.prepare(
       `INSERT INTO members (id, trip_id, user_id, role, created_at)
@@ -276,9 +280,13 @@ const revealRoute = createRoute({
 trips.openapi(revealRoute, async (c) => {
   const trip = c.get("trip");
   const now = Date.now();
-  if (trip.revealed_at === null) {
-    await c.env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(now, trip.id).run();
-  }
+  // Claim the notice and write revealed_at in one batch (a transaction), claim first: a cron run can never see
+  // the trip revealed but unclaimed and notify the admin about their own reveal. Sent after the response.
+  const [claim] = await c.env.DB.batch([
+    claimRevealedStatement(c.env.DB, trip.id, now),
+    c.env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ? AND revealed_at IS NULL").bind(now, trip.id),
+  ]);
+  if (claim!.meta.changes > 0) deferPush(c, sendTripRevealed(c.env, trip, c.get("user").id));
   return c.json({ trip: publicTrip({ ...trip, revealed_at: trip.revealed_at ?? now }, now) }, 200);
 });
 
@@ -320,6 +328,13 @@ trips.openapi(addMembersRoute, async (c) => {
     }
     const added = await addMember(c.env.DB, trip.id, userId, me.id, Date.now(), c.get("member").role === "admin");
     results.push({ userId, status: added.status === "removed" ? "unavailable" : added.status });
+  }
+  const addedIds = results.filter((r) => r.status === "added").map((r) => r.userId);
+  if (addedIds.length) {
+    deferPush(
+      c,
+      sendPush(c.env, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id }),
+    );
   }
   return c.json({ results }, 200);
 });

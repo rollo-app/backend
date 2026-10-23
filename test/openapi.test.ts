@@ -29,6 +29,7 @@ async function getDoc(): Promise<OpenAPIDoc> {
 const PUBLIC_ENDPOINTS = [
   ["post", "/auth/email/start"],
   ["post", "/auth/email/verify"],
+  ["post", "/auth/email/verify-link"],
   ["post", "/friend-links/claim"],
 ] as const;
 

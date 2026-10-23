@@ -156,7 +156,8 @@ const feedRoute = createRoute({
   summary: "Trip feed",
   description:
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
-    "After: includes dimensions, the download paths, whether you featured each photo and whether its author blocked featuring. " +
+    "After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, " +
+    "and its likes (`likeCount`, `likedByMe`). " +
     "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
@@ -172,16 +173,20 @@ media.openapi(feedRoute, async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.type, m.taken_at, m.local_date, m.lat, m.lng, m.caption, m.thumbhash, m.duration_s,
             m.width, m.height, mem.id AS author_id, u.name AS author_name, u.username AS author_username, mem.user_id AS author_user_id, u.avatar_key AS author_avatar_key,
-            m.feature_blocked_at, f.media_id IS NOT NULL AS featured_by_me
+            m.feature_blocked_at, f.media_id IS NOT NULL AS featured_by_me,
+            COALESCE(lc.n, 0) AS like_count, ml.media_id IS NOT NULL AS liked_by_me
      FROM media m JOIN members mem ON mem.id = m.member_id JOIN users u ON u.id = mem.user_id
      LEFT JOIN featured f ON f.media_id = m.id AND f.user_id = ?
+     LEFT JOIN likes ml ON ml.media_id = m.id AND ml.user_id = ?
+     LEFT JOIN (SELECT l.media_id, COUNT(*) AS n FROM likes l JOIN media lm ON lm.id = l.media_id
+                WHERE lm.trip_id = ? GROUP BY l.media_id) lc ON lc.media_id = m.id
      WHERE m.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "mem")}
      ORDER BY m.taken_at`,
-  ).bind(viewerId, trip.id, viewerId, viewerId).all<{
+  ).bind(viewerId, viewerId, trip.id, trip.id, viewerId, viewerId).all<{
     id: string; type: MediaType; taken_at: number; local_date: string; lat: number | null; lng: number | null;
     caption: string | null; thumbhash: string | null; duration_s: number | null; width: number | null; height: number | null;
     author_id: string; author_name: string | null; author_username: string | null; author_user_id: string; author_avatar_key: string | null;
-    feature_blocked_at: number | null; featured_by_me: number;
+    feature_blocked_at: number | null; featured_by_me: number; like_count: number; liked_by_me: number;
   }>();
 
   const items = results.map((r) => ({
@@ -210,6 +215,8 @@ media.openapi(feedRoute, async (c) => {
       },
       featuredByMe: r.featured_by_me === 1,
       featureBlocked: r.feature_blocked_at !== null,
+      likeCount: r.like_count,
+      likedByMe: r.liked_by_me === 1,
     }),
   }));
 

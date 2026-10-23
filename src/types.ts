@@ -15,6 +15,8 @@ export type Env = {
   REPORTS_EMAIL?: string;
   /** Bearer token for the `/admin/*` routes (delete media or accounts). Without it those routes are disabled. */
   ADMIN_TOKEN?: string;
+  /** Base URL of the login magic link (default https://rollo.juanifraga.com/entrar); token and email go in its fragment. */
+  LOGIN_LINK_URL?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;
@@ -37,6 +39,10 @@ export type TripRow = {
   daily_photo_limit: number;
   daily_video_limit: number;
   created_at: number;
+  /** When the "rollo started" push was sent (or the trip had already started when notifications shipped). */
+  started_notified_at: number | null;
+  /** When the "rollo revealed" push was sent (or the trip had already revealed when notifications shipped). */
+  revealed_notified_at: number | null;
 };
 
 export type UserRow = {
@@ -88,6 +94,10 @@ export type MediaRow = {
   deleted_at: number | null;
   /** The author does not let others feature this photo. */
   feature_blocked_at: number | null;
+  /** Last time a like on this photo sent a push (anti-spam window). */
+  like_notified_at: number | null;
+  /** Likes since like_notified_at that did not send a push. */
+  likes_since_notified: number;
 };
 
 export type AppEnv = {
