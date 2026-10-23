@@ -154,9 +154,9 @@ URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
 
 ## Estado (octubre 2026)
 
-Hecho: cuentas por email, perfil y username, amigos, viajes (crear, unirse, detalle, editar, revelar,
-sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar),
-contrato OpenAPI, CI.
+Hecho: cuentas por email (código y link mágico), perfil y username, amigos, viajes (crear, unirse, detalle,
+editar, revelar, sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar),
+destacadas, "me gusta", notificaciones push con cron, moderación, contrato OpenAPI, CI.
 
 **Producción** (deployado el 22/10/2026), todo en la cuenta de Cloudflare de Juani:
 
@@ -185,16 +185,12 @@ verifier mal o ausente cuenta como intento fallido). Así un link del atacante a
 atacante (login CSRF) y otra app que registre `rollo://` y lo intercepte no puede usarlo. Sin `linkChallenge` (builds viejas) no se genera
 link: el mail trae solo el código y `verify-link` siempre falla. `/auth/email/verify` (el código) no cambia.
 
+**Link mágico, notificaciones y "me gusta"** están en producción desde el 22/10/2026 (migraciones `0012`–`0014` aplicadas).
+`LOGIN_LINK_URL` no está seteada (usa el default `https://rollo.juanifraga.com/entrar`). El deploy registra el Cron Trigger
+(`*/5 * * * *`, `triggers.crons` en `wrangler.jsonc`); se ve en el dashboard del Worker → Settings → Triggers. Sin access token
+de Expo: si se activa "enhanced security" en expo.dev hay que sumarlo como secret.
+
 **Insignias de perfil:** columna `users.badge` (migración `0015_user_badges.sql`, aplicar con `npm run db:migrate:remote` **antes** de `npm run deploy`). Se asignan **solo a mano con SQL**, no hay endpoint (`PATCH /me` la ignora): `UPDATE users SET badge='founder' WHERE email='...'`. Valores: `founder` ("Founder") y `first_edition` ("First Edition"); `NULL` = sin insignia. Salen como `badge` en `GET /me` y en `user` de `GET /users/{userId}` (pública, como el nombre); un valor desconocido en la DB sale como `null`.
-
-**Link mágico (pendiente de aplicar en producción):** migración `0014_auth_magic_link.sql` (columnas `link_hash` y `link_challenge` en `auth_codes`), con `npm run db:migrate:remote` **antes** de `npm run deploy`. Opcional: var `LOGIN_LINK_URL` (default `https://rollo.juanifraga.com/entrar`).
-
-**Notificaciones y "me gusta" (pendiente de aplicar en producción):** migraciones `0012_notifications.sql` (`push_tokens`,
-`user_settings`, `likes`, columnas de anti-spam en `media` y `started_notified_at`/`revealed_notified_at` en `trips`; marca como
-avisados los rollos que ya arrancaron o se revelaron, así no avisan al deployar) y `0013_push_receipts.sql` (recibos de Expo).
-Se aplican con `npm run db:migrate:remote` **antes** de `npm run deploy`. El deploy registra el Cron Trigger (`*/5 * * * *`,
-`triggers.crons` en `wrangler.jsonc`); se ve en el dashboard del Worker → Settings → Triggers. Sin access token de Expo: si se
-activa "enhanced security" en expo.dev hay que sumarlo como secret.
 
 Logs en vivo: `npx wrangler tail rollo-api`.
 
@@ -202,7 +198,7 @@ Logs en vivo: `npx wrangler tail rollo-api`.
 
 1. Probar una subida real a R2 en producción (con el primer build de TestFlight).
 2. Lo que pida la etapa de cámara y subida de la app (probablemente nada nuevo).
-3. **Modo viaje:** tabla `prompts`, registro de push tokens de Expo por miembro, cron que cada noche
+3. **Modo viaje:** tabla `prompts` (los push tokens y el cron ya existen), un cron que cada noche
    sortea para cada miembro un horario del día siguiente (ventana ~10–21 h en la zona del viaje,
    separados entre sí para que no coincidan) y otro cron que manda el push con un disparador
    ("un detalle que nadie más esté mirando"). Se apaga solo al terminar el viaje. El "momento" es
