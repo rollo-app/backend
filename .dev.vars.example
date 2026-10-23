@@ -15,3 +15,5 @@ DEV_LOCAL_UPLOADS=1
 # Denuncias: destino del mail (default soporte@juanifraga.com) y token de /admin/*
 # REPORTS_EMAIL=soporte@example.com
 # ADMIN_TOKEN=un_token_largo_y_secreto
+# Tope de almacenamiento en bytes (default 10000000000 = 10 GB, el límite gratis de R2); las subidas nuevas se frenan al 95%
+# STORAGE_LIMIT_BYTES=10000000000

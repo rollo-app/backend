@@ -63,6 +63,12 @@ Decisiones de producto que el backend tiene que respetar:
 - **Límites de subida:** al registrar el celular declara `sizeBytes` y `thumbSizeBytes` (exactos; tope foto 12 MB, video 30 MB, thumb 2 MB) y las URLs de R2 se firman con ese `Content-Length` (header firmado con `allHeaders` de aws4fetch; en dev el `PUT /dev/upload` chequea el largo del body). `complete` compara los tamaños reales con los declarados (o con los topes): si no coinciden borra ambos archivos, da 400 y el registro queda pendiente. El cron borra los pendientes de más de 7 días con sus archivos (`src/lib/pending-cleanup.ts`). Avatar: `POST /me/avatar` pide `sizeBytes` (firmado, hasta 2 MB), borra el pendiente anterior y el cron barre los huérfanos de `avatars/` con más de 1 h, hasta 1000 objetos por corrida y retomando donde quedó la anterior (`cron_state`, clave `avatar_sweep_after`; al llegar al final arranca de nuevo) (`src/lib/avatar-sweep.ts`).
 - **Límite diario por persona**, por tipo, según la fecha local en la zona horaria del viaje
   (default 10 fotos, 3 videos). Las pendientes también cuentan.
+- **Tope de almacenamiento** (`src/lib/storage.ts`): R2 gratis llega a 10 GB y no puede cobrarse nada. El uso es el máximo entre
+  la estimación de D1 (`size_bytes + thumb_size_bytes` de lo no borrado, pendientes incluidas, + 2 MB por usuario con avatar) y la
+  última medición real del bucket (`cron_state`). Al 95% de `STORAGE_LIMIT_BYTES` (default 10 GB decimales) los registros nuevos
+  (`POST /trips/{id}/media`, no los reintentos) y `POST /me/avatar` dan 503; leer nunca se frena. El cron mide el bucket entero
+  como mucho una vez por hora y manda un mail a soporte al cruzar 70%, 85% y 95% (una vez por umbral; se rearma al bajar de 70%).
+  En tests el tope se baja con `api(..., { env: { STORAGE_LIMIT_BYTES } })` o se siembra `storage_measured_bytes` en `cron_state`.
 - **Videos de hasta 15 s.** Fotos a resolución completa (~4000 px, para imprimir) + thumbnail ~800 px.
   La compresión y el thumbnail los hace el celular, no el Worker.
 - **Offline first:** el celular genera el UUID de cada foto y la hora al disparar. Registrar es
@@ -114,7 +120,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 577 tests
+npm test              # 588 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
