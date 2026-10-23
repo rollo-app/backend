@@ -12,7 +12,7 @@ async function deleteMediaRows(db: D1Database, bucket: R2Bucket, where: string, 
 
 /**
  * Permanently deletes an account: its media and memberships (handing the admin role on, or deleting emptied trips),
- * friendships, friend links, reports and blocks on both sides, avatar, sessions and login codes.
+ * friendships, friend links, reports and blocks on both sides, push tokens, settings, likes, avatar, sessions and login codes.
  */
 export async function deleteAccount(env: Env, user: UserRow): Promise<void> {
   const { DB, MEDIA } = env;
@@ -50,6 +50,9 @@ export async function deleteAccount(env: Env, user: UserRow): Promise<void> {
   if (avatars.length) await MEDIA.delete(avatars);
 
   await DB.batch([
+    DB.prepare("DELETE FROM push_tokens WHERE user_id = ?").bind(user.id),
+    DB.prepare("DELETE FROM user_settings WHERE user_id = ?").bind(user.id),
+    DB.prepare("DELETE FROM likes WHERE user_id = ?").bind(user.id),
     DB.prepare("DELETE FROM friendships WHERE user_a = ? OR user_b = ?").bind(user.id, user.id),
     DB.prepare("DELETE FROM reports WHERE reporter_id = ? OR target_user_id = ?").bind(user.id, user.id),
     DB.prepare("DELETE FROM blocks WHERE blocker_id = ? OR blocked_id = ?").bind(user.id, user.id),

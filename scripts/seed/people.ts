@@ -104,3 +104,25 @@ export function planFeatured(photos: SeedPhoto[]): FeaturedPlan {
   const tomi = [...by("Juani").slice(0, 1), ...by("Tomi").slice(0, 2)];
   return { blocked, byUser: { Juani: juani, Tomi: tomi } };
 }
+
+export type PlannedLike = { user: string; mediaId: string };
+
+/**
+ * Likes of the seed, on FEATURED_TRIP's photos (in time order), so the app shows counts in the gallery and on profiles:
+ * - Juani's first photo: every other member (5 with the usual members).
+ * - Tomi's first photo (featured by Juani and by Tomi): Juani and Cami.
+ * - Fede's first photo (featured by Juani): Juani.
+ * Nobody likes their own photo here; only `members` like.
+ */
+export function planLikes(photos: SeedPhoto[], members: string[]): PlannedLike[] {
+  const first = (author: string) => photos.find((p) => p.author === author)?.id;
+  const plan: PlannedLike[] = [];
+  const add = (mediaId: string | undefined, author: string, users: string[]) => {
+    if (!mediaId) return;
+    for (const user of users) if (user !== author && members.includes(user)) plan.push({ user, mediaId });
+  };
+  add(first("Juani"), "Juani", members);
+  add(first("Tomi"), "Tomi", ["Juani", "Cami"]);
+  add(first("Fede"), "Fede", ["Juani"]);
+  return plan;
+}

@@ -7,7 +7,16 @@ import { hiddenMediaSql } from "../lib/moderation";
 import { presignPut } from "../lib/r2";
 import { isRevealed, publicUser } from "../lib/util";
 import { USERNAME_TAKEN_MESSAGE } from "../lib/username";
-import { AvatarUploadSchema, MyTripsSchema, UpdateProfileSchema, UserSchema } from "../schemas";
+import { getNotificationSettings, updateNotificationSettings } from "../lib/settings";
+import {
+  AvatarUploadSchema,
+  MyTripsSchema,
+  PushTokenParams,
+  UpdateProfileSchema,
+  UpdateUserSettingsSchema,
+  UserSchema,
+  UserSettingsSchema,
+} from "../schemas";
 import type { Role, TripRow } from "../types";
 
 const me = createApp();
@@ -147,7 +156,7 @@ const deleteMeRoute = createRoute({
     "your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. " +
     "If you were the admin, the oldest remaining active member becomes admin. " +
     "If no active members remain, the whole rollo is deleted with all its files. " +
-    "Your reports and blocks (made and received) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
+    "Your reports and blocks (made and received), push tokens, settings and likes (yours, and the ones on your photos) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
     "The same email can sign up again later as a brand-new user.",
   security: bearerAuth,
   middleware: [requireUser] as const,
@@ -202,6 +211,92 @@ me.openapi(myTripsRoute, async (c) => {
     },
     200,
   );
+});
+
+const putPushTokenRoute = createRoute({
+  method: "put",
+  path: "/push-tokens/{token}",
+  tags: ["Notifications"],
+  summary: "Register this phone's push token",
+  description:
+    "Registers an Expo push token (ExponentPushToken[...] or ExpoPushToken[...], URL-encoded in the path) for your account. " +
+    "Idempotent: calling it again only refreshes when it was last seen. A token belongs to one account at a time: " +
+    "if another account had it (same phone, another account), it moves to yours. 400 if it is not an Expo push token.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  request: { params: PushTokenParams },
+  responses: { 204: { description: "Token registered" }, ...errors(400, 401) },
+});
+
+me.openapi(putPushTokenRoute, async (c) => {
+  const { token } = c.req.valid("param");
+  const now = Date.now();
+  await c.env.DB.prepare(
+    `INSERT INTO push_tokens (token, user_id, session_id, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (token) DO UPDATE SET
+       created_at = CASE WHEN push_tokens.user_id = excluded.user_id THEN push_tokens.created_at ELSE excluded.created_at END,
+       user_id = excluded.user_id,
+       session_id = excluded.session_id,
+       last_seen_at = excluded.last_seen_at`,
+  )
+    .bind(token, c.get("user").id, c.get("sessionId"), now, now)
+    .run();
+  return c.body(null, 204);
+});
+
+const deletePushTokenRoute = createRoute({
+  method: "delete",
+  path: "/push-tokens/{token}",
+  tags: ["Notifications"],
+  summary: "Unregister a push token",
+  description: "Stops sending pushes to this token for your account (call it when signing out). Idempotent; another account's token is left alone.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  request: { params: PushTokenParams },
+  responses: { 204: { description: "Token removed" }, ...errors(400, 401) },
+});
+
+me.openapi(deletePushTokenRoute, async (c) => {
+  const { token } = c.req.valid("param");
+  await c.env.DB.prepare("DELETE FROM push_tokens WHERE token = ? AND user_id = ?").bind(token, c.get("user").id).run();
+  return c.body(null, 204);
+});
+
+const getSettingsRoute = createRoute({
+  method: "get",
+  path: "/settings",
+  tags: ["Notifications"],
+  summary: "Your settings",
+  description: "Your notification preferences, one per kind of push. Every one is on by default.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  responses: { 200: json(UserSettingsSchema, "Your settings"), ...errors(401) },
+});
+
+me.openapi(getSettingsRoute, async (c) => {
+  const userId = c.get("user").id;
+  const notifications = (await getNotificationSettings(c.env.DB, [userId])).get(userId)!;
+  return c.json({ notifications }, 200);
+});
+
+const updateSettingsRoute = createRoute({
+  method: "patch",
+  path: "/settings",
+  tags: ["Notifications"],
+  summary: "Change your settings",
+  description:
+    "Send any subset of the notification preferences; the ones left out do not change. " +
+    "Unknown keys or non-boolean values are a 400. Returns the full settings.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  request: { body: { content: { "application/json": { schema: UpdateUserSettingsSchema } }, required: true } },
+  responses: { 200: json(UserSettingsSchema, "Settings updated"), ...errors(400, 401) },
+});
+
+me.openapi(updateSettingsRoute, async (c) => {
+  const body = c.req.valid("json");
+  const notifications = await updateNotificationSettings(c.env.DB, c.get("user").id, body.notifications ?? {});
+  return c.json({ notifications }, 200);
 });
 
 export default me;

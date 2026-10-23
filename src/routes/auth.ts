@@ -146,7 +146,12 @@ const logoutRoute = createRoute({
 });
 
 auth.openapi(logoutRoute, async (c) => {
-  await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(c.get("sessionId")).run();
+  // The session's push tokens go with it (explicit, besides the FK cascade): the phone stops getting this account's pushes.
+  const sessionId = c.get("sessionId");
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM push_tokens WHERE session_id = ?").bind(sessionId),
+    c.env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId),
+  ]);
   return c.body(null, 204);
 });
 

@@ -37,6 +37,10 @@ export type TripRow = {
   daily_photo_limit: number;
   daily_video_limit: number;
   created_at: number;
+  /** When the "rollo started" push was sent (or the trip had already started when notifications shipped). */
+  started_notified_at: number | null;
+  /** When the "rollo revealed" push was sent (or the trip had already revealed when notifications shipped). */
+  revealed_notified_at: number | null;
 };
 
 export type UserRow = {
@@ -88,6 +92,10 @@ export type MediaRow = {
   deleted_at: number | null;
   /** The author does not let others feature this photo. */
   feature_blocked_at: number | null;
+  /** Last time a like on this photo sent a push (anti-spam window). */
+  like_notified_at: number | null;
+  /** Likes since like_notified_at that did not send a push. */
+  likes_since_notified: number;
 };
 
 export type AppEnv = {

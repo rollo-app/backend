@@ -1,12 +1,15 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
+import { checkPushReceipts } from "./lib/push";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
+import { runTripNotices } from "./lib/trip-notices";
 import admin from "./routes/admin";
 import auth from "./routes/auth";
 import blocks from "./routes/blocks";
 import featured from "./routes/featured";
 import friends, { friendLinks } from "./routes/friends";
+import likes from "./routes/likes";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
@@ -14,6 +17,7 @@ import reports from "./routes/reports";
 import trips from "./routes/trips";
 import users from "./routes/users";
 import usernames from "./routes/usernames";
+import type { Env } from "./types";
 
 const app = createApp();
 
@@ -38,6 +42,7 @@ app.route("/friend-links", friendLinks);
 app.route("/trips", trips);
 app.route("/", media);
 app.route("/", featured);
+app.route("/", likes);
 
 // Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {
@@ -73,4 +78,14 @@ app.onError((err, c) => {
   return c.json({ error: "Error interno" }, 500);
 });
 
-export default app;
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes and the Expo receipts check. */
+async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  const now = controller.scheduledTime;
+  ctx.waitUntil(
+    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now)]).then((results) => {
+      for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
+    }),
+  );
+}
+
+export default Object.assign(app, { scheduled });

@@ -11,6 +11,7 @@ import {
 } from "../lib/friend-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { isBlockedEitherWay } from "../lib/moderation";
+import { actorName, deferPush, sendPush } from "../lib/push";
 import { areFriends } from "../lib/profile-access";
 import { avatarUrl, isRevealed } from "../lib/util";
 import {
@@ -205,7 +206,12 @@ friends.openapi(redeemRoute, async (c) => {
 
   if (creatorId !== me.id) {
     const [a, b] = pairKey(me.id, creatorId);
-    await c.env.DB.prepare("INSERT OR IGNORE INTO friendships (user_a, user_b, created_at) VALUES (?, ?, ?)").bind(a, b, now).run();
+    const inserted = await c.env.DB.prepare("INSERT OR IGNORE INTO friendships (user_a, user_b, created_at) VALUES (?, ?, ?)")
+      .bind(a, b, now)
+      .run();
+    if (inserted.meta.changes > 0) {
+      deferPush(c, sendPush(c.env, [creatorId], "newFriend", { body: `${actorName(me)} ahora es tu amigo`, url: `/user/${me.id}` }, { actorId: me.id }));
+    }
   }
   return c.json({ friend: publicFriend(creator) }, 200);
 });

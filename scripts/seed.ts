@@ -1,4 +1,5 @@
 import { seedFeatured, verifyFeatured } from "./seed/featured";
+import { seedLikes, verifyLikes } from "./seed/likes";
 import { api, befriendSeed, clearFriendsSeed, ensureUser, seedEmail, seedUserId, unfriendSeed } from "./seed/lib";
 import { EXPECTED_COMMON, SEED_FRIENDSHIPS, commonTripsProblem, tripPhase } from "./seed/people";
 import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenarios";
@@ -16,6 +17,8 @@ import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenari
  * Avatars: generated JPEGs (scripts/seed/avatars.ts) uploaded through the real /me/avatar flow; Lu, Mateo, Nuevo and Rocío have none.
  * Featured photos (scripts/seed/featured.ts): from Bariloche, Juani 5 (2 by others), Tomi 3 with a public profile, and one of
  * Cami's photos blocked from being featured by others. Redone and checked on every run.
+ * Likes (scripts/seed/likes.ts): a few on Bariloche (Juani's first photo from 5 people, Tomi's first from Juani and Cami,
+ * Fede's first from Juani). Redone and checked on every run.
  * Every run: Lu gets a fresh friend link (1 h) and is un-friended from Juani, and Nuevo loses any friends, so both can be retested.
  * Videos are placeholders: there is no ffmpeg, the original is a jpeg uploaded as video/mp4.
  */
@@ -43,6 +46,7 @@ async function main() {
   const link = await api<{ code: string; expiresAt: number }>("POST", "/friends/link", undefined, await ensureUser(LINK_OWNER));
   await verifyFriends();
   await verifyFeatured(await seedFeatured());
+  await verifyLikes(await seedLikes());
 
   const pad = (v: string | number, n: number) => String(v).padEnd(n);
   const juaniRole = { member: "miembro", admin: "ADMIN", absent: "no está" } as const;
@@ -56,7 +60,7 @@ async function main() {
 
   console.log("\n=== Cuentas (el código de login aparece en la consola de wrangler) ===");
   const accounts: [string, string][] = [
-    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros)."],
+    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros). Su primera foto de Bariloche tiene 5 me gusta."],
     ["Cami", "Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche."],
     ["Tomi", "Amigo con varios rollos en común; descripción de 150 caracteres justos (el tope). Perfil PÚBLICO con 3 destacadas."],
     ["Fede", "Amigo con varios rollos en común; descripción de 3 renglones."],

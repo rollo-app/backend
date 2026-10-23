@@ -223,6 +223,36 @@ export const AvatarParams = z.object({
   file: z.string().openapi({ param: { name: "file", in: "path" }, example: "3f1c2a.jpg" }),
 });
 
+// ---------- Push tokens and settings ----------
+
+/** Expo push token as returned by getExpoPushTokenAsync. */
+export const EXPO_PUSH_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/;
+
+export const PushTokenParams = z.object({
+  token: z
+    .string()
+    .max(200, "El token de notificaciones no es válido")
+    .regex(EXPO_PUSH_TOKEN, "El token de notificaciones no es válido")
+    .openapi({ param: { name: "token", in: "path" }, example: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" }),
+});
+
+export const NotificationSettingsSchema = z
+  .object({
+    addedToTrip: z.boolean().openapi({ description: "Someone adds you to a rollo" }),
+    newFriend: z.boolean().openapi({ description: "Someone redeems your friend link" }),
+    tripStarted: z.boolean().openapi({ description: "A rollo you are in starts" }),
+    tripRevealed: z.boolean().openapi({ description: "A rollo you are in is revealed" }),
+    photoFeatured: z.boolean().openapi({ description: "Someone features a photo of yours on their profile" }),
+    photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
+  })
+  .openapi("NotificationSettings");
+
+export const UserSettingsSchema = z.object({ notifications: NotificationSettingsSchema }).openapi("UserSettings");
+
+export const UpdateUserSettingsSchema = z
+  .strictObject({ notifications: NotificationSettingsSchema.partial().strict().optional() })
+  .openapi("UpdateUserSettingsRequest");
+
 export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");
 
 export const TripDetailSchema = z
@@ -484,6 +514,10 @@ export const FeedItemSchema = z
     featureBlocked: z.boolean().optional().openapi({
       description: "Only after the reveal: the author does not let others feature it (they still can)",
     }),
+    likeCount: z.number().int().optional().openapi({
+      description: "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos",
+    }),
+    likedByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you like it" }),
   })
   .openapi("FeedItem");
 
@@ -525,6 +559,8 @@ export const FeaturedPhotoSchema = z
     zone: ZoneSchema.nullable().openapi({ description: "null if the photo has no GPS" }),
     thumbPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/thumb" }),
     originalPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/original" }),
+    likeCount: z.number().int().openapi({ description: "How many people like it (the same counter as in its rollo)" }),
+    likedByMe: z.boolean().openapi({ description: "You like it" }),
   })
   .openapi("FeaturedPhoto", {
     description: "A photo on someone's profile. Never includes the rollo, the caption or the exact location",

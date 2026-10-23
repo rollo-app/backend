@@ -29,6 +29,34 @@ Decisiones de producto que el backend tiene que respetar:
   sirven por `/featured/{userId}/{mediaId}/{variant}` con el permiso del perfil, no del rollo. No se ven (ni sus archivos) si la foto se
   borró, se bloqueó o el dueño ya no es miembro activo de ese rollo. El feed revelado trae `featuredByMe` y `featureBlocked`, y todo
   ítem del feed trae `author.userId`.
+- **Notificaciones push** (`src/lib/push.ts`, `src/lib/trip-notices.ts`): se mandan con Expo Push Service
+  (`POST https://exp.host/--/api/v2/push/send`, lotes de 100, sin access token). `sendPush(env, userIds, kind, message, { actorId })`
+  es el único lugar que manda: saca al actor, a quien tenga un bloqueo con él (cualquier sentido) y a quien apagó ese tipo
+  (`user_settings`); cada push lleva `data.url` (deep link de la app). Nunca tira error: en las rutas se corre con `deferPush(c, ...)`
+  (`waitUntil`) **después** de guardar. Eventos: sumar a un rollo (`addedToTrip`), canjear tu link (`newFriend`), destacar una foto
+  ajena (`photoFeatured`), revelado manual (`tripRevealed`, al resto de los miembros activos). El **Cron Trigger** (cada 5 min,
+  `scheduled` en `src/index.ts`) manda "Arrancó" y "Se reveló" a los miembros activos y revisa los recibos de Expo (`push_receipts`,
+  ~15 min después) para borrar tokens con `DeviceNotRegistered`. Para no avisar dos veces se "reclama" el rollo con
+  `started_notified_at` / `revealed_notified_at` en un solo `UPDATE ... WHERE ... IS NULL`; un rollo ya revelado (o terminado)
+  cuando arranca se marca sin avisar. En tests, `mockExpo()` (`test/helpers.ts`) reemplaza a Expo (sin él, llamar a Expo falla) y
+  `flushPendingPushes()` espera las push diferidas.
+  **Tokens:** `PUT /me/push-tokens/{token}` (idempotente; si el token era de otra cuenta pasa a esta: mismo celular, otra
+  sesión) y `DELETE` al cerrar sesión; borrar la cuenta los borra todos (tabla `push_tokens`). **Preferencias:**
+  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked } }`
+  (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/lib/settings.ts`).
+  `profileVisibility` sigue en `users`.
+- **"Me gusta"** (`src/routes/likes.ts`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
+  idempotentes. Solo fotos. Puede dar "me gusta" **quien puede ver la foto**: miembro activo de su rollo ya revelado, o quien puede
+  ver (`canSeeProfile`) un perfil donde la foto se ve destacada **ahora** (mismas reglas que `VISIBLE_FROM/WHERE` de
+  `featured.ts`: no borrada, no bloqueada por el autor, el dueño sigue en el rollo). Si no, o si hay bloqueo con el autor o la
+  denunciaste, 404; un video que sí ves, 400. `DELETE` siempre da 204 (no revela nada) y permite sacar un "me gusta" aunque ya
+  no veas la foto. Un solo contador por foto: `likeCount` y `likedByMe` van en el feed revelado y en `FeaturedPhoto`
+  (agregados en la misma consulta, sin N+1). Push `photoLiked` al autor ("A Cami le gustó tu foto", abre
+  `/photo/<id>?tripId=<trip>`) con **anti-spam por foto**: el primero avisa y abre una ventana de 30 min
+  (`media.like_notified_at`); los de adentro se cuentan (`media.likes_since_notified`) y el primero después de la ventana avisa
+  sumándolos ("A Cami y 3 más les gustó tu foto"). La decisión es un `UPDATE ... WHERE like_notified_at IS NULL OR <= now - 30 min`
+  en un batch con la lectura del contador, así dos "me gusta" a la vez no avisan los dos. Sacar un "me gusta" no avisa ni
+  descuenta los callados; si nadie más da "me gusta" después de la ventana, los callados no se avisan.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
@@ -56,8 +84,8 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 ```
 src/index.ts          app, /openapi.json, /docs, manejo de errores
 src/schemas.ts        contrato (zod + OpenAPI)
-src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km)
-src/routes/           auth.ts, me.ts, users.ts, friends.ts, trips.ts, media.ts, featured.ts
+src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta")
+src/routes/           auth.ts, me.ts, users.ts, friends.ts, trips.ts, media.ts, featured.ts, likes.ts, blocks.ts, reports.ts, admin.ts
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -85,16 +113,17 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 378 tests
+npm test              # 504 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
+npm run dev -- --test-scheduled   # + correr el cron a mano: curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"
 npm run seed          # 9 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
 npm run seed -- --reset   # borra rollos y usuarios de prueba de D1 local (con amistades, links y descripciones) y los recrea (cambian los códigos)
 ```
 
-**Seed** (`scripts/seed.ts`, `scripts/seed/{lib,scenarios,people,avatars,featured}.ts`; lo puro de `people.ts` tiene tests en
+**Seed** (`scripts/seed.ts`, `scripts/seed/{lib,scenarios,people,avatars,featured,likes}.ts`; lo puro de `people.ts` tiene tests en
 `test/seed-people.test.ts`). Necesita el server local corriendo (`npm run dev:lan` con `DEV_LOCAL_UPLOADS=1`); con
 `SEED_API_URL` y `SEED_PERSIST_TO` corre contra otro server/estado aislado. Al final chequea `GET /friends/{id}` de cada amigo
 de Juani y falla si los rollos en común no son los esperados, y chequea las destacadas (las de Juani como amiga y como desconocido, las de
@@ -103,6 +132,9 @@ Tomi como desconocido). Cuentas:
   con **5 destacadas** de Bariloche (3 suyas, 2 de Tomi y Fede).
 - Destacadas: **Tomi** tiene perfil **público** (3 destacadas, se ven sin ser amigo); **Cami** no deja destacar su primera foto de Bariloche.
   Se rehacen en cada corrida (`planFeatured` en `people.ts`).
+- "Me gusta" en Bariloche (`planLikes` en `people.ts`, se rehacen y chequean en cada corrida): la primera foto de Juani tiene 5
+  (todos los demás miembros), la primera de Tomi 2 (Juani y Cami) y la primera de Fede 1 (Juani). Los usuarios del seed no tienen
+  push tokens, así que no se manda nada a Expo.
 - Amigos de Juani: Cami, Tomi, Fede (varios rollos en común; descripción corta, de 150 justos y de 3 renglones), Bruno
   (solo Tandil en común; también está en "Escapada sin Juani", que no tiene que aparecer), Pilar (ningún rollo), Rama (se salió
   de Tandil, `left_at`) y Vicky (Juani la sacó de Tandil, `removed_at`): estos tres sin rollos en común.
@@ -143,6 +175,13 @@ Para deployar una versión nueva, con `main` al día:
 npm run db:migrate:remote   # si hay migraciones nuevas
 npm run deploy
 ```
+
+**Notificaciones y "me gusta" (pendiente de aplicar en producción):** migraciones `0012_notifications.sql` (`push_tokens`,
+`user_settings`, `likes`, columnas de anti-spam en `media` y `started_notified_at`/`revealed_notified_at` en `trips`; marca como
+avisados los rollos que ya arrancaron o se revelaron, así no avisan al deployar) y `0013_push_receipts.sql` (recibos de Expo).
+Se aplican con `npm run db:migrate:remote` **antes** de `npm run deploy`. El deploy registra el Cron Trigger (`*/5 * * * *`,
+`triggers.crons` en `wrangler.jsonc`); se ve en el dashboard del Worker → Settings → Triggers. Sin access token de Expo: si se
+activa "enhanced security" en expo.dev hay que sumarlo como secret.
 
 Logs en vivo: `npx wrangler tail rollo-api`.
 

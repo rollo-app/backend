@@ -32,7 +32,13 @@
   // certificado gratis de Cloudflare (*.juanifraga.com).
   "routes": [
     { "pattern": "rollo-api.juanifraga.com", "custom_domain": true }
-  ]
+  ],
+
+  // Cron cada 5 min: avisos de "arrancó" / "se reveló" y recibos de Expo (tokens muertos).
+  // En local: `npm run dev -- --test-scheduled` y `curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"`.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
 
   // Secrets (no van acá; se cargan con `npx wrangler secret put <NOMBRE>`):
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
