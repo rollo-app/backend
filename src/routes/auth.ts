@@ -3,7 +3,7 @@ import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { generateToken, hashToken, requireUser, SESSION_TTL } from "../lib/auth";
 import { sendLoginCode } from "../lib/email";
-import { alertCapReached, LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, releaseEmailSlot, reserveEmailSlot } from "../lib/email-caps";
+import { alertCapReached, type EmailKind, LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, releaseEmailSlot, reserveEmailSlot } from "../lib/email-caps";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../lib/login-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { publicUser } from "../lib/util";
@@ -65,17 +65,30 @@ auth.openapi(startRoute, async (c) => {
   // Global daily caps, to keep room for support emails within Resend's free quota. Emails with no account yet get only part
   // of the budget, so spam of fake addresses cannot lock out existing users. The App Review account sends nothing.
   let isNewUser = false;
+  let ipKind: EmailKind | null = null;
   if (!isReview) {
     isNewUser = !(await c.env.DB.prepare("SELECT 1 FROM users WHERE email = ?").bind(email).first());
-    const capped = async (kind: "login" | "login_new") => {
-      console.warn(`[auth] daily ${kind} email cap reached`);
-      await alertCapReached(c.env, kind);
-      throw new HTTPException(429, { message: "Hay muchos pedidos de código ahora. Probá en un rato." });
-    };
-    if (isNewUser && !(await reserveEmailSlot(c.env.DB, "login_new", LOGIN_NEW_USER_EMAILS_PER_DAY))) await capped("login_new");
+    if (isNewUser) {
+      // The new-user caps answer 204 like a success and send nothing: a 429 only for new emails would reveal whether an account exists.
+      if (ip) {
+        ipKind = `login_new_ip:${ip}`;
+        if (!(await reserveEmailSlot(c.env.DB, ipKind, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY))) {
+          console.warn("[auth] daily new-user login email cap reached for an IP");
+          return c.body(null, 204);
+        }
+      }
+      if (!(await reserveEmailSlot(c.env.DB, "login_new", LOGIN_NEW_USER_EMAILS_PER_DAY))) {
+        console.warn("[auth] daily login_new email cap reached");
+        await alertCapReached(c.env, "login_new");
+        return c.body(null, 204);
+      }
+    }
     if (!(await reserveEmailSlot(c.env.DB, "login", LOGIN_EMAILS_PER_DAY))) {
       if (isNewUser) await releaseEmailSlot(c.env.DB, "login_new");
-      await capped("login");
+      if (ipKind) await releaseEmailSlot(c.env.DB, ipKind);
+      console.warn("[auth] daily login email cap reached");
+      await alertCapReached(c.env, "login");
+      throw new HTTPException(429, { message: "Hay muchos pedidos de código ahora. Probá en un rato." });
     }
   }
   // No challenge (old app builds): no magic link at all, only the code.
@@ -107,6 +120,7 @@ auth.openapi(startRoute, async (c) => {
       await c.env.DB.prepare("DELETE FROM auth_codes WHERE id = ?").bind(id).run();
       await releaseEmailSlot(c.env.DB, "login");
       if (isNewUser) await releaseEmailSlot(c.env.DB, "login_new");
+      if (ipKind) await releaseEmailSlot(c.env.DB, ipKind);
       throw new HTTPException(502, { message: "No pudimos mandar el email, probá de nuevo" });
     }
   }

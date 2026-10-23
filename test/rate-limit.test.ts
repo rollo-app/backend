@@ -1,8 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { devSentBlocks, devSentNotices, devSentReports } from "../src/lib/email";
+import { devSentBlocks, devSentCodes, devSentNotices, devSentReports } from "../src/lib/email";
 import { sendModerationSummary } from "../src/lib/moderation-summary";
-import { LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
+import { LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
 import { api, newTrip, requestCode, signUp, uploadMedia, DAY } from "./helpers";
 
 /** In-memory stand-in for a Workers Rate Limiting binding, with a fixed limit and no window. */
@@ -196,8 +196,11 @@ describe("login cap split", () => {
     await env.DB.prepare("DELETE FROM email_counters").run();
     await setCounter("login_new", LOGIN_NEW_USER_EMAILS_PER_DAY);
     await setCounter("login", LOGIN_NEW_USER_EMAILS_PER_DAY);
+    // Same answer as a success, so the cap cannot be used to tell whether an account exists; nothing is sent.
     const fresh = await api("POST", "/auth/email/start", { body: { email: "fresh@rollo.test" } });
-    expect(fresh.status).toBe(429);
+    expect(fresh.status).toBe(204);
+    expect(devSentCodes.has("fresh@rollo.test")).toBe(false);
+    expect(await env.DB.prepare("SELECT 1 FROM auth_codes WHERE email = 'fresh@rollo.test'").first()).toBeNull();
     expect((await api("POST", "/auth/email/start", { body: { email: existing.email } })).status).toBe(204);
   });
 
@@ -223,7 +226,7 @@ describe("login cap split", () => {
     devSentNotices.length = 0;
     await setCounter("login_new", LOGIN_NEW_USER_EMAILS_PER_DAY);
     for (const email of ["a1@rollo.test", "a2@rollo.test", "a3@rollo.test"]) {
-      expect((await api("POST", "/auth/email/start", { body: { email } })).status).toBe(429);
+      expect((await api("POST", "/auth/email/start", { body: { email } })).status).toBe(204);
     }
     expect(devSentNotices).toHaveLength(1);
     expect(devSentNotices[0]!.subject).toContain("cuentas nuevas");
@@ -231,6 +234,22 @@ describe("login cap split", () => {
     await api("POST", "/auth/email/start", { body: { email: existing.email } });
     expect(devSentNotices).toHaveLength(2);
     expect(devSentNotices[1]!.subject).not.toContain("cuentas nuevas");
+  });
+
+  it("each IP gets a few new-signup emails per day, then a silent 204", async () => {
+    const headers = { "cf-connecting-ip": "9.9.9.9" };
+    const start = (email: string, h = headers) => api("POST", "/auth/email/start", { body: { email }, headers: h });
+    for (let i = 0; i < LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY; i++) {
+      expect((await start(`ip${i}@rollo.test`)).status).toBe(204);
+      expect(devSentCodes.has(`ip${i}@rollo.test`)).toBe(true);
+    }
+    expect((await start("ipx@rollo.test")).status).toBe(204);
+    expect(devSentCodes.has("ipx@rollo.test")).toBe(false);
+    // Other IPs are not affected, and the IP's refusals did not spend the global new-user budget.
+    expect((await start("other@rollo.test", { "cf-connecting-ip": "8.8.8.8" })).status).toBe(204);
+    expect(devSentCodes.has("other@rollo.test")).toBe(true);
+    const row = await env.DB.prepare("SELECT count FROM email_counters WHERE kind = 'login_new'").first<{ count: number }>();
+    expect(row!.count).toBe(LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY + 1);
   });
 
   it("the App Review account is exempt", async () => {
