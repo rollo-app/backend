@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
 import { notifyLike } from "../lib/likes";
 import { hiddenMediaSql, isBlockedEitherWay } from "../lib/moderation";
+import { rateLimit } from "../lib/rate-limit";
 import { bearerAuth, createApp, errors } from "../lib/openapi";
 import { canSeeProfile } from "../lib/profile-access";
 import { deferPush } from "../lib/push";
@@ -72,9 +73,9 @@ const likeRoute = createRoute({
     "Notifies the author (`photoLiked`) at most once every 30 minutes per photo: the likes in between are counted and added " +
     "to the next push (\"A Cami y 3 más les gustó tu foto\").",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Liked" }, ...errors(400, 401, 404) },
+  responses: { 204: { description: "Liked" }, ...errors(400, 401, 404, 429) },
 });
 
 likes.openapi(likeRoute, async (c) => {

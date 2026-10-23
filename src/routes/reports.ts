@@ -2,7 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireUser } from "../lib/auth";
 import { sendReportEmail } from "../lib/email";
-import { withinModerationEmailCap } from "../lib/moderation";
+import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../lib/moderation";
 import { bearerAuth, createApp, errors } from "../lib/openapi";
 import { canSeeProfile } from "../lib/profile-access";
 import { presignGet } from "../lib/r2";
@@ -19,11 +19,11 @@ const route = createRoute({
   summary: "Report a photo or a person",
   description:
     "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. " +
-    "A reported photo disappears from the reporter's own views (and from their featured photos). At most 10 reports and blocks per user per 24 hours are emailed to support; the rest are stored without email. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+    "A reported photo disappears from the reporter's own views (and from their featured photos). At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateReportSchema } }, required: true } },
-  responses: { 204: { description: "Reported" }, ...errors(400, 401, 404) },
+  responses: { 204: { description: "Reported" }, ...errors(400, 401, 404, 429) },
 });
 
 const notFound = () => new HTTPException(404, { message: "No encontrado" });
@@ -67,9 +67,12 @@ reports.openapi(route, async (c) => {
   if (!target) throw notFound();
   if (target.id === viewer.id) throw new HTTPException(400, { message: mediaId !== undefined ? "No podés denunciar tu propia foto" : "No podés denunciarte a vos mismo" });
 
+  if (await atModerationActionCap(db, "reports", viewer.id)) throw new HTTPException(429, { message: MODERATION_ACTION_CAP_MESSAGE });
+  // Starts flagged as not emailed: it is cleared once the email goes out (otherwise the daily summary lists it).
+  const reportId = crypto.randomUUID();
   const inserted = await db
-    .prepare("INSERT OR IGNORE INTO reports (id, reporter_id, media_id, target_user_id, trip_id, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(crypto.randomUUID(), viewer.id, media?.id ?? null, target.id, media?.trip_id ?? null, reason, Date.now())
+    .prepare("INSERT OR IGNORE INTO reports (id, reporter_id, media_id, target_user_id, trip_id, reason, created_at, unemailed) VALUES (?, ?, ?, ?, ?, ?, ?, 1)")
+    .bind(reportId, viewer.id, media?.id ?? null, target.id, media?.trip_id ?? null, reason, Date.now())
     .run();
 
   if (inserted.meta.changes === 1) {
@@ -94,6 +97,7 @@ reports.openapi(route, async (c) => {
         }),
         adminBase: new URL(c.req.url).origin,
       });
+      await db.prepare("UPDATE reports SET unemailed = 0 WHERE id = ?").bind(reportId).run();
     } catch (err) {
       // The report is already saved; do not fail the request because support was not emailed.
       console.error("[report] could not email support", err);

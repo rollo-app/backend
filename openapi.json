@@ -1662,7 +1662,7 @@
           "Auth"
         ],
         "summary": "Request a login code by email",
-        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. Using either one consumes both. A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
+        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. Using either one consumes both. A new request invalidates the previous codes. Rate limited per email and per IP, and capped globally per day (429). Works for new and existing users alike.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1998,6 +1998,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2037,6 +2047,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -2769,7 +2789,7 @@
           "Blocks"
         ],
         "summary": "Block a user",
-        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 10 reports and blocks per user per 24 hours are emailed).",
+        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 3 reports and blocks per user per 24 hours, and 20 per day overall, are emailed). More than 50 blocks per user per 24 hours is a 429.",
         "security": [
           {
             "bearerAuth": []
@@ -2811,6 +2831,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -2865,7 +2895,7 @@
           "Reports"
         ],
         "summary": "Report a photo or a person",
-        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 10 reports and blocks per user per 24 hours are emailed to support; the rest are stored without email. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
         "security": [
           {
             "bearerAuth": []
@@ -2907,6 +2937,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -3397,6 +3437,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3712,6 +3762,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3854,6 +3914,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -4315,6 +4385,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4367,6 +4447,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {

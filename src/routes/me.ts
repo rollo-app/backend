@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { deleteAccount } from "../lib/account";
 import { requireUser } from "../lib/auth";
+import { rateLimit } from "../lib/rate-limit";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { hiddenMediaSql } from "../lib/moderation";
 import { presignPut } from "../lib/r2";
@@ -97,9 +98,9 @@ const avatarRoute = createRoute({
     "A previous upload that was never completed is discarded. " +
     "Each call generates a new random file name, so the avatar URL changes when you replace it.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
   request: { body: { content: { "application/json": { schema: AvatarUploadRequestSchema } }, required: true } },
-  responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(400, 401) },
+  responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(400, 401, 429) },
 });
 
 me.openapi(avatarRoute, async (c) => {
@@ -122,8 +123,8 @@ const avatarCompleteRoute = createRoute({
     "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, " +
     "makes it your avatar and deletes the previous one. Otherwise the upload is discarded and the response is a 400.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
-  responses: { 200: json(UserSchema, "Profile with the new avatar"), ...errors(400, 401) },
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  responses: { 200: json(UserSchema, "Profile with the new avatar"), ...errors(400, 401, 429) },
 });
 
 me.openapi(avatarCompleteRoute, async (c) => {

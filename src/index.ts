@@ -1,6 +1,7 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
+import { globalRateLimit } from "./lib/rate-limit";
 import { checkPushReceipts } from "./lib/push";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import { runTripNotices } from "./lib/trip-notices";
@@ -14,6 +15,8 @@ import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
 import { sweepOrphanAvatars } from "./lib/avatar-sweep";
+import { purgeOldEmailCounters } from "./lib/email-caps";
+import { sendModerationSummary } from "./lib/moderation-summary";
 import { cleanupStalePending } from "./lib/pending-cleanup";
 import reports from "./routes/reports";
 import trips from "./routes/trips";
@@ -22,6 +25,8 @@ import usernames from "./routes/usernames";
 import type { Env } from "./types";
 
 const app = createApp();
+
+app.use("*", globalRateLimit);
 
 app.get("/", (c) => c.json({ ok: true, service: "rollo-api" }));
 
@@ -87,7 +92,7 @@ app.onError((err, c) => {
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );
