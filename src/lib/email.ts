@@ -23,13 +23,17 @@ export function loginLinkUrl(env: Env, email: string, token: string): string {
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** Sends the login code and magic link. Without `RESEND_API_KEY` it only logs them (and keeps them in `devSentCodes`/`devSentLinks`). */
-export async function sendLoginCode(env: Env, email: string, code: string, linkToken: string): Promise<void> {
-  const url = loginLinkUrl(env, email, linkToken);
+/**
+ * Sends the login code and, when there is a link token, the magic link (without one, only the code: old app builds).
+ * Without `RESEND_API_KEY` it only logs them (and keeps them in `devSentCodes`/`devSentLinks`).
+ */
+export async function sendLoginCode(env: Env, email: string, code: string, linkToken: string | null): Promise<void> {
+  const url = linkToken ? loginLinkUrl(env, email, linkToken) : null;
   if (!env.RESEND_API_KEY) {
-    console.log(`[auth] código para ${email}: ${code} · link: ${url}`);
+    console.log(`[auth] código para ${email}: ${code}${url ? ` · link: ${url}` : ""}`);
     devSentCodes.set(email, code);
-    devSentLinks.set(email, url);
+    if (url) devSentLinks.set(email, url);
+    else devSentLinks.delete(email);
     return;
   }
 
@@ -42,12 +46,14 @@ export async function sendLoginCode(env: Env, email: string, code: string, linkT
       subject: `Tu código de Rollo: ${code}`,
       text:
         `Tu código de Rollo es ${code}. Vence en 5 minutos.\n\n` +
-        `O tocá este link desde tu iPhone: ${url}\n\n` +
+        (url ? `O tocá este link desde tu iPhone: ${url}\n\n` : "") +
         `Si no lo pediste, ignorá este mensaje.`,
       html:
         `<p>Tu código de Rollo es:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px">${code}</p>` +
-        `<p><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#3155F5;color:#ffffff;font-weight:600;text-decoration:none">Abrir Rollo</a></p>` +
-        `<p>O tocá ese botón desde tu iPhone. Vence en 5 minutos. Si no lo pediste, ignorá este mensaje.</p>`,
+        (url
+          ? `<p><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#3155F5;color:#ffffff;font-weight:600;text-decoration:none">Abrir Rollo</a></p>` +
+            `<p>O tocá ese botón desde tu iPhone. Vence en 5 minutos. Si no lo pediste, ignorá este mensaje.</p>`
+          : `<p>Vence en 5 minutos. Si no lo pediste, ignorá este mensaje.</p>`),
     }),
   });
   if (!res.ok) throw new Error(`Resend responded ${res.status}`);
