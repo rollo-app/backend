@@ -17,6 +17,8 @@ export type Env = {
   ADMIN_TOKEN?: string;
   /** Base URL of the login magic link (default https://rollo.juanifraga.com/entrar); token and email go in its fragment. */
   LOGIN_LINK_URL?: string;
+  /** R2 storage limit in bytes (decimal string). Defaults to 10 GB, R2's free tier; uploads stop at 95% of it. */
+  STORAGE_LIMIT_BYTES?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;

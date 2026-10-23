@@ -1,3 +1,4 @@
+import { assertStorageAvailable } from "../lib/storage";
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -49,7 +50,8 @@ const registerRoute = createRoute({
   summary: "Register a photo or video",
   description:
     "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). " +
-    "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
+    "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. " +
+    "503 when the storage limit is reached (new registrations only, never retries).",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: {
@@ -59,7 +61,7 @@ const registerRoute = createRoute({
   responses: {
     201: json(MediaRegisteredSchema, "Registered; upload the files"),
     200: json(z.union([MediaRegisteredSchema, MediaStatusSchema]), "Retry: new URLs, or it was already uploaded"),
-    ...errors(400, 401, 403, 409, 429),
+    ...errors(400, 401, 403, 409, 429, 503),
   },
 });
 
@@ -92,6 +94,8 @@ media.openapi(registerRoute, async (c) => {
   if (b.takenAt > trip.ends_at + PAST_TOLERANCE_MS) {
     throw new HTTPException(400, { message: "Este rollo ya terminó" });
   }
+
+  await assertStorageAvailable(c.env, b.sizeBytes + b.thumbSizeBytes);
 
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.

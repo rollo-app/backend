@@ -1,3 +1,4 @@
+import { assertStorageAvailable } from "../lib/storage";
 import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { deleteAccount } from "../lib/account";
@@ -94,17 +95,18 @@ const avatarRoute = createRoute({
   summary: "Get a URL to upload your avatar",
   description:
     "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /me/avatar/complete. " +
-    "A previous upload that was never completed is discarded. " +
+    "503 when the storage limit is reached. A previous upload that was never completed is discarded. " +
     "Each call generates a new random file name, so the avatar URL changes when you replace it.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: AvatarUploadRequestSchema } }, required: true } },
-  responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(400, 401) },
+  responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(400, 401, 503) },
 });
 
 me.openapi(avatarRoute, async (c) => {
   const user = c.get("user");
   const { sizeBytes } = c.req.valid("json");
+  await assertStorageAvailable(c.env, sizeBytes);
   // Don't leave the previous unconfirmed upload orphaned in R2.
   if (user.pending_avatar_key) await c.env.MEDIA.delete(user.pending_avatar_key);
   const key = `avatars/${user.id}/${crypto.randomUUID()}.jpg`;
