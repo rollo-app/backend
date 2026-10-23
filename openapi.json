@@ -1188,12 +1188,12 @@
               "original": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT of the original file"
+                "description": "PUT of the original file; send exactly `sizeBytes` bytes as Content-Length"
               },
               "thumb": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT of the JPEG thumbnail (~800px)"
+                "description": "PUT of the JPEG thumbnail (~800px); send exactly `thumbSizeBytes` bytes as Content-Length"
               }
             },
             "required": [
@@ -1311,14 +1311,21 @@
           },
           "sizeBytes": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "Exact byte size of the original file; the upload URL is signed for exactly this Content-Length"
+          },
+          "thumbSizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length"
           }
         },
         "required": [
           "id",
           "type",
           "takenAt",
-          "sizeBytes"
+          "sizeBytes",
+          "thumbSizeBytes"
         ]
       },
       "MediaType": {
@@ -3502,7 +3509,7 @@
           "Media"
         ],
         "summary": "Register a photo or video",
-        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2. Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
+        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
         "security": [
           {
             "bearerAuth": []
@@ -3615,7 +3622,7 @@
           "Media"
         ],
         "summary": "Confirm the files were uploaded",
-        "description": "Checks that the original and the thumbnail are in R2. Only then does the photo show up in the feed.",
+        "description": "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
         "security": [
           {
             "bearerAuth": []

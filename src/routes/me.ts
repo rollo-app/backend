@@ -103,7 +103,7 @@ me.openapi(avatarRoute, async (c) => {
   const user = c.get("user");
   const key = `avatars/${user.id}/${crypto.randomUUID()}.jpg`;
   await c.env.DB.prepare("UPDATE users SET pending_avatar_key = ? WHERE id = ?").bind(key, user.id).run();
-  const upload = await presignPut(c.env, key, new URL(c.req.url).origin, AVATAR_URL_TTL);
+  const upload = await presignPut(c.env, key, new URL(c.req.url).origin, null, AVATAR_URL_TTL);
   return c.json({ upload, expiresIn: AVATAR_URL_TTL }, 200);
 });
 

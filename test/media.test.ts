@@ -16,6 +16,46 @@ import {
 } from "./helpers";
 
 describe("POST /trips/:id/media (register)", () => {
+  it("requires thumbSizeBytes", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const { thumbSizeBytes: _omit, ...body } = photoBody();
+    expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(400);
+  });
+
+  it("rejects sizes over the caps", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const MB = 1024 * 1024;
+    const post = (body: unknown) => api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
+    const thumb = await post(photoBody({ thumbSizeBytes: 2 * MB + 1 }));
+    expect(thumb.status).toBe(400);
+    expect(JSON.stringify(thumb.body)).toContain("El thumbnail es demasiado grande");
+    expect((await post(photoBody({ sizeBytes: 12 * MB + 1 }))).status).toBe(400);
+    expect((await post(videoBody({ sizeBytes: 30 * MB + 1 }))).status).toBe(400);
+    expect((await post(photoBody({ sizeBytes: 12 * MB, thumbSizeBytes: 2 * MB }))).status).toBe(201);
+  });
+
+  it("a retry signs the URLs with the stored sizes, not the new body's", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const body = photoBody({ sizeBytes: 1000, thumbSizeBytes: 200 });
+    await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
+    const retry = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: { ...body, sizeBytes: 5000, thumbSizeBytes: 900 } });
+    expect(retry.status).toBe(200);
+    // Signed (not just stated): content-length is among the signed headers of both URLs.
+    expect(new URL(retry.body.upload.original).searchParams.get("X-Amz-SignedHeaders")).toContain("content-length");
+    const row = await env.DB.prepare("SELECT size_bytes, thumb_size_bytes FROM media WHERE id = ?").bind(body.id).first();
+    expect(row).toEqual({ size_bytes: 1000, thumb_size_bytes: 200 });
+  });
+
+  it("a legacy pending row (no stored thumb size) gets a URL signed without content-length", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const body = photoBody();
+    await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
+    await env.DB.prepare("UPDATE media SET thumb_size_bytes = NULL WHERE id = ?").bind(body.id).run();
+    const retry = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
+    expect(new URL(retry.body.upload.thumb).searchParams.get("X-Amz-SignedHeaders")).not.toContain("content-length");
+    expect(new URL(retry.body.upload.original).searchParams.get("X-Amz-SignedHeaders")).toContain("content-length");
+  });
+
   it("returns signed URLs for original and thumbnail", async () => {
     const { tripId, adminToken } = await newTrip();
     const body = photoBody();
@@ -287,6 +327,68 @@ describe("POST /media/:id/complete", () => {
     expect(row).toEqual({ status: "uploaded", size_bytes: `original-${body.id}`.length });
   });
 
+  describe("size checks", () => {
+    const MISMATCH = "El archivo no coincide con el que registraste; volvé a subirlo";
+
+    async function registered(overrides: Record<string, unknown> = {}) {
+      const { tripId, adminToken } = await newTrip();
+      const body = photoBody(overrides);
+      expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(201);
+      return { tripId, adminToken, body };
+    }
+
+    async function expectRejectedAndCleaned(tripId: string, adminToken: string, id: string) {
+      const res = await api("POST", `/media/${id}/complete`, { token: adminToken });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe(MISMATCH);
+      expect(await env.MEDIA.head(`trips/${tripId}/${id}/original.jpg`)).toBeNull();
+      expect(await env.MEDIA.head(`trips/${tripId}/${id}/thumb.jpg`)).toBeNull();
+      const row = await env.DB.prepare("SELECT status FROM media WHERE id = ?").bind(id).first();
+      expect(row).toEqual({ status: "pending" });
+    }
+
+    it("rejects an original whose size differs from the registered one, deleting both files", async () => {
+      const { tripId, adminToken, body } = await registered();
+      await putFiles(tripId, body.id);
+      await env.MEDIA.put(`trips/${tripId}/${body.id}/original.jpg`, "x".repeat(body.sizeBytes + 5));
+      await expectRejectedAndCleaned(tripId, adminToken, body.id);
+    });
+
+    it("rejects a thumbnail whose size differs from the registered one", async () => {
+      const { tripId, adminToken, body } = await registered();
+      await putFiles(tripId, body.id);
+      await env.MEDIA.put(`trips/${tripId}/${body.id}/thumb.jpg`, "x".repeat(body.thumbSizeBytes + 1));
+      await expectRejectedAndCleaned(tripId, adminToken, body.id);
+    });
+
+    it("after a rejection a retry gets fresh URLs and the media can be uploaded again", async () => {
+      const { tripId, adminToken, body } = await registered();
+      await env.MEDIA.put(`trips/${tripId}/${body.id}/original.jpg`, "x".repeat(body.sizeBytes + 5));
+      await env.MEDIA.put(`trips/${tripId}/${body.id}/thumb.jpg`, "x".repeat(body.thumbSizeBytes));
+      expect((await api("POST", `/media/${body.id}/complete`, { token: adminToken })).status).toBe(400);
+      expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(200);
+      await putFiles(tripId, body.id);
+      expect((await api("POST", `/media/${body.id}/complete`, { token: adminToken })).status).toBe(200);
+    });
+
+    it("accepts a legacy pending row (no thumb size) whose original size matches", async () => {
+      const { tripId, adminToken, body } = await registered();
+      await env.DB.prepare("UPDATE media SET thumb_size_bytes = NULL WHERE id = ?").bind(body.id).run();
+      await putFiles(tripId, body.id);
+      await env.MEDIA.put(`trips/${tripId}/${body.id}/thumb.jpg`, "another length");
+      expect((await api("POST", `/media/${body.id}/complete`, { token: adminToken })).status).toBe(200);
+    });
+
+    it("rejects files over the caps even if the row says otherwise", async () => {
+      const { tripId, adminToken, body } = await registered();
+      const big = 13 * 1024 * 1024;
+      await env.DB.prepare("UPDATE media SET size_bytes = ? WHERE id = ?").bind(big, body.id).run();
+      await env.MEDIA.put(`trips/${tripId}/${body.id}/original.jpg`, new Uint8Array(big));
+      await env.MEDIA.put(`trips/${tripId}/${body.id}/thumb.jpg`, "x".repeat(body.thumbSizeBytes));
+      await expectRejectedAndCleaned(tripId, adminToken, body.id);
+    });
+  });
+
   it("nobody can confirm someone else's photo", async () => {
     const { tripId, code, adminToken } = await newTrip();
     const fede = await joinAs(code, "Fede");
@@ -539,7 +641,7 @@ describe("local uploads (DEV_LOCAL_UPLOADS)", () => {
 
   it("the PUT stores in local R2 and then complete works", async () => {
     const { tripId, adminToken } = await newTrip();
-    const { body, upload } = await register(tripId, adminToken);
+    const { body, upload } = await register(tripId, adminToken, photoBody({ sizeBytes: 4, thumbSizeBytes: 4 }));
     expect((await put(upload.original, "foto")).status).toBe(200);
     expect((await put(upload.thumb, "mini")).status).toBe(200);
 
@@ -558,6 +660,21 @@ describe("local uploads (DEV_LOCAL_UPLOADS)", () => {
     expect((await put(otherKey, "x")).status).toBe(403);
     const tampered = upload.original.replace(/exp=\d+/, "exp=99999999999999");
     expect((await put(tampered, "x")).status).toBe(403);
+  });
+
+  it("rejects a body whose length differs from the signed size", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const { body, upload } = await register(tripId, adminToken, photoBody({ sizeBytes: 4, thumbSizeBytes: 4 }));
+    expect((await put(upload.original, "foto-demasiado-larga")).status).toBe(403);
+    expect((await put(upload.thumb, "ab")).status).toBe(403);
+    expect(await workerEnv.MEDIA.head(`trips/${tripId}/${body.id}/original.jpg`)).toBeNull();
+    expect((await put(upload.thumb, "mini")).status).toBe(200);
+  });
+
+  it("a tampered size invalidates the signature", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const { upload } = await register(tripId, adminToken, photoBody({ sizeBytes: 4, thumbSizeBytes: 4 }));
+    expect((await put(upload.original.replace("size=4", "size=40"), "x".repeat(40))).status).toBe(403);
   });
 
   it("without the variable the route doesn't exist and the URLs are R2's", async () => {

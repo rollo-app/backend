@@ -293,6 +293,7 @@ export async function uploadShot(tripId: string, token: string, shot: Shot, imgI
       width: img.width,
       height: img.height,
       sizeBytes: img.original.length,
+      thumbSizeBytes: img.thumb.length,
       thumbhash: img.thumbhash,
       ...(isVideo && { durationS: Math.round(rand(3, 14.5) * 10) / 10 }),
     },

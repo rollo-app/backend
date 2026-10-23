@@ -87,6 +87,8 @@ export type MediaRow = {
   width: number | null;
   height: number | null;
   size_bytes: number | null;
+  /** Exact byte size of the thumbnail the upload URL is signed for (null: legacy row). */
+  thumb_size_bytes: number | null;
   original_key: string;
   thumb_key: string;
   status: "pending" | "uploaded";
