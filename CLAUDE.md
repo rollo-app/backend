@@ -113,7 +113,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 537 tests
+npm test              # 544 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
@@ -121,6 +121,7 @@ npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
 npm run dev -- --test-scheduled   # + correr el cron a mano: curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"
 npm run seed          # 9 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
 npm run seed -- --reset   # borra rollos y usuarios de prueba de D1 local (con amistades, links y descripciones) y los recrea (cambian los códigos)
+npm run email:preview   # escribe login-email-preview.html (git-ignored) con el mail del código, para abrirlo en el navegador
 ```
 
 **Seed** (`scripts/seed.ts`, `scripts/seed/{lib,scenarios,people,avatars,featured,likes}.ts`; lo puro de `people.ts` tiene tests en
