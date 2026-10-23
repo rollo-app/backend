@@ -6,7 +6,7 @@ export const LOGIN_EMAILS_PER_DAY = 80;
 /** Of the login budget, at most this many go to emails with no account yet (new sign-ups): spam of fake addresses cannot lock out existing users. */
 export const LOGIN_NEW_USER_EMAILS_PER_DAY = 40;
 /** ...and per IP, so one address cannot burn the new-user budget alone. */
-export const LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY = 5;
+export const LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY = 20;
 export const SUPPORT_EMAILS_PER_DAY = 20;
 /** Support emails (reports + blocks) one user can use per rolling 24 hours: two accounts cannot eat the whole daily support cap. */
 export const SUPPORT_EMAILS_PER_USER_PER_DAY = 3;

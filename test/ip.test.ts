@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { ipKey } from "../src/lib/ip";
-import { purgeOldEmailCounters } from "../src/lib/email-caps";
+import { LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, purgeOldEmailCounters } from "../src/lib/email-caps";
 import { api } from "./helpers";
 
 describe("ipKey", () => {
@@ -39,8 +39,10 @@ describe("IPv6 per-IP limits", () => {
   it("addresses inside one /64 share the new-signup budget", async () => {
     const start = (email: string, ip: string) => api("POST", "/auth/email/start", { body: { email }, headers: { "cf-connecting-ip": ip } });
     const { devSentCodes } = await import("../src/lib/email");
-    for (let i = 0; i < 5; i++) await start(`v6-${i}@rollo.test`, `2001:db8:aaaa:bbbb::${i + 1}`);
-    expect(devSentCodes.has("v6-4@rollo.test")).toBe(true);
+    for (let i = 0; i < LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY; i++) await start(`v6-${i}@rollo.test`, `2001:db8:aaaa:bbbb::${i + 1}`);
+    expect(devSentCodes.has("v6-19@rollo.test")).toBe(true);
+    // Past the hourly per-IP code limit, so the new-signup cap is the one answering.
+    await env.DB.prepare("UPDATE auth_codes SET created_at = created_at - 7200000").run();
     expect((await start("v6-x@rollo.test", "2001:db8:aaaa:bbbb:1:2:3:4")).status).toBe(204);
     expect(devSentCodes.has("v6-x@rollo.test")).toBe(false);
   });

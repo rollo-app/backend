@@ -243,6 +243,7 @@ describe("login cap split", () => {
       expect((await start(`ip${i}@rollo.test`)).status).toBe(204);
       expect(devSentCodes.has(`ip${i}@rollo.test`)).toBe(true);
     }
+    await env.DB.prepare("UPDATE auth_codes SET created_at = created_at - 7200000").run();
     expect((await start("ipx@rollo.test")).status).toBe(204);
     expect(devSentCodes.has("ipx@rollo.test")).toBe(false);
     // Other IPs are not affected, and the IP's refusals did not spend the global new-user budget.
