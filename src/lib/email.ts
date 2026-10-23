@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { renderLoginEmail } from "./login-email";
 
 /**
  * Login codes "sent" without a Resend key (local dev and tests), by email.
@@ -20,9 +21,6 @@ export function loginLinkUrl(env: Env, email: string, token: string): string {
   return `${base}#t=${token}&e=${encodeURIComponent(email)}`;
 }
 
-const escapeHtml = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
 /**
  * Sends the login code and, when there is a link token, the magic link (without one, only the code: old app builds).
  * Without `RESEND_API_KEY` it only logs them (and keeps them in `devSentCodes`/`devSentLinks`).
@@ -43,17 +41,7 @@ export async function sendLoginCode(env: Env, email: string, code: string, linkT
     body: JSON.stringify({
       from: env.EMAIL_FROM ?? "Rollo <rollo@juanifraga.com>",
       to: [email],
-      subject: `Tu código de Rollo: ${code}`,
-      text:
-        `Tu código de Rollo es ${code}. Vence en 5 minutos.\n\n` +
-        (url ? `O tocá este link desde tu iPhone: ${url}\n\n` : "") +
-        `Si no lo pediste, ignorá este mensaje.`,
-      html:
-        `<p>Tu código de Rollo es:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px">${code}</p>` +
-        (url
-          ? `<p><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#3155F5;color:#ffffff;font-weight:600;text-decoration:none">Abrir Rollo</a></p>` +
-            `<p>O tocá ese botón desde tu iPhone. Vence en 5 minutos. Si no lo pediste, ignorá este mensaje.</p>`
-          : `<p>Vence en 5 minutos. Si no lo pediste, ignorá este mensaje.</p>`),
+      ...renderLoginEmail({ code, url }),
     }),
   });
   if (!res.ok) throw new Error(`Resend responded ${res.status}`);
