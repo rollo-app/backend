@@ -148,6 +148,25 @@
           "code"
         ]
       },
+      "EmailVerifyLinkRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "juani@example.com",
+            "description": "Trimmed and lowercased"
+          },
+          "token": {
+            "type": "string",
+            "example": "q3N0dGhpcy1pcy1ub3QtYS1yZWFsLXRva2VuLWp1c3QtYW4tZXhhbXBsZQ",
+            "description": "Token from the magic link in the email (the `t` parameter of its fragment)"
+          }
+        },
+        "required": [
+          "email",
+          "token"
+        ]
+      },
       "UpdateProfileRequest": {
         "type": "object",
         "properties": {
@@ -1584,7 +1603,7 @@
           "Auth"
         ],
         "summary": "Request a login code by email",
-        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts). A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
+        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`). Using either one consumes both. A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1645,6 +1664,47 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/EmailVerifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/email/verify-link": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Exchange the emailed magic-link token for a session token",
+        "description": "Same result as `/auth/email/verify`, with the token from the link's fragment instead of the code. Shares the code's expiry, attempts and single use: a wrong token uses up an attempt, and after the link or the code is used neither works again. Every failure answers the same 400. Only POST: the token is never accepted in a URL.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailVerifyLinkRequest"
               }
             }
           }

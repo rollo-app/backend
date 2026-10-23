@@ -90,6 +90,16 @@ export const EmailVerifySchema = z
       }) })
   .openapi("EmailVerifyRequest");
 
+export const EmailVerifyLinkSchema = z
+  .object({
+    email: emailField,
+    token: z.string().openapi({
+      example: "q3N0dGhpcy1pcy1ub3QtYS1yZWFsLXRva2VuLWp1c3QtYW4tZXhhbXBsZQ",
+      description: "Token from the magic link in the email (the `t` parameter of its fragment)",
+    }),
+  })
+  .openapi("EmailVerifyLinkRequest");
+
 export const AuthSessionSchema = z
   .object({
     token: z.string().openapi({ description: "Session token (Bearer). Valid for 365 days; store it on the phone" }),

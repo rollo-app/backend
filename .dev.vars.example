@@ -7,6 +7,8 @@ DEV_LOCAL_UPLOADS=1
 
 # Opcionales. Sin RESEND_API_KEY el código de login aparece en la consola de wrangler.
 # RESEND_API_KEY=re_xxx
+# Base del link mágico del mail (default https://rollo.juanifraga.com/entrar)
+# LOGIN_LINK_URL=https://rollo.juanifraga.com/entrar
 # Cuenta de App Review (a ese email no se le manda nada; REVIEW_CODE es su código)
 # REVIEW_EMAIL=review@example.com
 # REVIEW_CODE=K7M2QX
