@@ -1,6 +1,7 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
+import { globalRateLimit } from "./lib/rate-limit";
 import { checkPushReceipts } from "./lib/push";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import { runTripNotices } from "./lib/trip-notices";
@@ -22,6 +23,8 @@ import usernames from "./routes/usernames";
 import type { Env } from "./types";
 
 const app = createApp();
+
+app.use("*", globalRateLimit);
 
 app.get("/", (c) => c.json({ ok: true, service: "rollo-api" }));
 

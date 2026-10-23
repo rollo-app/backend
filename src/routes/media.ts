@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { deleteTripMedia } from "../lib/account";
 import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../lib/auth";
+import { rateLimit } from "../lib/rate-limit";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { hiddenMediaSql } from "../lib/moderation";
 import { mediaKeys, presignPut, serveMediaFile } from "../lib/r2";
@@ -51,7 +52,7 @@ const registerRoute = createRoute({
     "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). " +
     "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
   security: bearerAuth,
-  middleware: [requireUser, requireTripMember] as const,
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: RegisterMediaSchema } }, required: true },
@@ -133,9 +134,9 @@ const completeRoute = createRoute({
     "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. " +
     "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
   security: bearerAuth,
-  middleware: [requireUser, requireMediaMember] as const,
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireMediaMember] as const,
   request: { params: MediaParams },
-  responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404) },
+  responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404, 429) },
 });
 
 media.openapi(completeRoute, async (c) => {
@@ -252,7 +253,7 @@ const downloadRoute = createRoute({
   summary: "Download a file (only after the reveal)",
   description: "Streamed from R2 with the same Bearer token.",
   security: bearerAuth,
-  middleware: [requireUser, requireTripMember] as const,
+  middleware: [requireUser, rateLimit("RL_FILES"), requireTripMember] as const,
   request: { params: MediaFileParams },
   responses: {
     200: {
@@ -262,7 +263,7 @@ const downloadRoute = createRoute({
         "video/mp4": { schema: z.string().openapi({ format: "binary" }) },
       },
     },
-    ...errors(401, 403, 404),
+    ...errors(401, 403, 404, 429),
   },
 });
 

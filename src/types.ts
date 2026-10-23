@@ -1,4 +1,12 @@
+/** Workers Rate Limiting binding (`ratelimits` in wrangler.jsonc). */
+export type RateLimitBinding = { limit(options: { key: string }): Promise<{ success: boolean }> };
+
 export type Env = {
+  /** Rate limiters (see `src/lib/rate-limit.ts`); optional so a missing binding fails open. */
+  RL_GLOBAL?: RateLimitBinding;
+  RL_IP?: RateLimitBinding;
+  RL_EXPENSIVE?: RateLimitBinding;
+  RL_FILES?: RateLimitBinding;
   DB: D1Database;
   MEDIA: R2Bucket;
   R2_BUCKET_NAME: string;

@@ -57,6 +57,13 @@ Decisiones de producto que el backend tiene que respetar:
   sumándolos ("A Cami y 3 más les gustó tu foto"). La decisión es un `UPDATE ... WHERE like_notified_at IS NULL OR <= now - 30 min`
   en un batch con la lectura del contador, así dos "me gusta" a la vez no avisan los dos. Sacar un "me gusta" no avisa ni
   descuenta los callados; si nadie más da "me gusta" después de la ventana, los callados no se avisan.
+- **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
+  `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
+  (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).
+  `RL_EXPENSIVE` 20/60 s por usuario (`rateLimit("RL_EXPENSIVE")` después de `requireUser`): registrar/completar media, avatar y su complete, "me gusta" (PUT) y sumar amigos al rollo;
+  `RL_FILES` 300/60 s por usuario para descargas (rollo y destacadas). **Fail open:** sin el binding (o si falla) la request pasa y se loguea una vez. Los límites del contador son por ubicación de Cloudflare.
+  Tope diario global (día UTC, tabla `email_counters`, `reserveEmailSlot`): **80** mails de login (`/auth/email/start` → 429 "Hay muchos pedidos de código ahora. Probá en un rato.") y **20** mails de soporte
+  (denuncias/bloqueos: pasado el tope se guardan igual pero no se manda el mail, `console.warn`); además 50 denuncias y 50 bloqueos por usuario cada 24 h (429). Resend gratis: 100/día. En tests los bindings reales tienen límites enormes (`vitest.config.ts`); los tests de límite usan un binding falso por request.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
@@ -114,7 +121,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 577 tests
+npm test              # 591 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar

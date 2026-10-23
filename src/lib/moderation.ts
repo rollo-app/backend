@@ -1,3 +1,5 @@
+import { MODERATION_ACTIONS_PER_DAY, reserveEmailSlot, SUPPORT_EMAILS_PER_DAY } from "./email-caps";
+
 /** Whether either of the two users has blocked the other. */
 export async function isBlockedEitherWay(db: D1Database, a: string, b: string): Promise<boolean> {
   const row = await db
@@ -25,12 +27,25 @@ export function hiddenMediaSql(mediaAlias: string, authorMemberAlias: string): s
   );
 }
 
+/** Whether the user already made the maximum of reports (or blocks) in the last 24 hours. */
+export async function atModerationActionCap(db: D1Database, table: "reports" | "blocks", userId: string): Promise<boolean> {
+  const column = table === "reports" ? "reporter_id" : "blocker_id";
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ? AND created_at > ?`)
+    .bind(userId, Date.now() - 24 * 60 * 60 * 1000)
+    .first<{ n: number }>();
+  return (row?.n ?? 0) >= MODERATION_ACTIONS_PER_DAY;
+}
+
+export const MODERATION_ACTION_CAP_MESSAGE = "Hiciste muchas denuncias o bloqueos hoy. Probá mañana.";
+
 /** Most moderation emails (reports + blocks) per user per rolling 24 hours; beyond it they are stored but not emailed. */
 export const MODERATION_EMAILS_PER_DAY = 10;
 
 /**
  * Whether a moderation email may be sent for this user. Call after inserting the new report/block row,
- * so the count includes it: the 10th is still emailed, the 11th is not.
+ * so the count includes it: the 10th is still emailed, the 11th is not. Also takes a slot of the global daily support cap
+ * (`SUPPORT_EMAILS_PER_DAY`), so call it only when an email will actually be sent.
  */
 export async function withinModerationEmailCap(db: D1Database, userId: string): Promise<boolean> {
   const since = Date.now() - 24 * 60 * 60 * 1000;
@@ -41,5 +56,5 @@ export async function withinModerationEmailCap(db: D1Database, userId: string): 
     )
     .bind(userId, since)
     .first<{ n: number }>();
-  return (row?.n ?? 0) <= MODERATION_EMAILS_PER_DAY;
+  return (row?.n ?? 0) <= MODERATION_EMAILS_PER_DAY && (await reserveEmailSlot(db, "support", SUPPORT_EMAILS_PER_DAY));
 }
