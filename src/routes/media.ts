@@ -12,6 +12,8 @@ import {
   MediaFileParams,
   MediaParams,
   MediaRegisteredSchema,
+  MAX_SIZE,
+  MAX_THUMB_SIZE,
   MediaStatusSchema,
   PAST_TOLERANCE_MS,
   RegisterMediaSchema,
@@ -29,10 +31,11 @@ async function uploadResponse(
   id: string,
   originalKey: string,
   thumbKey: string,
+  sizes: { original: number | null; thumb: number | null },
 ) {
   const [original, thumb] = await Promise.all([
-    presignPut(env, originalKey, origin),
-    presignPut(env, thumbKey, origin),
+    presignPut(env, originalKey, origin, sizes.original),
+    presignPut(env, thumbKey, origin, sizes.thumb),
   ]);
   return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
 }
@@ -45,7 +48,7 @@ const registerRoute = createRoute({
   tags,
   summary: "Register a photo or video",
   description:
-    "Returns signed URLs to upload the original and the thumbnail straight to R2. " +
+    "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). " +
     "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
@@ -74,7 +77,10 @@ media.openapi(registerRoute, async (c) => {
     if (existing.member_id !== me.id) throw new HTTPException(409, { message: "Ese id ya existe" });
     if (existing.deleted_at !== null) throw new HTTPException(409, { message: "El admin borró esta foto" });
     if (existing.status === "uploaded") return c.json({ id: existing.id, status: "uploaded" as const }, 200);
-    return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, existing.id, existing.original_key, existing.thumb_key), 200);
+    return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, existing.id, existing.original_key, existing.thumb_key, {
+      original: existing.size_bytes,
+      thumb: existing.thumb_size_bytes,
+    }), 200);
   }
 
   // Validated against when the photo was taken, not against the upload time: the offline queue
@@ -102,15 +108,18 @@ media.openapi(registerRoute, async (c) => {
   const keys = mediaKeys(trip.id, b.id, b.type as MediaType);
   await c.env.DB.prepare(
     `INSERT INTO media (id, trip_id, member_id, type, taken_at, local_date, lat, lng, accuracy_m,
-                        caption, thumbhash, duration_s, width, height, size_bytes, original_key, thumb_key, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        caption, thumbhash, duration_s, width, height, size_bytes, thumb_size_bytes, original_key, thumb_key, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     b.id, trip.id, me.id, b.type, b.takenAt, day, b.lat ?? null, b.lng ?? null, b.accuracyM ?? null,
-    b.caption || null, b.thumbhash ?? null, b.durationS ?? null, b.width ?? null, b.height ?? null, b.sizeBytes,
+    b.caption || null, b.thumbhash ?? null, b.durationS ?? null, b.width ?? null, b.height ?? null, b.sizeBytes, b.thumbSizeBytes,
     keys.original, keys.thumb, now,
   ).run();
 
-  return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, b.id, keys.original, keys.thumb), 201);
+  return c.json(await uploadResponse(c.env, new URL(c.req.url).origin, b.id, keys.original, keys.thumb, {
+    original: b.sizeBytes,
+    thumb: b.thumbSizeBytes,
+  }), 201);
 });
 
 // ---------- Confirm upload ----------
@@ -120,7 +129,9 @@ const completeRoute = createRoute({
   path: "/media/{mediaId}/complete",
   tags,
   summary: "Confirm the files were uploaded",
-  description: "Checks that the original and the thumbnail are in R2. Only then does the photo show up in the feed.",
+  description:
+    "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. " +
+    "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
   security: bearerAuth,
   middleware: [requireUser, requireMediaMember] as const,
   request: { params: MediaParams },
@@ -139,6 +150,15 @@ media.openapi(completeRoute, async (c) => {
   const [original, thumb] = await Promise.all([c.env.MEDIA.head(row.original_key), c.env.MEDIA.head(row.thumb_key)]);
   if (!original || !thumb) {
     throw new HTTPException(400, { message: "Faltan archivos en el storage; volvé a subirlos" });
+  }
+  const mismatch =
+    original.size !== row.size_bytes ||
+    (row.thumb_size_bytes !== null && thumb.size !== row.thumb_size_bytes) ||
+    original.size > MAX_SIZE[row.type] ||
+    thumb.size > MAX_THUMB_SIZE;
+  if (mismatch) {
+    await c.env.MEDIA.delete([row.original_key, row.thumb_key]);
+    throw new HTTPException(400, { message: "El archivo no coincide con el que registraste; volvé a subirlo" });
   }
 
   await c.env.DB.prepare("UPDATE media SET status = 'uploaded', uploaded_at = ?, size_bytes = ? WHERE id = ?")

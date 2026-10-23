@@ -250,6 +250,19 @@ export const TripSummarySchema = z
   })
   .openapi("TripSummary");
 
+export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
+export const AvatarUploadRequestSchema = z
+  .object({
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(AVATAR_MAX_BYTES, "La foto tiene que ser un JPEG de hasta 2 MB")
+      .openapi({ description: "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length" }),
+  })
+  .openapi("AvatarUploadRequest");
+
 export const AvatarUploadSchema = z
   .object({
     upload: z.string().url().openapi({ description: "PUT of the JPEG avatar (square, ~512px)" }),
@@ -470,7 +483,8 @@ export const FriendParams = z.object({
 
 export const MAX_VIDEO_SECONDS = 15.5; // 15 s + rounding margin
 const MB = 1024 * 1024;
-export const MAX_SIZE = { photo: 25 * MB, video: 60 * MB } as const;
+export const MAX_SIZE = { photo: 12 * MB, video: 30 * MB } as const;
+export const MAX_THUMB_SIZE = 2 * MB;
 
 export const RegisterMediaSchema = z
   .object({
@@ -495,13 +509,22 @@ export const RegisterMediaSchema = z
     durationS: z.number().positive().nullish(),
     width: z.number().int().positive().nullish(),
     height: z.number().int().positive().nullish(),
-    sizeBytes: z.number().int().positive(),
+    sizeBytes: z.number().int().positive().openapi({
+      description: "Exact byte size of the original file; the upload URL is signed for exactly this Content-Length",
+    }),
+    thumbSizeBytes: z.number().int().positive().openapi({
+      description: "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length",
+    }),
   })
   .refine((d) => d.type !== "video" || (d.durationS != null && d.durationS <= MAX_VIDEO_SECONDS), {
     message: "Los videos tienen que durar 15 segundos o menos",
     path: ["durationS"],
   })
   .refine((d) => d.sizeBytes <= MAX_SIZE[d.type], { message: "El archivo es demasiado grande", path: ["sizeBytes"] })
+  .refine((d) => d.thumbSizeBytes <= MAX_THUMB_SIZE, {
+    message: "El thumbnail es demasiado grande",
+    path: ["thumbSizeBytes"],
+  })
   .openapi("RegisterMediaRequest");
 
 export const MediaRegisteredSchema = z
@@ -509,8 +532,8 @@ export const MediaRegisteredSchema = z
     id: z.string().uuid(),
     status: z.literal("pending"),
     upload: z.object({
-      original: z.string().url().openapi({ description: "PUT of the original file" }),
-      thumb: z.string().url().openapi({ description: "PUT of the JPEG thumbnail (~800px)" }),
+      original: z.string().url().openapi({ description: "PUT of the original file; send exactly `sizeBytes` bytes as Content-Length" }),
+      thumb: z.string().url().openapi({ description: "PUT of the JPEG thumbnail (~800px); send exactly `thumbSizeBytes` bytes as Content-Length" }),
     }),
     expiresIn: z.number().int().openapi({ description: "Seconds the URLs stay valid" }),
   })

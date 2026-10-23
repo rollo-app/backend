@@ -13,6 +13,8 @@ import likes from "./routes/likes";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
 import media from "./routes/media";
+import { sweepOrphanAvatars } from "./lib/avatar-sweep";
+import { cleanupStalePending } from "./lib/pending-cleanup";
 import reports from "./routes/reports";
 import trips from "./routes/trips";
 import users from "./routes/users";
@@ -62,11 +64,14 @@ app.get("/docs", swaggerUI({ url: "/openapi.json", title: "Rollo API" }));
 app.put(`${DEV_UPLOAD_PREFIX}*`, async (c, next) => {
   if (!devUploadsEnabled(c.env)) return next();
   const key = decodeURIComponent(new URL(c.req.url).pathname.slice(DEV_UPLOAD_PREFIX.length));
-  if (!(await verifyDevUpload(c.env, key, c.req.query("exp"), c.req.query("sig")))) {
-    return c.json({ error: "Firma inválida o vencida" }, 403);
-  }
+  const verified = await verifyDevUpload(c.env, key, c.req.query("exp"), c.req.query("sig"), c.req.query("size"));
+  if (!verified) return c.json({ error: "Firma inválida o vencida" }, 403);
   const contentType = c.req.header("content-type");
-  await c.env.MEDIA.put(key, await c.req.arrayBuffer(), contentType ? { httpMetadata: { contentType } } : undefined);
+  const bytes = await c.req.arrayBuffer();
+  if (verified.size !== null && bytes.byteLength !== verified.size) {
+    return c.json({ error: "El tamaño del archivo no coincide con el firmado" }, 403);
+  }
+  await c.env.MEDIA.put(key, bytes, contentType ? { httpMetadata: { contentType } } : undefined);
   return c.body(null, 200);
 });
 
@@ -78,11 +83,11 @@ app.onError((err, c) => {
   return c.json({ error: "Error interno" }, 500);
 });
 
-/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes and the Expo receipts check. */
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads and the sweep of orphan avatar files. */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );
