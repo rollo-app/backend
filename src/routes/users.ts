@@ -4,7 +4,7 @@ import { requireUser } from "../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { isBlockedEitherWay } from "../lib/moderation";
 import { areFriends, canSeeProfile } from "../lib/profile-access";
-import { avatarUrl } from "../lib/util";
+import { avatarUrl, toBadge } from "../lib/util";
 import { UserFriendsSchema, UserParams, UserProfileSchema } from "../schemas";
 import type { UserRow } from "../types";
 
@@ -43,10 +43,10 @@ const profileRoute = createRoute({
 users.openapi(profileRoute, async (c) => {
   const viewerId = c.get("user").id;
   const owner = await c.env.DB.prepare(
-    "SELECT id, name, username, avatar_key, bio, profile_visibility FROM users WHERE id = ?",
+    "SELECT id, name, username, avatar_key, bio, badge, profile_visibility FROM users WHERE id = ?",
   )
     .bind(c.req.valid("param").userId)
-    .first<Pick<UserRow, "id" | "name" | "username" | "avatar_key" | "bio" | "profile_visibility">>();
+    .first<Pick<UserRow, "id" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility">>();
   if (!owner) throw new HTTPException(404, { message: "No existe" });
 
   const flag = async (sql: string) => (await c.env.DB.prepare(sql).bind(viewerId, owner.id).first()) !== null;
@@ -67,6 +67,7 @@ users.openapi(profileRoute, async (c) => {
         username: owner.username,
         avatarUrl: avatarUrl(owner.id, owner.avatar_key),
         bio: owner.bio,
+        badge: toBadge(owner.badge),
       },
       isFriend,
       blockedByMe,

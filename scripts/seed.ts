@@ -60,15 +60,15 @@ async function main() {
 
   console.log("\n=== Cuentas (el código de login aparece en la consola de wrangler) ===");
   const accounts: [string, string][] = [
-    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros). Su primera foto de Bariloche tiene 5 me gusta."],
-    ["Cami", "Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche."],
+    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros). Su primera foto de Bariloche tiene 5 me gusta. Insignia Founder."],
+    ["Cami", "Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche. Insignia First Edition."],
     ["Tomi", "Amigo con varios rollos en común; descripción de 150 caracteres justos (el tope). Perfil PÚBLICO con 3 destacadas."],
     ["Fede", "Amigo con varios rollos en común; descripción de 3 renglones."],
     ["Bruno", "Amigo: 1 rollo en común (Tandil) y otro sin Juani (Escapada) que NO tiene que aparecer; descripción de 2 renglones."],
     ["Pilar", "Amiga sin ningún rollo: perfil sin rollos en común; \"Sumar a un rollo\" ofrece los de Juani sin revelar."],
     ["Rama", "Amigo que se salió de Tandil (left_at): sin rollos en común. Juani lo puede volver a sumar."],
     ["Vicky", "Amiga que Juani (admin) sacó de Tandil (removed_at): sin rollos en común; solo el admin la vuelve a sumar."],
-    ["Lu", "NO es amiga de Juani pero comparte rollos; sin foto. Su link de amistad está abajo (se rehace en cada corrida)."],
+    ["Lu", "NO es amiga de Juani pero comparte rollos; sin foto. Insignia First Edition. Su link de amistad está abajo (se rehace en cada corrida)."],
     ["Nuevo", "Cuenta nueva sin rollos ni amigos, sin foto: estados vacíos (Rollo, Amigos, Perfil)."],
     ["Rocío", "Tiene nombre pero NO @usuario (cuenta de antes de los usernames): la app la manda a \"Completá tu perfil\"."],
   ];

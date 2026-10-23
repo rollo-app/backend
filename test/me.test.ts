@@ -6,7 +6,7 @@ describe("GET /me", () => {
     const { token, userId, email } = await signUp("fede@rollo.test", "Fede");
     const res = await api("GET", "/me", { token });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: userId, email, name: "Fede", username: expect.any(String), avatarUrl: null, bio: null, profileVisibility: "friends" });
+    expect(res.body).toEqual({ id: userId, email, name: "Fede", username: expect.any(String), avatarUrl: null, bio: null, badge: null, profileVisibility: "friends" });
   });
 
   it("name is null until it is set", async () => {

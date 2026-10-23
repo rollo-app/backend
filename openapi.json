@@ -112,6 +112,18 @@
             "example": "Viajando por el sur",
             "description": "Profile description (up to 3 lines); null if none"
           },
+          "badge": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "founder",
+              "first_edition",
+              null
+            ],
+            "description": "Profile badge assigned by hand (founder = Founder, first_edition = First Edition); null if none"
+          },
           "profileVisibility": {
             "$ref": "#/components/schemas/ProfileVisibility"
           }
@@ -123,6 +135,7 @@
           "username",
           "avatarUrl",
           "bio",
+          "badge",
           "profileVisibility"
         ]
       },
@@ -482,6 +495,18 @@
             ],
             "example": "Viajando por el sur",
             "description": "Profile description; null if none. Always public, whatever canSee says"
+          },
+          "badge": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "founder",
+              "first_edition",
+              null
+            ],
+            "description": "Profile badge assigned by hand (founder = Founder, first_edition = First Edition); null if none"
           }
         },
         "required": [
@@ -489,7 +514,8 @@
           "name",
           "username",
           "avatarUrl",
-          "bio"
+          "bio",
+          "badge"
         ]
       },
       "UserFriends": {

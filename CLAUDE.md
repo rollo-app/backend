@@ -131,6 +131,7 @@ de Juani y falla si los rollos en común no son los esperados, y chequea las des
 Tomi como desconocido). Cuentas:
 - `juani@rollo.test`: en todos los rollos menos "Escapada sin Juani"; **admin** de "Finde en Tandil" (empieza mañana). Perfil privado
   con **5 destacadas** de Bariloche (3 suyas, 2 de Tomi y Fede).
+- Insignias: Juani `founder`; Cami y Lu `first_edition`; el resto sin insignia (`SEED_BADGES` en `people.ts`).
 - Destacadas: **Tomi** tiene perfil **público** (3 destacadas, se ven sin ser amigo); **Cami** no deja destacar su primera foto de Bariloche.
   Se rehacen en cada corrida (`planFeatured` en `people.ts`).
 - "Me gusta" en Bariloche (`planLikes` en `people.ts`, se rehacen y chequean en cada corrida): la primera foto de Juani tiene 5
@@ -183,6 +184,8 @@ SHA-256(verifier) coincide con el challenge **y** el token coincide (comparació
 verifier mal o ausente cuenta como intento fallido). Así un link del atacante abierto en el celular de otro no lo mete en la cuenta del
 atacante (login CSRF) y otra app que registre `rollo://` y lo intercepte no puede usarlo. Sin `linkChallenge` (builds viejas) no se genera
 link: el mail trae solo el código y `verify-link` siempre falla. `/auth/email/verify` (el código) no cambia.
+
+**Insignias de perfil:** columna `users.badge` (migración `0015_user_badges.sql`, aplicar con `npm run db:migrate:remote` **antes** de `npm run deploy`). Se asignan **solo a mano con SQL**, no hay endpoint (`PATCH /me` la ignora): `UPDATE users SET badge='founder' WHERE email='...'`. Valores: `founder` ("Founder") y `first_edition` ("First Edition"); `NULL` = sin insignia. Salen como `badge` en `GET /me` y en `user` de `GET /users/{userId}` (pública, como el nombre); un valor desconocido en la DB sale como `null`.
 
 **Link mágico (pendiente de aplicar en producción):** migración `0014_auth_magic_link.sql` (columnas `link_hash` y `link_challenge` en `auth_codes`), con `npm run db:migrate:remote` **antes** de `npm run deploy`. Opcional: var `LOGIN_LINK_URL` (default `https://rollo.juanifraga.com/entrar`).
 

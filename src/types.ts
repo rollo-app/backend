@@ -53,6 +53,7 @@ export type UserRow = {
   avatar_key: string | null;
   pending_avatar_key: string | null;
   bio: string | null;
+  badge: string | null;
   profile_visibility: ProfileVisibility;
   created_at: number;
 };
