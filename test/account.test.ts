@@ -14,7 +14,7 @@ function jpeg(content = "avatar") {
 }
 
 async function setAvatar(token: string, userId: string, content = "avatar") {
-  const res = await api("POST", "/me/avatar", { token });
+  const res = await api("POST", "/me/avatar", { body: { sizeBytes: jpeg(content).length }, token });
   const pending = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
   await env.MEDIA.put(pending, jpeg(content));
   const done = await api("POST", "/me/avatar/complete", { token });
@@ -27,7 +27,7 @@ async function setAvatar(token: string, userId: string, content = "avatar") {
 describe("avatar", () => {
   it("full flow with local uploads: request, PUT, complete", async () => {
     const { token, userId } = await signUp();
-    const res = await api("POST", "/me/avatar", { token, env: DEV, origin: ORIGIN });
+    const res = await api("POST", "/me/avatar", { body: { sizeBytes: jpeg("bytes").length }, token, env: DEV, origin: ORIGIN });
     expect(res.status).toBe(200);
     expect(res.body.expiresIn).toBe(900);
     expect(res.body.upload.startsWith(`${ORIGIN}/dev/upload/avatars/${userId}/`)).toBe(true);
@@ -83,7 +83,7 @@ describe("avatar", () => {
     const MESSAGE = "La foto tiene que ser un JPEG de hasta 2 MB";
 
     async function request(token: string, userId: string, body: string | Uint8Array, contentType = "image/jpeg") {
-      await api("POST", "/me/avatar", { token });
+      await api("POST", "/me/avatar", { body: { sizeBytes: 100 }, token });
       const pending = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
       await env.MEDIA.put(pending, body, { httpMetadata: { contentType } });
       return pending;
@@ -164,6 +164,37 @@ describe("avatar", () => {
     expect((await api("GET", second.user.avatarUrl)).body.endsWith("two")).toBe(true);
   });
 
+  it("requires a sizeBytes within 2 MB", async () => {
+    const { token } = await signUp();
+    const MESSAGE = "La foto tiene que ser un JPEG de hasta 2 MB";
+    expect((await api("POST", "/me/avatar", { token, body: {} })).status).toBe(400);
+    expect((await api("POST", "/me/avatar", { token, body: { sizeBytes: 0 } })).status).toBe(400);
+    const big = await api("POST", "/me/avatar", { token, body: { sizeBytes: 2 * 1024 * 1024 + 1 } });
+    expect(big.status).toBe(400);
+    expect(big.body.error).toContain(MESSAGE);
+    expect((await api("POST", "/me/avatar", { token, body: { sizeBytes: 2 * 1024 * 1024 } })).status).toBe(200);
+  });
+
+  it("the upload URL is signed for the declared size", async () => {
+    const { token } = await signUp();
+    const res = await api("POST", "/me/avatar", { token, env: DEV, origin: ORIGIN, body: { sizeBytes: jpeg("bytes").length } });
+    const put = (body: Uint8Array) =>
+      app.request(new Request(res.body.upload, { method: "PUT", headers: { "content-type": "image/jpeg" }, body }), undefined, { ...env, ...DEV });
+    expect((await put(jpeg("much-longer-than-declared"))).status).toBe(403);
+    expect((await put(jpeg("bytes"))).status).toBe(200);
+  });
+
+  it("requesting a new upload deletes the previous pending object", async () => {
+    const { token, userId } = await signUp();
+    await api("POST", "/me/avatar", { token, body: { sizeBytes: 100 } });
+    const first = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
+    await env.MEDIA.put(first, jpeg());
+    await api("POST", "/me/avatar", { token, body: { sizeBytes: 100 } });
+    const second = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
+    expect(second).not.toBe(first);
+    expect(await env.MEDIA.head(first)).toBeNull();
+  });
+
   it("complete without requesting an upload is a 400", async () => {
     const { token } = await signUp();
     const res = await api("POST", "/me/avatar/complete", { token });
@@ -173,7 +204,7 @@ describe("avatar", () => {
 
   it("complete without the uploaded file is a 400", async () => {
     const { token } = await signUp();
-    await api("POST", "/me/avatar", { token });
+    await api("POST", "/me/avatar", { body: { sizeBytes: 100 }, token });
     const res = await api("POST", "/me/avatar/complete", { token });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Falta la foto; volvé a subirla");
@@ -202,7 +233,7 @@ describe("avatar", () => {
 
   it("an upload that was never completed is not served", async () => {
     const { token, userId } = await signUp();
-    await api("POST", "/me/avatar", { token });
+    await api("POST", "/me/avatar", { body: { sizeBytes: 100 }, token });
     const pending = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
     await env.MEDIA.put(pending, "x");
     expect((await api("GET", `/avatars/${userId}/${pending.split("/").pop()}`)).status).toBe(404);
@@ -325,7 +356,7 @@ describe("DELETE /me", () => {
   it("deletes the avatar objects, sessions and login codes", async () => {
     const { token, userId, email } = await signUp();
     const { key } = await setAvatar(token, userId);
-    await api("POST", "/me/avatar", { token });
+    await api("POST", "/me/avatar", { body: { sizeBytes: 100 }, token });
     const pending = (await env.DB.prepare("SELECT pending_avatar_key k FROM users WHERE id = ?").bind(userId).first<{ k: string }>())!.k;
     await env.MEDIA.put(pending, "x");
 

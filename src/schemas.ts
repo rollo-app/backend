@@ -250,6 +250,19 @@ export const TripSummarySchema = z
   })
   .openapi("TripSummary");
 
+export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
+export const AvatarUploadRequestSchema = z
+  .object({
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(AVATAR_MAX_BYTES, "La foto tiene que ser un JPEG de hasta 2 MB")
+      .openapi({ description: "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length" }),
+  })
+  .openapi("AvatarUploadRequest");
+
 export const AvatarUploadSchema = z
   .object({
     upload: z.string().url().openapi({ description: "PUT of the JPEG avatar (square, ~512px)" }),
