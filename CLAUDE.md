@@ -10,7 +10,7 @@ amigos al sur de Argentina en **enero de 2027**; también para armar fotolibros 
 
 Decisiones de producto que el backend tiene que respetar:
 
-- **Cuentas con email.** Se entra con email + código de 6 caracteres (A-Z y 2-9 sin ambiguos, vence a los 5 min; en `verify` se ignoran mayúsculas, espacios y guiones) (`/auth/email/*`, mail por Resend) y
+- **Cuentas con email.** Se entra con email + código de 6 caracteres (A-Z y 2-9 sin ambiguos, vence a los 5 min; en `verify` se ignoran mayúsculas, espacios y guiones) (`/auth/email/*`, mail por Resend). El mail trae además un **link mágico** del mismo intento, **atado al celular que pidió el código** (tipo PKCE): `POST /auth/email/start` `{ email, linkChallenge? }` y `POST /auth/email/verify-link` `{ email, token, verifier }` (token de 32 bytes base64url, guardado hasheado en `auth_codes.link_hash`; mismo vencimiento, intentos y uso único que el código: usar uno consume los dos; cualquier falla → 400 "El link venció o ya se usó. Pedí otro código."). El link es `LOGIN_LINK_URL` (default `https://rollo.juanifraga.com/entrar`) `#t=<token>&e=<email>`: van en el fragmento para que los scanners de mail no lo vean; nunca se acepta por GET. En tests se lee de `devSentLinks`. Cualquiera de los dos
   devuelve un token de sesión (365 días desde el último uso: se renueva sola, al usarla, como máximo una vez por día). El nombre (y después el avatar) vive en el perfil (`/me`) y es
   el mismo en todos los rollos, sin ser único. El perfil tiene además una **descripción** opcional (`bio`, `PATCH /me`: se guarda con trim, vacía → `null`, hasta 150 caracteres y 3 renglones; `\r\n` cuenta como un salto) que es **pública** (`Friend.bio`, `GET /users/{id}`). El perfil es **privado (`friends`, default) o público** (`profileVisibility`, `PATCH /me`): las destacadas y la lista de amigos completa las ven vos, tus amigos o, si es público, cualquiera con sesión; nombre, @, foto, descripción y cantidad de amigos se ven siempre. `GET /users/{id}` es el perfil de cualquier usuario (`canSee`, `isFriend`, `friendCount`, `mutualCount`: amigos en común, 0 para vos). `GET /users/{id}/friends` → `{ scope: "all" | "mutual", friends }` (solo `id, name, username, avatarUrl`, por nombre): todos si `canSee`, si no solo los amigos en común. También hay un **username único** (`@juanifraga`, minúsculas, `a-z 0-9 . _`, 3–30; `src/lib/username.ts`). Crear un viaje o unirse requiere nombre y username en el perfil; unirse es solo
   el código de 6 caracteres (idempotente; si el admin te sacó, 403). Cuenta de App Review: `REVIEW_EMAIL`/`REVIEW_CODE`.
@@ -94,7 +94,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 ## Cómo trabajamos
 
 - **TDD siempre:** primero el test, verlo fallar, código mínimo, refactor.
-  Escenarios con los helpers de `test/helpers.ts` (`signUp`, `newTrip`, `joinAs`, `uploadMedia`...). Los códigos de login se leen de `devSentCodes` (`src/lib/email.ts`), que se llena cuando no hay `RESEND_API_KEY`.
+  Escenarios con los helpers de `test/helpers.ts` (`signUp`, `newTrip`, `joinAs`, `uploadMedia`...). Los códigos de login se leen de `devSentCodes` (y los links mágicos de `devSentLinks`) (`src/lib/email.ts`), que se llena cuando no hay `RESEND_API_KEY`.
 - **Si tocás la API:** `npm run openapi` y commiteá `openapi.json`. Hay un test que falla si quedó
   desactualizado. Después la app corre `npm run api:generate`.
 - **Ramas:** `develop` es la default. Features en `feature/*` (o `fix/*`, `chore/*`) desde `develop`,
@@ -113,7 +113,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 504 tests
+npm test              # 537 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
@@ -175,6 +175,15 @@ Para deployar una versión nueva, con `main` al día:
 npm run db:migrate:remote   # si hay migraciones nuevas
 npm run deploy
 ```
+
+**Link mágico atado al celular:** la app genera un `verifier` al azar (se queda en el celular) y manda en `start` el `linkChallenge` =
+base64url(SHA-256(verifier)) (43 caracteres, se valida el formato; se guarda en `auth_codes.link_challenge`). `verify-link` solo entra si
+SHA-256(verifier) coincide con el challenge **y** el token coincide (comparación en tiempo constante, después de tomar el intento: un
+verifier mal o ausente cuenta como intento fallido). Así un link del atacante abierto en el celular de otro no lo mete en la cuenta del
+atacante (login CSRF) y otra app que registre `rollo://` y lo intercepte no puede usarlo. Sin `linkChallenge` (builds viejas) no se genera
+link: el mail trae solo el código y `verify-link` siempre falla. `/auth/email/verify` (el código) no cambia.
+
+**Link mágico (pendiente de aplicar en producción):** migración `0014_auth_magic_link.sql` (columnas `link_hash` y `link_challenge` en `auth_codes`), con `npm run db:migrate:remote` **antes** de `npm run deploy`. Opcional: var `LOGIN_LINK_URL` (default `https://rollo.juanifraga.com/entrar`).
 
 **Notificaciones y "me gusta" (pendiente de aplicar en producción):** migraciones `0012_notifications.sql` (`push_tokens`,
 `user_settings`, `likes`, columnas de anti-spam en `media` y `started_notified_at`/`revealed_notified_at` en `trips`; marca como
