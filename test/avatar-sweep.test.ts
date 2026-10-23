@@ -41,6 +41,47 @@ describe("sweepOrphanAvatars", () => {
     expect(await exists(ghost)).toBe(false);
   });
 
+  it("handles more than 100 distinct users in one page (D1 bound-parameter limit)", async () => {
+    const referenced: string[] = [];
+    const orphans: string[] = [];
+    for (let i = 0; i < 120; i++) {
+      const userId = `bulk-${i}`;
+      const k = key(userId);
+      await put(k);
+      if (i % 2 === 0) {
+        await env.DB
+          .prepare("INSERT INTO users (id, email, avatar_key, created_at) VALUES (?, ?, ?, ?)")
+          .bind(userId, `${userId}@rollo.test`, k, new Date().toISOString())
+          .run();
+        referenced.push(k);
+      } else orphans.push(k);
+    }
+    await sweepOrphanAvatars(env, Date.now() + 2 * HOUR);
+    for (const k of referenced) expect(await exists(k)).toBe(true);
+    for (const k of orphans) expect(await exists(k)).toBe(false);
+    for (let i = 0; i < 120; i += 2) await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(`bulk-${i}`).run();
+  });
+
+  it("resumes where the previous run stopped and starts over after reaching the end", async () => {
+    const tag = crypto.randomUUID();
+    const keys = [`avatars/zz-${tag}/a.jpg`, `avatars/zz-${tag}/b.jpg`, `avatars/zz-${tag}/c.jpg`, `avatars/zz-${tag}/d.jpg`];
+    for (const k of keys) await put(k);
+    const total = (await env.MEDIA.list({ prefix: "avatars/" })).objects.length;
+    const later = Date.now() + 2 * HOUR;
+    const state = () => env.DB.prepare("SELECT value FROM cron_state WHERE key = 'avatar_sweep_after'").first<{ value: string }>();
+
+    // Cap smaller than the listing: the first run leaves the tail untouched and saves its position.
+    const opts = { maxObjects: total - 2, pageSize: total - 2 };
+    await sweepOrphanAvatars(env, later, opts);
+    expect(await exists(keys[3]!)).toBe(true);
+    expect((await state())?.value).toBeDefined();
+
+    // The second run resumes after that key, reaches the end and resets.
+    await sweepOrphanAvatars(env, later, opts);
+    expect(await exists(keys[3]!)).toBe(false);
+    expect(await state()).toBeNull();
+  });
+
   it("the cron runs it", async () => {
     const { userId } = await signUp();
     const orphan = key(userId);

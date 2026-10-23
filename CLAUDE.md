@@ -60,7 +60,7 @@ Decisiones de producto que el backend tiene que respetar:
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
-- **Límites de subida:** al registrar el celular declara `sizeBytes` y `thumbSizeBytes` (exactos; tope foto 12 MB, video 30 MB, thumb 2 MB) y las URLs de R2 se firman con ese `Content-Length` (header firmado con `allHeaders` de aws4fetch; en dev el `PUT /dev/upload` chequea el largo del body). `complete` compara los tamaños reales con los declarados (o con los topes): si no coinciden borra ambos archivos, da 400 y el registro queda pendiente. El cron borra los pendientes de más de 7 días con sus archivos (`src/lib/pending-cleanup.ts`). Avatar: `POST /me/avatar` pide `sizeBytes` (firmado, hasta 2 MB), borra el pendiente anterior y el cron barre los huérfanos de `avatars/` con más de 1 h (`src/lib/avatar-sweep.ts`).
+- **Límites de subida:** al registrar el celular declara `sizeBytes` y `thumbSizeBytes` (exactos; tope foto 12 MB, video 30 MB, thumb 2 MB) y las URLs de R2 se firman con ese `Content-Length` (header firmado con `allHeaders` de aws4fetch; en dev el `PUT /dev/upload` chequea el largo del body). `complete` compara los tamaños reales con los declarados (o con los topes): si no coinciden borra ambos archivos, da 400 y el registro queda pendiente. El cron borra los pendientes de más de 7 días con sus archivos (`src/lib/pending-cleanup.ts`). Avatar: `POST /me/avatar` pide `sizeBytes` (firmado, hasta 2 MB), borra el pendiente anterior y el cron barre los huérfanos de `avatars/` con más de 1 h, hasta 1000 objetos por corrida y retomando donde quedó la anterior (`cron_state`, clave `avatar_sweep_after`; al llegar al final arranca de nuevo) (`src/lib/avatar-sweep.ts`).
 - **Límite diario por persona**, por tipo, según la fecha local en la zona horaria del viaje
   (default 10 fotos, 3 videos). Las pendientes también cuentan.
 - **Videos de hasta 15 s.** Fotos a resolución completa (~4000 px, para imprimir) + thumbnail ~800 px.
@@ -114,7 +114,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 575 tests
+npm test              # 577 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
