@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
 import { hashToken } from "./auth";
+import { ipKey } from "./ip";
 import type { AppEnv, Env, RateLimitBinding } from "../types";
 
 export const RATE_LIMIT_MESSAGE = "Estás yendo muy rápido. Probá de nuevo en un minuto.";
@@ -46,7 +47,8 @@ const SKIPPED = new Set(["/openapi.json", "/docs"]);
 export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
   const path = new URL(c.req.url).pathname;
   if (SKIPPED.has(path) || path.startsWith("/dev/upload/")) return next();
-  const ip = c.req.header("cf-connecting-ip") ?? "unknown";
+  const rawIp = c.req.header("cf-connecting-ip");
+  const ip = rawIp ? ipKey(rawIp) : "unknown";
   const header = c.req.header("Authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (token) {

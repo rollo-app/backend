@@ -56,3 +56,9 @@ export async function alertCapReached(env: Env, kind: "login" | "login_new"): Pr
     console.error("[email-caps] could not send the cap alert", err);
   }
 }
+
+/** Counters only matter for their own UTC day: drops the ones older than 2 days. */
+export async function purgeOldEmailCounters(env: Env, now: number): Promise<void> {
+  const oldest = new Date(now - 2 * 24 * 60 * 60_000).toISOString().slice(0, 10);
+  await env.DB.prepare("DELETE FROM email_counters WHERE day < ?").bind(oldest).run();
+}

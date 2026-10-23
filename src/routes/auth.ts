@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { generateToken, hashToken, requireUser, SESSION_TTL } from "../lib/auth";
+import { ipKey } from "../lib/ip";
 import { sendLoginCode } from "../lib/email";
 import { alertCapReached, type EmailKind, LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, releaseEmailSlot, reserveEmailSlot } from "../lib/email-caps";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../lib/login-code";
@@ -46,7 +47,8 @@ const startRoute = createRoute({
 auth.openapi(startRoute, async (c) => {
   const { email, linkChallenge } = c.req.valid("json");
   const now = Date.now();
-  const ip = c.req.header("cf-connecting-ip") ?? null;
+  const rawIp = c.req.header("cf-connecting-ip");
+  const ip = rawIp ? ipKey(rawIp) : null;
   const tooMany = () => new HTTPException(429, { message: "Esperá un momento antes de pedir otro código" });
 
   const count = async (column: "email" | "ip", value: string, since: number) =>
