@@ -38,6 +38,10 @@ export const ProfileVisibilitySchema = z.enum(["friends", "public"]).openapi("Pr
   description: "Who can see your bio and featured photos: your friends only, or anyone signed in. Name, username and avatar are always visible",
 });
 
+export const UserBadgeSchema = z.enum(["founder", "first_edition"]).nullable().openapi({
+  description: "Profile badge assigned by hand (founder = Founder, first_edition = First Edition); null if none",
+});
+
 export const UserSchema = z
   .object({
     id: z.string().uuid(),
@@ -51,6 +55,7 @@ export const UserSchema = z
       description: "Path (the app prefixes the API base URL), e.g. /avatars/<userId>/<version>.jpg; null if none",
     }),
     bio: z.string().nullable().openapi({ example: "Viajando por el sur", description: "Profile description (up to 3 lines); null if none" }),
+    badge: UserBadgeSchema,
     profileVisibility: ProfileVisibilitySchema,
   })
   .openapi("User");
@@ -400,6 +405,7 @@ export const PublicUserSchema = z
       example: "Viajando por el sur",
       description: "Profile description; null if none. Always public, whatever canSee says",
     }),
+    badge: UserBadgeSchema,
   })
   .openapi("PublicUser");
 
