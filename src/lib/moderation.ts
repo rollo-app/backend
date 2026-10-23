@@ -1,4 +1,4 @@
-import { MODERATION_ACTIONS_PER_DAY, reserveEmailSlot, SUPPORT_EMAILS_PER_DAY } from "./email-caps";
+import { MODERATION_ACTIONS_PER_DAY, reserveEmailSlot, SUPPORT_EMAILS_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY } from "./email-caps";
 
 /** Whether either of the two users has blocked the other. */
 export async function isBlockedEitherWay(db: D1Database, a: string, b: string): Promise<boolean> {
@@ -39,12 +39,9 @@ export async function atModerationActionCap(db: D1Database, table: "reports" | "
 
 export const MODERATION_ACTION_CAP_MESSAGE = "Hiciste muchas denuncias o bloqueos hoy. Probá mañana.";
 
-/** Most moderation emails (reports + blocks) per user per rolling 24 hours; beyond it they are stored but not emailed. */
-export const MODERATION_EMAILS_PER_DAY = 10;
-
 /**
  * Whether a moderation email may be sent for this user. Call after inserting the new report/block row,
- * so the count includes it: the 10th is still emailed, the 11th is not. Also takes a slot of the global daily support cap
+ * so the count includes it: the 3rd is still emailed, the 4th is not. Also takes a slot of the global daily support cap
  * (`SUPPORT_EMAILS_PER_DAY`), so call it only when an email will actually be sent.
  */
 export async function withinModerationEmailCap(db: D1Database, userId: string): Promise<boolean> {
@@ -56,5 +53,5 @@ export async function withinModerationEmailCap(db: D1Database, userId: string): 
     )
     .bind(userId, since)
     .first<{ n: number }>();
-  return (row?.n ?? 0) <= MODERATION_EMAILS_PER_DAY && (await reserveEmailSlot(db, "support", SUPPORT_EMAILS_PER_DAY));
+  return (row?.n ?? 0) <= SUPPORT_EMAILS_PER_USER_PER_DAY && (await reserveEmailSlot(db, "support", SUPPORT_EMAILS_PER_DAY));
 }

@@ -55,7 +55,7 @@ const blockRoute = createRoute({
   tags,
   summary: "Block a user",
   description:
-    "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 10 reports and blocks per user per 24 hours, and 20 per day overall, are emailed). More than 50 blocks per user per 24 hours is a 429.",
+    "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 3 reports and blocks per user per 24 hours, and 20 per day overall, are emailed). More than 50 blocks per user per 24 hours is a 429.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
@@ -71,7 +71,7 @@ blocks.openapi(blockRoute, async (c) => {
   if (await atModerationActionCap(c.env.DB, "blocks", me)) throw new HTTPException(429, { message: MODERATION_ACTION_CAP_MESSAGE });
   const [a, b] = pairKey(me, target);
   const [inserted] = await c.env.DB.batch([
-    c.env.DB.prepare("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)").bind(me, target, Date.now()),
+    c.env.DB.prepare("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id, created_at, unemailed) VALUES (?, ?, ?, 1)").bind(me, target, Date.now()),
     c.env.DB.prepare("DELETE FROM friendships WHERE user_a = ? AND user_b = ?").bind(a, b),
     // Their photos leave the blocker's featured list too (and its cap).
     c.env.DB.prepare(
@@ -87,6 +87,7 @@ blocks.openapi(blockRoute, async (c) => {
         blocked: { id: blocked.id, name: blocked.name, username: blocked.username, email: blocked.email },
         adminBase: new URL(c.req.url).origin,
       });
+      await c.env.DB.prepare("UPDATE blocks SET unemailed = 0 WHERE blocker_id = ? AND blocked_id = ?").bind(me, target).run();
     } catch (err) {
       // The block is already saved; do not fail the request because support was not emailed.
       console.error("[block] could not email support", err);

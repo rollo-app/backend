@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { devSentBlocks, devSentReports } from "../src/lib/email";
-import { LOGIN_EMAILS_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
+import { devSentBlocks, devSentNotices, devSentReports } from "../src/lib/email";
+import { sendModerationSummary } from "../src/lib/moderation-summary";
+import { LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
 import { api, newTrip, requestCode, signUp, uploadMedia, DAY } from "./helpers";
 
 /** In-memory stand-in for a Workers Rate Limiting binding, with a fixed limit and no window. */
@@ -182,5 +183,126 @@ describe("daily email caps", () => {
     // Another user is not affected.
     const other = await signUp();
     expect((await api("POST", "/reports", { token: other.token, body: { userId: t1.userId, reason: "abuse" } })).status).toBe(204);
+  });
+});
+
+const setCounter = (kind: string, count: number) =>
+  env.DB.prepare("INSERT INTO email_counters (kind, day, count) VALUES (?, ?, ?)").bind(kind, today(), count).run();
+
+describe("login cap split", () => {
+  it("new sign-ups stop at their share while existing users keep going", async () => {
+    const existing = await signUp("existing@rollo.test");
+    await env.DB.prepare("DELETE FROM auth_codes").run();
+    await env.DB.prepare("DELETE FROM email_counters").run();
+    await setCounter("login_new", LOGIN_NEW_USER_EMAILS_PER_DAY);
+    await setCounter("login", LOGIN_NEW_USER_EMAILS_PER_DAY);
+    const fresh = await api("POST", "/auth/email/start", { body: { email: "fresh@rollo.test" } });
+    expect(fresh.status).toBe(429);
+    expect((await api("POST", "/auth/email/start", { body: { email: existing.email } })).status).toBe(204);
+  });
+
+  it("existing users hit the full cap too", async () => {
+    const existing = await signUp("existing2@rollo.test");
+    await env.DB.prepare("DELETE FROM auth_codes").run();
+    await env.DB.prepare("DELETE FROM email_counters").run();
+    await setCounter("login", LOGIN_EMAILS_PER_DAY);
+    expect((await api("POST", "/auth/email/start", { body: { email: existing.email } })).status).toBe(429);
+  });
+
+  it("a refused new sign-up does not spend the shared budget", async () => {
+    await setCounter("login_new", LOGIN_NEW_USER_EMAILS_PER_DAY);
+    await api("POST", "/auth/email/start", { body: { email: "fresh2@rollo.test" } });
+    const row = await env.DB.prepare("SELECT count FROM email_counters WHERE kind = 'login'").first<{ count: number }>();
+    expect(row).toBeNull();
+  });
+
+  it("emails support once per day per cap when it is hit", async () => {
+    const existing = await signUp("existing3@rollo.test");
+    await env.DB.prepare("DELETE FROM auth_codes").run();
+    await env.DB.prepare("DELETE FROM email_counters").run();
+    devSentNotices.length = 0;
+    await setCounter("login_new", LOGIN_NEW_USER_EMAILS_PER_DAY);
+    for (const email of ["a1@rollo.test", "a2@rollo.test", "a3@rollo.test"]) {
+      expect((await api("POST", "/auth/email/start", { body: { email } })).status).toBe(429);
+    }
+    expect(devSentNotices).toHaveLength(1);
+    expect(devSentNotices[0]!.subject).toContain("cuentas nuevas");
+    await setCounter("login", LOGIN_EMAILS_PER_DAY);
+    await api("POST", "/auth/email/start", { body: { email: existing.email } });
+    expect(devSentNotices).toHaveLength(2);
+    expect(devSentNotices[1]!.subject).not.toContain("cuentas nuevas");
+  });
+
+  it("the App Review account is exempt", async () => {
+    await setCounter("login", LOGIN_EMAILS_PER_DAY);
+    await setCounter("login_new", LOGIN_NEW_USER_EMAILS_PER_DAY);
+    const review = { REVIEW_EMAIL: "review@rollo.test", REVIEW_CODE: "ABC234" };
+    expect((await api("POST", "/auth/email/start", { body: { email: "review@rollo.test" }, env: review })).status).toBe(204);
+  });
+});
+
+describe("per-user support email share", () => {
+  it("a user's emails beyond their share do not take global slots", async () => {
+    devSentReports.length = 0;
+    const a = await signUp();
+    for (let i = 0; i < SUPPORT_EMAILS_PER_USER_PER_DAY + 2; i++) {
+      await api("POST", "/reports", { token: a.token, body: { userId: await bareUser(), reason: "abuse" } });
+    }
+    expect(devSentReports).toHaveLength(SUPPORT_EMAILS_PER_USER_PER_DAY);
+    const row = await env.DB.prepare("SELECT count FROM email_counters WHERE kind = 'support'").first<{ count: number }>();
+    expect(row!.count).toBe(SUPPORT_EMAILS_PER_USER_PER_DAY);
+  });
+});
+
+describe("daily moderation summary", () => {
+  async function pending() {
+    const a = await signUp();
+    const b = await signUp();
+    await setCounter("support", SUPPORT_EMAILS_PER_DAY);
+    await api("POST", "/reports", { token: a.token, body: { userId: b.userId, reason: "abuse" } });
+    await api("PUT", `/blocks/${(await signUp()).userId}`, { token: a.token });
+    return { a, b };
+  }
+  const later = () => Date.now() + 30 * 60_000;
+
+  it("sends one email listing what was not emailed, then clears it, even over the support cap", async () => {
+    const { a, b } = await pending();
+    devSentNotices.length = 0;
+    await sendModerationSummary(env, later());
+    expect(devSentNotices).toHaveLength(1);
+    const { subject, text } = devSentNotices[0]!;
+    expect(subject).toContain("1 denuncias y 1 bloqueos");
+    expect(text).toContain(`/admin/users/${b.userId}`);
+    expect(text).toContain(a.userId);
+    const left = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM reports WHERE unemailed = 1) + (SELECT COUNT(*) FROM blocks WHERE unemailed = 1) AS n").first<{ n: number }>();
+    expect(left!.n).toBe(0);
+  });
+
+  it("sends nothing when there is nothing pending, and only one per day", async () => {
+    devSentNotices.length = 0;
+    await sendModerationSummary(env, later());
+    expect(devSentNotices).toHaveLength(0);
+    await pending();
+    devSentNotices.length = 0;
+    await sendModerationSummary(env, later());
+    // New pending rows the same day wait for tomorrow.
+    const c = await signUp();
+    await env.DB.prepare("INSERT INTO blocks (blocker_id, blocked_id, created_at, unemailed) VALUES (?, ?, ?, 1)").bind(c.userId, await bareUser(), Date.now() - 3600_000).run();
+    await sendModerationSummary(env, later());
+    expect(devSentNotices).toHaveLength(1);
+    await sendModerationSummary(env, later() + DAY);
+    expect(devSentNotices).toHaveLength(2);
+  });
+
+  it("ignores rows that were emailed and rows too fresh to be sure", async () => {
+    const a = await signUp();
+    const b = await signUp();
+    devSentNotices.length = 0;
+    await api("POST", "/reports", { token: a.token, body: { userId: b.userId, reason: "abuse" } });
+    await sendModerationSummary(env, later());
+    expect(devSentNotices).toHaveLength(0);
+    await env.DB.prepare("UPDATE reports SET unemailed = 1").run();
+    await sendModerationSummary(env, Date.now());
+    expect(devSentNotices).toHaveLength(0);
   });
 });

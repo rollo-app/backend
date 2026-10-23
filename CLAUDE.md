@@ -62,8 +62,12 @@ Decisiones de producto que el backend tiene que respetar:
   (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).
   `RL_EXPENSIVE` 20/60 s por usuario (`rateLimit("RL_EXPENSIVE")` después de `requireUser`): registrar/completar media, avatar y su complete, "me gusta" (PUT) y sumar amigos al rollo;
   `RL_FILES` 300/60 s por usuario para descargas (rollo y destacadas). **Fail open:** sin el binding (o si falla) la request pasa y se loguea una vez. Los límites del contador son por ubicación de Cloudflare.
-  Tope diario global (día UTC, tabla `email_counters`, `reserveEmailSlot`): **80** mails de login (`/auth/email/start` → 429 "Hay muchos pedidos de código ahora. Probá en un rato.") y **20** mails de soporte
-  (denuncias/bloqueos: pasado el tope se guardan igual pero no se manda el mail, `console.warn`); además 50 denuncias y 50 bloqueos por usuario cada 24 h (429). Resend gratis: 100/día. En tests los bindings reales tienen límites enormes (`vitest.config.ts`); los tests de límite usan un binding falso por request.
+  Topes diarios globales (día UTC, tabla `email_counters`, `reserveEmailSlot`): **80** mails de login (`/auth/email/start` → 429 "Hay muchos pedidos de código ahora. Probá en un rato."), de los cuales
+  **40** como máximo para emails sin cuenta (altas nuevas; así el spam de direcciones falsas no deja afuera a los usuarios existentes; la cuenta de App Review no cuenta) y **20** mails de soporte
+  (denuncias/bloqueos). La primera vez que cada día se llega a un tope de login, un mail de alerta a soporte (`alertCapReached`, usa un cupo de soporte). Cada usuario puede usar **3** mails de soporte por 24 h (denuncias + bloqueos)
+  del tope global; el resto se guarda igual pero sin mail (`reports.unemailed` / `blocks.unemailed` quedan en 1; se limpian al salir el mail). El cron (`sendModerationSummary`) manda **un** mail por día UTC a soporte
+  (puede pasarse del tope de soporte) con las denuncias y bloqueos que quedaron sin mail (> 10 min de antigüedad), con los curl de admin, y los marca; solo si hay alguno. Además 50 denuncias y 50 bloqueos por usuario cada 24 h (429).
+  Resend gratis: 100/día. En tests los bindings reales tienen límites enormes (`vitest.config.ts`); los tests de límite usan un binding falso por request.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
@@ -121,7 +125,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 591 tests
+npm test              # 600 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
