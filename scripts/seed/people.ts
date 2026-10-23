@@ -126,3 +126,10 @@ export function planLikes(photos: SeedPhoto[], members: string[]): PlannedLike[]
   add(first("Fede"), "Fede", ["Juani"]);
   return plan;
 }
+
+/** Profile badges (assigned by hand in production; the seed sets them straight in D1). Everyone else: none. */
+export const SEED_BADGES: Record<string, "founder" | "first_edition"> = {
+  Juani: "founder",
+  Cami: "first_edition",
+  Lu: "first_edition",
+};

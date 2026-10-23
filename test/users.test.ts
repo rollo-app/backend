@@ -63,7 +63,7 @@ describe("GET /users/{userId}", () => {
     const res = await api("GET", `/users/${o.userId}`, { token: o.token });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña" },
+      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña", badge: null },
       isFriend: false,
       blockedByMe: false,
       reportedByMe: false,
@@ -90,7 +90,7 @@ describe("GET /users/{userId}", () => {
     const res = await api("GET", `/users/${o.userId}`, { token: v.token });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña" },
+      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña", badge: null },
       isFriend: false,
       blockedByMe: false,
       reportedByMe: false,
@@ -143,7 +143,7 @@ describe("GET /users/{userId}", () => {
   it("does not leak the email", async () => {
     const o = await owner();
     const res = await api("GET", `/users/${o.userId}`, { token: o.token });
-    expect(Object.keys(res.body.user).sort()).toEqual(["avatarUrl", "bio", "id", "name", "username"]);
+    expect(Object.keys(res.body.user).sort()).toEqual(["avatarUrl", "badge", "bio", "id", "name", "username"]);
   });
 
   it("returns 404 for an unknown user", async () => {
