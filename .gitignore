@@ -2,3 +2,4 @@ node_modules/
 .wrangler/
 .dev.vars
 login-email-preview.html
+.claude/worktrees/
