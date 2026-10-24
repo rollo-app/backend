@@ -9,7 +9,7 @@ import admin from "./routes/admin";
 import auth from "./routes/auth";
 import blocks from "./routes/blocks";
 import featured from "./routes/featured";
-import friends, { friendLinks } from "./routes/friends";
+import friends, { friendLinks } from "./modules/friends/friends.router";
 import likes from "./routes/likes";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
@@ -22,7 +22,7 @@ import { sendModerationSummary } from "./lib/moderation-summary";
 import { cleanupStalePending } from "./lib/pending-cleanup";
 import reports from "./routes/reports";
 import trips from "./modules/trips/trips.router";
-import users from "./routes/users";
+import users from "./modules/users/users.router";
 import usernames from "./routes/usernames";
 import type { Env } from "./types";
 
