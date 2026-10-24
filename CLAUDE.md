@@ -14,14 +14,14 @@ Decisiones de producto que el backend tiene que respetar:
   devuelve un token de sesión (365 días desde el último uso: se renueva sola, al usarla, como máximo una vez por día). El nombre (y después el avatar) vive en el perfil (`/me`) y es
   el mismo en todos los rollos, sin ser único. El perfil tiene además una **descripción** opcional (`bio`, `PATCH /me`: se guarda con trim, vacía → `null`, hasta 150 caracteres y 3 renglones; `\r\n` cuenta como un salto) que es **pública** (`Friend.bio`, `GET /users/{id}`). El perfil es **privado (`friends`, default) o público** (`profileVisibility`, `PATCH /me`): las destacadas y la lista de amigos completa las ven vos, tus amigos o, si es público, cualquiera con sesión; nombre, @, foto, descripción y cantidad de amigos se ven siempre. `GET /users/{id}` es el perfil de cualquier usuario (`canSee`, `isFriend`, `friendCount`, `mutualCount`: amigos en común, 0 para vos). `GET /users/{id}/friends` → `{ scope: "all" | "mutual", friends }` (solo `id, name, username, avatarUrl`, por nombre): todos si `canSee`, si no solo los amigos en común. También hay un **username único** (`@juanifraga`, minúsculas, `a-z 0-9 . _`, 3–30; `src/lib/username.ts`). Crear un viaje o unirse requiere nombre y username en el perfil; unirse es solo
   el código de 6 caracteres (idempotente; si el admin te sacó, 403). Cuenta de App Review: `REVIEW_EMAIL`/`REVIEW_CODE`.
-- **Amigos** (`src/routes/friends.ts`, `src/lib/friend-code.ts`): la amistad es simétrica y se crea **sin aceptación**
+- **Amigos** (`src/modules/friends/`, `src/lib/friend-code.ts`): la amistad es simétrica y se crea **sin aceptación**
   (`friendships`, par ordenado `user_a < user_b`). `POST /friends/link` genera un código de 8 caracteres (guardado hasheado) que vale
   **1 hora**, es multiuso y se reemplaza al generar otro. `POST /friend-links/claim` (**sin sesión**) devuelve un `claimToken`
   (24 h) para canjear después de registrarse; `POST /friends/redeem` canjea con `code` o `claimToken`. Cualquier falla es el mismo 400
   genérico; 10 fallas por usuario o IP en una hora → 429 (`friend_attempts`). Cualquier miembro suma **a sus amigos** a un rollo
   (`POST /trips/{id}/members`, respuesta por amigo, no si ya se reveló). `members.left_at` (se salió: `DELETE /trips/{id}/members/me`,
   puede volver por código o por amigos, sus fotos quedan) es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
-- **Destacadas** (`src/routes/featured.ts`, `src/lib/zone.ts`): cada uno elige hasta **60 fotos** (no videos) de rollos **revelados**
+- **Destacadas** (`src/modules/featured/`, `src/lib/zone.ts`): cada uno elige hasta **60 fotos** (no videos) de rollos **revelados**
   donde es miembro activo, suyas o de otros, para su perfil (`PUT/DELETE /me/featured/{mediaId}`, tabla `featured`). El autor puede
   no dejar que otros la destaquen (`PUT/DELETE /media/{id}/feature-block`, `media.feature_blocked_at`): borra las de otros y las nuevas dan
   409; él sí puede. `GET /users/{id}/featured` (permiso del perfil, si no 403 "Este perfil es privado") **nunca** devuelve el rollo, el
@@ -45,7 +45,7 @@ Decisiones de producto que el backend tiene que respetar:
   `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked } }`
   (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/lib/settings.ts`).
   `profileVisibility` sigue en `users`.
-- **"Me gusta"** (`src/routes/likes.ts`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
+- **"Me gusta"** (`src/modules/likes/`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
   idempotentes. Solo fotos. Puede dar "me gusta" **quien puede ver la foto**: miembro activo de su rollo ya revelado, o quien puede
   ver (`canSeeProfile`) un perfil donde la foto se ve destacada **ahora** (mismas reglas que `VISIBLE_FROM/WHERE` de
   `featured.ts`: no borrada, no bloqueada por el autor, el dueño sigue en el rollo). Si no, o si hay bloqueo con el autor o la
@@ -101,11 +101,10 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 
 ```
 src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de errores, cron (scheduled)
-src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"). Migrado: media
-src/shared/           errors.ts (errores de dominio → status HTTP)
+src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): admin, auth, avatars, blocks, featured, friends, likes, me, media, reports, trips, users, usernames
+src/shared/           errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
 src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
-src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta")
-src/routes/           módulos sin migrar todavía: auth.ts, me.ts, users.ts, friends.ts, trips.ts, featured.ts, likes.ts, blocks.ts, reports.ts, admin.ts
+src/lib/              auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta"), account (borrar cuenta), storage, rate-limit, email...
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -113,8 +112,9 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 
 ### Arquitectura por capas
 
-Cada módulo vive en `src/modules/<mod>/` con cuatro capas más sus schemas. El modelo es `src/modules/media/`.
-Los módulos de `src/routes/` se migran de a uno por PR, sin cambiar comportamiento ni contrato (`openapi.json` idéntico).
+Cada módulo vive en `src/modules/<mod>/` con cuatro capas más sus schemas (sin `repository` o `schemas` si no hay
+nada que poner). El modelo es `src/modules/media/`. Un módulo nuevo se crea con la misma forma; un refactor de
+estructura no cambia comportamiento ni contrato (`openapi.json` idéntico, tests sin cambios más allá de imports).
 
 | Archivo | Hace | No hace |
 |---|---|---|
@@ -129,12 +129,28 @@ Reglas:
   devuelven un `D1PreparedStatement` sin ejecutar. El service hace `.run()` o las junta en `db.batch([...])`. Es
   porque D1 no tiene transacciones interactivas: `batch` es la única forma de que varias escrituras sean atómicas, y
   qué va junto es una decisión de negocio.
-- **Errores de dominio:** el service tira `badRequest` / `forbidden` / `notFound` / `conflict` / `rateLimited`
-  (`src/shared/errors.ts`) con el mensaje en español para el usuario; `onError` los traduce a 400/403/404/409/429.
-  Así un service se puede llamar desde el cron sin HTTP de por medio.
+- **Errores de dominio:** el service tira `badRequest` / `forbidden` / `notFound` / `conflict` / `rateLimited` /
+  `unavailable` (`src/shared/errors.ts`) con el mensaje en español para el usuario; `onError` los traduce a
+  400/403/404/409/429/503. Así un service se puede llamar desde el cron sin HTTP de por medio. Un status sin kind
+  (500 al no poder generar un código de rollo, 502 si Resend falla) lo tira el controller como `HTTPException`
+  a partir de lo que devuelve el service.
+- **Push:** `deferPush` necesita el contexto de Hono (`waitUntil`). El service arma el push completo (destinatarios,
+  texto, url, actor) y lo devuelve como `notify: AfterResponse` (`src/shared/after-response.ts`: una función que
+  todavía no arrancó, o `null`); el controller solo hace `if (notify) deferPush(c, notify())`. Los mails de
+  moderación se esperan en el service, no se difieren.
 - **Entre módulos:** un service puede llamar a services de otros módulos (ej. `admin` usa `deleteTripMedia` de
-  media) y pedir *sentencias de escritura* a repos de otros módulos solo para armar un `batch` atómico. Nadie
-  importa el router ni el controller de otro módulo.
+  media, `me` usa el chequeo de username de `usernames`) y pedir *sentencias de escritura* a repos de otros módulos
+  solo para armar un `batch` atómico (ej. `media` borra destacadas con `featured.repository`). Las reglas de
+  visibilidad de una foto destacada (`VISIBLE_FROM` / `VISIBLE_WHERE`) viven en `featured.repository` y las importan
+  los repos de `likes` y `reports`, para que la regla esté en un solo lugar. Nadie importa el router ni el
+  controller de otro módulo.
+- **Middlewares** (sesión, membresía, admin, rate limit) van en el `middleware` de cada `createRoute`; su código
+  vive en `src/lib/auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
+- **`src/lib/`** queda para lo transversal (sesiones, R2, mail, push, storage, rate limit, helpers puros). Parte
+  todavía tiene SQL (`account`, `profile-access`, `settings`, `trip-notices`...): pasarlo a módulos es un paso
+  pendiente.
+- **PRs:** un refactor de estructura que toca varios módulos puede ir en un solo PR, con un commit por módulo o
+  grupo, para no encadenar conflictos en `src/index.ts` y `src/schemas.ts`.
 - **Sin interfaces por capa:** services y repos son módulos de funciones tipadas; el contrato es la firma exportada.
   Interfaces explícitas solo donde hay más de una implementación (storage, mail, push).
 - **Comentarios explicativos** (por qué una regla es así) van junto a la lógica, o sea, en el service.
@@ -216,7 +232,7 @@ destacadas, "me gusta", notificaciones push con cron, moderación, contrato Open
   `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
 - Mail: dominio `juanifraga.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
   DMARC `p=none` en `_dmarc`), DNS en Cloudflare. Plan gratis: 100 mails por día y 3.000 por mes.
-- Secrets de moderación: `ADMIN_TOKEN` (habilita las rutas `/admin/*`; sin él dan 404) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/routes/admin.ts`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
+- Secrets de moderación: `ADMIN_TOKEN` (habilita las rutas `/admin/*`; sin él dan 404) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
 - Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
 
 Para deployar una versión nueva, con `main` al día:

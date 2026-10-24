@@ -1,0 +1,62 @@
+import { z } from "@hono/zod-openapi";
+import { isValidTimeZone } from "../../lib/util";
+import { epochMs, pathParam, PAST_TOLERANCE_MS } from "../../schemas";
+
+export const CreateTripSchema = z
+  .object({
+    name: z.string().trim().min(1).max(60).openapi({ example: "Viaje al sur" }),
+    timezone: z
+      .string()
+      .refine(isValidTimeZone, "Zona horaria inválida")
+      .openapi({ example: "America/Argentina/Buenos_Aires", description: "IANA time zone of the destination" }),
+    startsAt: epochMs("Trip start"),
+    endsAt: epochMs("Trip end; must be after startsAt"),
+    revealAt: epochMs("When the roll is revealed; must be >= endsAt"),
+    dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
+    dailyVideoLimit: z.number().int().min(0).max(20).default(3),
+  })
+  .refine((d) => d.startsAt >= Date.now() - PAST_TOLERANCE_MS, { message: "El inicio no puede ser en el pasado", path: ["startsAt"] })
+  .refine((d) => d.endsAt > d.startsAt, { message: "El rollo tiene que terminar después de empezar", path: ["endsAt"] })
+  .refine((d) => d.revealAt >= d.endsAt, { message: "El revelado no puede ser antes del fin", path: ["revealAt"] })
+  .openapi("CreateTripRequest");
+
+export const JoinTripSchema = z
+  .object({
+    code: z.string().trim().toUpperCase().length(6).openapi({ example: "HUB5FT" }),
+  })
+  .openapi("JoinTripRequest");
+
+export const UpdateTripSchema = z
+  .object({
+    name: z.string().trim().min(1).max(60).optional(),
+    endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt and <= the resulting revealAt" }),
+    revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),
+    dailyPhotoLimit: z.number().int().min(1).max(100).optional(),
+    dailyVideoLimit: z.number().int().min(0).max(20).optional(),
+  })
+  .openapi("UpdateTripRequest");
+
+export const AddMembersSchema = z
+  .object({
+    friendIds: z.array(z.string().min(1).max(64)).min(1).max(50).openapi({ description: "User ids of your friends (1 to 50)" }),
+  })
+  .openapi("AddMembersRequest");
+
+export const AddMembersResponseSchema = z
+  .object({
+    results: z.array(
+      z.object({
+        userId: z.string(),
+        status: z.enum(["added", "already_member", "unavailable"]).openapi({
+          description:
+            "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin (unless the caller is the admin), or unknown",
+        }),
+      }),
+    ),
+  })
+  .openapi("AddMembersResponse");
+
+export const TripMemberParams = z.object({ tripId: pathParam("tripId"), memberId: pathParam("memberId") });
+
+export type CreateTripInput = z.infer<typeof CreateTripSchema>;
+export type UpdateTripInput = z.infer<typeof UpdateTripSchema>;

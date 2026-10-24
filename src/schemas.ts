@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { isValidUsername, normalizeUsername, USERNAME_INVALID_MESSAGE } from "./lib/username";
-import { isEmail, isValidTimeZone } from "./lib/util";
+import { isEmail } from "./lib/util";
 
 /**
  * API contract. These schemas validate requests, type responses
@@ -74,61 +74,6 @@ export const MemberSchema = z
 
 // ---------- Auth ----------
 
-const emailField = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .refine(isEmail, "Ingresá un email válido")
-  .openapi({ example: "juani@example.com", description: "Trimmed and lowercased" });
-
-/** 32 bytes in base64url without padding: a SHA-256 digest (the link challenge). */
-const BASE64URL_SHA256 = /^[A-Za-z0-9_-]{43}$/;
-
-export const EmailStartSchema = z
-  .object({
-    email: emailField,
-    linkChallenge: z
-      .string()
-      .regex(BASE64URL_SHA256, "linkChallenge inválido")
-      .optional()
-      .openapi({
-        example: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-        description:
-          "base64url (no padding) of SHA-256 of a random verifier the app keeps on the phone (PKCE-style, 43 chars). " +
-          "Only with it does the email include a magic link, and the link only works with that verifier (`/auth/email/verify-link`). " +
-          "Without it (old app builds) the email carries only the code.",
-      }),
-  })
-  .openapi("EmailStartRequest");
-
-export const EmailVerifySchema = z
-  .object({ email: emailField, code: z
-      .string()
-      .trim()
-      .max(16)
-      .openapi({
-        example: "K7M2QX",
-        description:
-          "6-character code from the email (letters and digits, no 0/O/1/I/L). Case-insensitive; spaces and dashes are ignored",
-      }) })
-  .openapi("EmailVerifyRequest");
-
-export const EmailVerifyLinkSchema = z
-  .object({
-    email: emailField,
-    token: z.string().openapi({
-      example: "q3N0dGhpcy1pcy1ub3QtYS1yZWFsLXRva2VuLWp1c3QtYW4tZXhhbXBsZQ",
-      description: "Token from the magic link in the email (the `t` parameter of its fragment)",
-    }),
-    verifier: z.string().max(256).optional().openapi({
-      example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-      description:
-        "The verifier whose SHA-256 was sent as `linkChallenge` to `/auth/email/start` (43–128 chars of `A-Z a-z 0-9 - . _ ~`). " +
-        "Without the right one the link fails like a wrong token.",
-    }),
-  })
-  .openapi("EmailVerifyLinkRequest");
-
 export const AuthSessionSchema = z
   .object({
     token: z.string().openapi({ description: "Session token (Bearer). Valid for 365 days; store it on the phone" }),
@@ -143,30 +88,6 @@ const personName = z.string().trim().min(1).max(30).openapi({ example: "Juani" }
 
 /** Clock-skew tolerance when validating that a date is not in the past. */
 export const PAST_TOLERANCE_MS = 5 * 60_000;
-
-export const CreateTripSchema = z
-  .object({
-    name: z.string().trim().min(1).max(60).openapi({ example: "Viaje al sur" }),
-    timezone: z
-      .string()
-      .refine(isValidTimeZone, "Zona horaria inválida")
-      .openapi({ example: "America/Argentina/Buenos_Aires", description: "IANA time zone of the destination" }),
-    startsAt: epochMs("Trip start"),
-    endsAt: epochMs("Trip end; must be after startsAt"),
-    revealAt: epochMs("When the roll is revealed; must be >= endsAt"),
-    dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
-    dailyVideoLimit: z.number().int().min(0).max(20).default(3),
-  })
-  .refine((d) => d.startsAt >= Date.now() - PAST_TOLERANCE_MS, { message: "El inicio no puede ser en el pasado", path: ["startsAt"] })
-  .refine((d) => d.endsAt > d.startsAt, { message: "El rollo tiene que terminar después de empezar", path: ["endsAt"] })
-  .refine((d) => d.revealAt >= d.endsAt, { message: "El revelado no puede ser antes del fin", path: ["revealAt"] })
-  .openapi("CreateTripRequest");
-
-export const JoinTripSchema = z
-  .object({
-    code: z.string().trim().toUpperCase().length(6).openapi({ example: "HUB5FT" }),
-  })
-  .openapi("JoinTripRequest");
 
 /** Accepts it with or without "@" and any case; the parsed value is the normalized one. */
 export const usernameField = z
@@ -204,26 +125,6 @@ export const UpdateProfileSchema = z
   })
   .openapi("UpdateProfileRequest");
 
-export const UsernameParams = z.object({
-  username: z.string().openapi({ param: { name: "username", in: "path" }, example: "juanifraga" }),
-});
-
-export const UsernameAvailabilitySchema = z
-  .object({
-    available: z.boolean().openapi({ description: "true if nobody else has it (also true if it is yours)" }),
-    username: z.string().openapi({ description: "The normalized username that was checked" }),
-  })
-  .openapi("UsernameAvailability");
-
-export const UpdateTripSchema = z
-  .object({
-    name: z.string().trim().min(1).max(60).optional(),
-    endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt and <= the resulting revealAt" }),
-    revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),
-    dailyPhotoLimit: z.number().int().min(1).max(100).optional(),
-    dailyVideoLimit: z.number().int().min(0).max(20).optional(),
-  })
-  .openapi("UpdateTripRequest");
 
 export const TripCreatedSchema = z
   .object({
@@ -231,81 +132,6 @@ export const TripCreatedSchema = z
     member: MemberSchema,
   })
   .openapi("TripCreated");
-
-export const TripSummarySchema = z
-  .object({
-    id: z.string().uuid(),
-    name: z.string(),
-    joinCode: z.string(),
-    startsAt: epochMs("Trip start"),
-    endsAt: epochMs("Trip end"),
-    revealAt: epochMs("Automatic reveal"),
-    revealed: z.boolean(),
-    role: RoleSchema,
-    totalUploaded: z.number().int(),
-    coverThumbhash: z.string().nullable().openapi({
-      description:
-        "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
-    }),
-  })
-  .openapi("TripSummary");
-
-export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
-
-export const AvatarUploadRequestSchema = z
-  .object({
-    sizeBytes: z
-      .number()
-      .int()
-      .positive()
-      .max(AVATAR_MAX_BYTES, "La foto tiene que ser un JPEG de hasta 2 MB")
-      .openapi({ description: "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length" }),
-  })
-  .openapi("AvatarUploadRequest");
-
-export const AvatarUploadSchema = z
-  .object({
-    upload: z.string().url().openapi({ description: "PUT of the JPEG avatar (square, ~512px)" }),
-    expiresIn: z.number().int().openapi({ description: "Seconds the URL stays valid" }),
-  })
-  .openapi("AvatarUpload");
-
-export const AvatarParams = z.object({
-  userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
-  file: z.string().openapi({ param: { name: "file", in: "path" }, example: "3f1c2a.jpg" }),
-});
-
-// ---------- Push tokens and settings ----------
-
-/** Expo push token as returned by getExpoPushTokenAsync. */
-export const EXPO_PUSH_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/;
-
-export const PushTokenParams = z.object({
-  token: z
-    .string()
-    .max(200, "El token de notificaciones no es válido")
-    .regex(EXPO_PUSH_TOKEN, "El token de notificaciones no es válido")
-    .openapi({ param: { name: "token", in: "path" }, example: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" }),
-});
-
-export const NotificationSettingsSchema = z
-  .object({
-    addedToTrip: z.boolean().openapi({ description: "Someone adds you to a rollo" }),
-    newFriend: z.boolean().openapi({ description: "Someone redeems your friend link" }),
-    tripStarted: z.boolean().openapi({ description: "A rollo you are in starts" }),
-    tripRevealed: z.boolean().openapi({ description: "A rollo you are in is revealed" }),
-    photoFeatured: z.boolean().openapi({ description: "Someone features a photo of yours on their profile" }),
-    photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
-  })
-  .openapi("NotificationSettings");
-
-export const UserSettingsSchema = z.object({ notifications: NotificationSettingsSchema }).openapi("UserSettings");
-
-export const UpdateUserSettingsSchema = z
-  .strictObject({ notifications: NotificationSettingsSchema.partial().strict().optional() })
-  .openapi("UpdateUserSettingsRequest");
-
-export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");
 
 export const TripDetailSchema = z
   .object({
@@ -335,72 +161,6 @@ export const FriendSchema = z
   })
   .openapi("Friend");
 
-export const FriendsSchema = z.object({ friends: z.array(FriendSchema) }).openapi("Friends");
-
-export const BlocksSchema = z.object({ blocked: z.array(FriendSchema) }).openapi("Blocks");
-
-export const FriendLinkSchema = z
-  .object({
-    code: z.string().openapi({ example: "K7M2QX9A", description: "8-character code; the link is rollo://friends/<code>" }),
-    expiresAt: epochMs("The link stops working at this instant (1 hour after it was generated)"),
-  })
-  .openapi("FriendLink");
-
-export const ClaimFriendLinkSchema = z
-  .object({ code: z.string().trim().max(64).openapi({ example: "K7M2QX9A", description: "Case-insensitive; spaces and dashes are ignored" }) })
-  .openapi("ClaimFriendLinkRequest");
-
-export const ClaimResponseSchema = z
-  .object({
-    claimToken: z.string().openapi({ description: "Permission to redeem this link while signed in. Valid for 24 hours" }),
-    expiresAt: epochMs("The claim token stops working at this instant"),
-    creator: z.object({
-      name: z.string(),
-      username: z.string().nullable(),
-      avatarUrl: z.string().nullable(),
-    }),
-  })
-  .openapi("ClaimResponse");
-
-export const RedeemFriendSchema = z
-  .object({
-    code: z.string().trim().max(64).optional().openapi({ description: "Friend code typed or taken from a link that is still valid" }),
-    claimToken: z.string().trim().max(200).optional().openapi({ description: "Token returned by /friend-links/claim" }),
-  })
-  .refine((b) => (b.code !== undefined) !== (b.claimToken !== undefined), "Mandá el código o el permiso de canje, no los dos")
-  .openapi("RedeemFriendRequest");
-
-export const ReportReasonSchema = z.enum(["offensive", "abuse", "other"]).openapi("ReportReason");
-
-export const CreateReportSchema = z
-  .object({
-    reason: ReportReasonSchema,
-    mediaId: z.string().trim().min(1).max(64).optional().openapi({ description: "Photo or video to report" }),
-    userId: z.string().trim().min(1).max(64).optional().openapi({ description: "Person to report" }),
-  })
-  .refine((b) => (b.mediaId !== undefined) !== (b.userId !== undefined), "Mandá la foto o la persona, no las dos")
-  .openapi("CreateReportRequest");
-
-export const FriendResponseSchema = z.object({ friend: FriendSchema }).openapi("FriendResponse");
-
-export const CommonTripSchema = z
-  .object({
-    id: z.string().uuid(),
-    name: z.string(),
-    startsAt: epochMs("Trip start"),
-    endsAt: epochMs("Trip end"),
-    revealed: z.boolean(),
-  })
-  .openapi("CommonTrip");
-
-export const FriendProfileSchema = z
-  .object({
-    friend: FriendSchema,
-    commonTrips: z.array(CommonTripSchema).openapi({
-      description: "Rollos both of you are active members of, most recent start first",
-    }),
-  })
-  .openapi("FriendProfile");
 
 // ---------- Users ----------
 
@@ -408,127 +168,14 @@ export const UserParams = z.object({
   userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
 });
 
-export const PublicUserSchema = z
-  .object({
-    id: z.string().uuid().openapi({ description: "User id" }),
-    name: z.string().openapi({ example: "Cami" }),
-    username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
-    avatarUrl: z.string().nullable(),
-    bio: z.string().nullable().openapi({
-      example: "Viajando por el sur",
-      description: "Profile description; null if none. Always public, whatever canSee says",
-    }),
-    badge: UserBadgeSchema,
-  })
-  .openapi("PublicUser");
-
-export const UserProfileSchema = z
-  .object({
-    user: PublicUserSchema,
-    isFriend: z.boolean().openapi({ description: "Whether you and this user are friends (false for yourself)" }),
-    blockedByMe: z.boolean().openapi({ description: "Whether you blocked this user" }),
-    reportedByMe: z.boolean().openapi({ description: "Whether you reported this user (their profile, not a photo)" }),
-    profileVisibility: ProfileVisibilitySchema,
-    canSee: z.boolean().openapi({
-      description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other",
-    }),
-    friendCount: z.number().int().openapi({ description: "How many friends this user has (always public)" }),
-    mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends (0 for yourself)" }),
-  })
-  .openapi("UserProfile");
-
-export const UserFriendSchema = z
-  .object({
-    id: z.string().uuid().openapi({ description: "User id" }),
-    name: z.string().openapi({ example: "Cami" }),
-    username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
-    avatarUrl: z.string().nullable(),
-  })
-  .openapi("UserFriend");
-
-export const UserFriendsSchema = z
-  .object({
-    scope: z.enum(["all", "mutual"]).openapi({
-      description: "all: every friend of this user (canSee); mutual: only the friends you have in common",
-    }),
-    friends: z.array(UserFriendSchema).openapi({ description: "Sorted by name, case-insensitive" }),
-  })
-  .openapi("UserFriends");
-
-export const AddMembersSchema = z
-  .object({
-    friendIds: z.array(z.string().min(1).max(64)).min(1).max(50).openapi({ description: "User ids of your friends (1 to 50)" }),
-  })
-  .openapi("AddMembersRequest");
-
-export const AddMembersResponseSchema = z
-  .object({
-    results: z.array(
-      z.object({
-        userId: z.string(),
-        status: z.enum(["added", "already_member", "unavailable"]).openapi({
-          description:
-            "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin (unless the caller is the admin), or unknown",
-        }),
-      }),
-    ),
-  })
-  .openapi("AddMembersResponse");
 
 export const FriendParams = z.object({
   userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
 });
 
-// ---------- Featured photos ----------
-
-export const MAX_FEATURED = 60;
-
-export const ZoneSchema = z
-  .object({ lat: z.number(), lng: z.number() })
-  .openapi("Zone", {
-    description: "Center of the ~5 km cell (0.05°) where the photo was taken. Never the exact coordinates",
-    example: { lat: -41.075, lng: -71.475 },
-  });
-
-export const FeaturedPhotoSchema = z
-  .object({
-    mediaId: z.string().uuid(),
-    takenAt: z.number().int(),
-    width: nullableNumber,
-    height: nullableNumber,
-    thumbhash: z.string().nullable(),
-    author: z
-      .object({
-        id: z.string().uuid().openapi({ description: "User id" }),
-        name: z.string(),
-        username: z.string().nullable(),
-        avatarUrl: z.string().nullable(),
-      })
-      .nullable()
-      .openapi({ description: "Who took it; null when it is the profile owner" }),
-    zone: ZoneSchema.nullable().openapi({ description: "null if the photo has no GPS" }),
-    thumbPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/thumb" }),
-    originalPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/original" }),
-    likeCount: z.number().int().openapi({ description: "How many people like it (the same counter as in its rollo)" }),
-    likedByMe: z.boolean().openapi({ description: "You like it" }),
-  })
-  .openapi("FeaturedPhoto", {
-    description: "A photo on someone's profile. Never includes the rollo, the caption or the exact location",
-  });
-
-export const FeaturedPhotosSchema = z
-  .object({ photos: z.array(FeaturedPhotoSchema).openapi({ description: "Most recently featured first" }) })
-  .openapi("FeaturedPhotos");
-
 // ---------- Path params ----------
 
-const pathParam = (name: string) => z.string().openapi({ param: { name, in: "path" } });
+export const pathParam = (name: string) => z.string().openapi({ param: { name, in: "path" } });
 
 export const TripParams = z.object({ tripId: pathParam("tripId") });
-export const TripMemberParams = z.object({ tripId: pathParam("tripId"), memberId: pathParam("memberId") });
 export const MediaParams = z.object({ mediaId: pathParam("mediaId") });
-export const FeaturedFileParams = z.object({
-  userId: pathParam("userId"),
-  mediaId: pathParam("mediaId"),
-  variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
-});

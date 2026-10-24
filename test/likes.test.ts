@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
 import { flushPendingPushes } from "../src/lib/push";
 import { FeedResponseSchema } from "../src/modules/media/media.schemas";
-import { FeaturedPhotosSchema } from "../src/schemas";
+import { FeaturedPhotosSchema } from "../src/modules/featured/featured.schemas";
 import { MINUTE, api, befriend, joinAs, mockExpo, newTrip, registerToken, signUp, uploadMedia } from "./helpers";
 
 /** Revealed trip: Juani (admin) and Fede, one photo each and one video by Fede. */

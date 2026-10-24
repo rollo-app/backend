@@ -124,8 +124,3 @@ export function unblockFeaturing(db: D1Database, id: string): D1PreparedStatemen
   return db.prepare("UPDATE media SET feature_blocked_at = NULL WHERE id = ?").bind(id);
 }
 
-// TODO: belongs to the featured module once it is migrated; lives here so it can share the feature-block batch.
-/** Removes the photo from everyone else's profile (the author keeps theirs). */
-export function deleteFeaturedByOthers(db: D1Database, mediaId: string, authorUserId: string): D1PreparedStatement {
-  return db.prepare("DELETE FROM featured WHERE media_id = ? AND user_id != ?").bind(mediaId, authorUserId);
-}

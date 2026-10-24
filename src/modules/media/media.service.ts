@@ -5,6 +5,7 @@ import { isRevealed, localDate } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import type { Env, MemberRow, TripRow } from "../../types";
 import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
+import { deleteFeaturedByOthers } from "../featured/featured.repository";
 import * as repo from "./media.repository";
 
 const UPLOAD_URL_TTL = 15 * 60;
@@ -185,7 +186,7 @@ export async function assertOwnMedia(db: D1Database, userId: string, mediaId: st
 /** Author-only: others can no longer feature the photo, and it leaves their profiles. Idempotent. */
 export async function blockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
   const id = await assertOwnMedia(db, userId, mediaId);
-  await db.batch([repo.blockFeaturing(db, id, Date.now()), repo.deleteFeaturedByOthers(db, id, userId)]);
+  await db.batch([repo.blockFeaturing(db, id, Date.now()), deleteFeaturedByOthers(db, id, userId)]);
 }
 
 export async function unblockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
