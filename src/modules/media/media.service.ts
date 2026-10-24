@@ -1,4 +1,5 @@
 import { conflict, badRequest, forbidden, notFound, rateLimited } from "../../shared/errors";
+import { assertStorageAvailable } from "../../lib/storage";
 import { mediaKeys, presignPut } from "../../lib/r2";
 import { isRevealed, localDate } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
@@ -65,6 +66,8 @@ export async function registerMedia(
   if (input.takenAt > trip.ends_at + PAST_TOLERANCE_MS) {
     throw badRequest("Este rollo ya terminó");
   }
+
+  await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes);
 
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.

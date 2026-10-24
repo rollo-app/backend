@@ -146,6 +146,31 @@ export async function sendBlockEmail(env: Env, block: BlockEmail): Promise<void>
   await deliverToSupport(env, subject, text);
 }
 
+export type StorageAlert = { usedBytes: number; limitBytes: number; threshold: number };
+
+/** Storage alerts "sent" without a Resend key (local dev and tests). */
+export const devSentStorageAlerts: StorageAlert[] = [];
+
+const formatGB = (bytes: number) => (Math.round(bytes / 1e8) / 10).toString().replace(".", ",");
+
+/** Emails support that the bucket crossed a share of the storage limit. Same dev/Resend behavior as `sendReportEmail`. */
+export async function sendStorageAlert(env: Env, alert: StorageAlert): Promise<void> {
+  const subject = `Rollo: almacenamiento al ${alert.threshold}% (${formatGB(alert.usedBytes)} de ${formatGB(alert.limitBytes)} GB)`;
+  const text = [
+    `El almacenamiento de Rollo está en ${formatGB(alert.usedBytes)} GB de ${formatGB(alert.limitBytes)} GB (superó el ${alert.threshold}%).`,
+    "",
+    "Al llegar al 95% se frenan las subidas nuevas (fotos, videos y avatares); ver y descargar sigue funcionando.",
+    "Pasado el límite gratis de Cloudflare R2 se empieza a cobrar.",
+  ].join("\n");
+
+  if (!env.RESEND_API_KEY) {
+    console.log(`[storage] ${subject}\n${text}`);
+    devSentStorageAlerts.push(alert);
+    return;
+  }
+  await deliverToSupport(env, subject, text);
+}
+
 /** Alerts and daily summaries "sent" to support without a Resend key (local dev and tests). */
 export const devSentNotices: { subject: string; text: string }[] = [];
 

@@ -1952,7 +1952,7 @@
           "Profile"
         ],
         "summary": "Get a URL to upload your avatar",
-        "description": "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /me/avatar/complete. A previous upload that was never completed is discarded. Each call generates a new random file name, so the avatar URL changes when you replace it.",
+        "description": "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /me/avatar/complete. 503 when the storage limit is reached. A previous upload that was never completed is discarded. Each call generates a new random file name, so the avatar URL changes when you replace it.",
         "security": [
           {
             "bearerAuth": []
@@ -2001,6 +2001,16 @@
           },
           "429": {
             "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
             "content": {
               "application/json": {
                 "schema": {
@@ -3593,7 +3603,7 @@
           "Media"
         ],
         "summary": "Register a photo or video",
-        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
+        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. 503 when the storage limit is reached (new registrations only, never retries).",
         "security": [
           {
             "bearerAuth": []
@@ -3689,6 +3699,16 @@
           },
           "429": {
             "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
             "content": {
               "application/json": {
                 "schema": {
