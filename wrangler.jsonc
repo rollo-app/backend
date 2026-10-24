@@ -23,6 +23,18 @@
     }
   ],
 
+  // Rate limiting (Workers Rate Limiting binding; limits are per Cloudflare location). Keys and usage: src/lib/rate-limit.ts.
+  "ratelimits": [
+    // Every request: per session (Bearer token) or per IP when anonymous.
+    { "name": "RL_GLOBAL", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
+    // Per IP for requests with a token (backstop against invented tokens).
+    { "name": "RL_IP", "namespace_id": "1002", "simple": { "limit": 600, "period": 60 } },
+    // Per user: media registration/completion, avatar upload, likes, adding members.
+    { "name": "RL_EXPENSIVE", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } },
+    // Per user: file downloads (a gallery loads many thumbnails).
+    { "name": "RL_FILES", "namespace_id": "1004", "simple": { "limit": 300, "period": 60 } }
+  ],
+
   "vars": {
     "R2_BUCKET_NAME": "rollo-media",
     "EMAIL_FROM": "Rollo <rollo@juanifraga.com>"

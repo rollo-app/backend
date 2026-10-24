@@ -1,6 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
+import { rateLimit } from "../../lib/rate-limit";
 import { MediaParams, TripParams } from "../../schemas";
 import * as controller from "./media.controller";
 import {
@@ -25,7 +26,7 @@ export const registerRoute = createRoute({
     "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. " +
     "503 when the storage limit is reached (new registrations only, never retries).",
   security: bearerAuth,
-  middleware: [requireUser, requireTripMember] as const,
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: RegisterMediaSchema } }, required: true },
@@ -48,9 +49,9 @@ export const completeRoute = createRoute({
     "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. " +
     "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
   security: bearerAuth,
-  middleware: [requireUser, requireMediaMember] as const,
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireMediaMember] as const,
   request: { params: MediaParams },
-  responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404) },
+  responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404, 429) },
 });
 
 // ---------- Feed ----------
@@ -80,7 +81,7 @@ export const downloadRoute = createRoute({
   summary: "Download a file (only after the reveal)",
   description: "Streamed from R2 with the same Bearer token.",
   security: bearerAuth,
-  middleware: [requireUser, requireTripMember] as const,
+  middleware: [requireUser, rateLimit("RL_FILES"), requireTripMember] as const,
   request: { params: MediaFileParams },
   responses: {
     200: {
@@ -90,7 +91,7 @@ export const downloadRoute = createRoute({
         "video/mp4": { schema: z.string().openapi({ format: "binary" }) },
       },
     },
-    ...errors(401, 403, 404),
+    ...errors(401, 403, 404, 429),
   },
 });
 

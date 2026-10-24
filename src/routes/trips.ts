@@ -1,6 +1,7 @@
 import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { requireAdmin, requireTripMember, requireUser } from "../lib/auth";
+import { rateLimit } from "../lib/rate-limit";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { blockedIdsFor } from "../lib/moderation";
 import { actorName, deferPush, sendPush } from "../lib/push";
@@ -303,12 +304,12 @@ const addMembersRoute = createRoute({
     "The rollo's admin can add back someone who was removed (they become active again with their old photos); " +
     "for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
   security: bearerAuth,
-  middleware: [requireUser, requireTripMember] as const,
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: AddMembersSchema } }, required: true },
   },
-  responses: { 200: json(AddMembersResponseSchema, "Result per friend"), ...errors(400, 401, 403, 409) },
+  responses: { 200: json(AddMembersResponseSchema, "Result per friend"), ...errors(400, 401, 403, 409, 429) },
 });
 
 trips.openapi(addMembersRoute, async (c) => {
