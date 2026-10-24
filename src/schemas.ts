@@ -335,40 +335,7 @@ export const FriendSchema = z
   })
   .openapi("Friend");
 
-export const FriendsSchema = z.object({ friends: z.array(FriendSchema) }).openapi("Friends");
-
 export const BlocksSchema = z.object({ blocked: z.array(FriendSchema) }).openapi("Blocks");
-
-export const FriendLinkSchema = z
-  .object({
-    code: z.string().openapi({ example: "K7M2QX9A", description: "8-character code; the link is rollo://friends/<code>" }),
-    expiresAt: epochMs("The link stops working at this instant (1 hour after it was generated)"),
-  })
-  .openapi("FriendLink");
-
-export const ClaimFriendLinkSchema = z
-  .object({ code: z.string().trim().max(64).openapi({ example: "K7M2QX9A", description: "Case-insensitive; spaces and dashes are ignored" }) })
-  .openapi("ClaimFriendLinkRequest");
-
-export const ClaimResponseSchema = z
-  .object({
-    claimToken: z.string().openapi({ description: "Permission to redeem this link while signed in. Valid for 24 hours" }),
-    expiresAt: epochMs("The claim token stops working at this instant"),
-    creator: z.object({
-      name: z.string(),
-      username: z.string().nullable(),
-      avatarUrl: z.string().nullable(),
-    }),
-  })
-  .openapi("ClaimResponse");
-
-export const RedeemFriendSchema = z
-  .object({
-    code: z.string().trim().max(64).optional().openapi({ description: "Friend code typed or taken from a link that is still valid" }),
-    claimToken: z.string().trim().max(200).optional().openapi({ description: "Token returned by /friend-links/claim" }),
-  })
-  .refine((b) => (b.code !== undefined) !== (b.claimToken !== undefined), "Mandá el código o el permiso de canje, no los dos")
-  .openapi("RedeemFriendRequest");
 
 export const ReportReasonSchema = z.enum(["offensive", "abuse", "other"]).openapi("ReportReason");
 
@@ -381,79 +348,11 @@ export const CreateReportSchema = z
   .refine((b) => (b.mediaId !== undefined) !== (b.userId !== undefined), "Mandá la foto o la persona, no las dos")
   .openapi("CreateReportRequest");
 
-export const FriendResponseSchema = z.object({ friend: FriendSchema }).openapi("FriendResponse");
-
-export const CommonTripSchema = z
-  .object({
-    id: z.string().uuid(),
-    name: z.string(),
-    startsAt: epochMs("Trip start"),
-    endsAt: epochMs("Trip end"),
-    revealed: z.boolean(),
-  })
-  .openapi("CommonTrip");
-
-export const FriendProfileSchema = z
-  .object({
-    friend: FriendSchema,
-    commonTrips: z.array(CommonTripSchema).openapi({
-      description: "Rollos both of you are active members of, most recent start first",
-    }),
-  })
-  .openapi("FriendProfile");
-
 // ---------- Users ----------
 
 export const UserParams = z.object({
   userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
 });
-
-export const PublicUserSchema = z
-  .object({
-    id: z.string().uuid().openapi({ description: "User id" }),
-    name: z.string().openapi({ example: "Cami" }),
-    username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
-    avatarUrl: z.string().nullable(),
-    bio: z.string().nullable().openapi({
-      example: "Viajando por el sur",
-      description: "Profile description; null if none. Always public, whatever canSee says",
-    }),
-    badge: UserBadgeSchema,
-  })
-  .openapi("PublicUser");
-
-export const UserProfileSchema = z
-  .object({
-    user: PublicUserSchema,
-    isFriend: z.boolean().openapi({ description: "Whether you and this user are friends (false for yourself)" }),
-    blockedByMe: z.boolean().openapi({ description: "Whether you blocked this user" }),
-    reportedByMe: z.boolean().openapi({ description: "Whether you reported this user (their profile, not a photo)" }),
-    profileVisibility: ProfileVisibilitySchema,
-    canSee: z.boolean().openapi({
-      description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other",
-    }),
-    friendCount: z.number().int().openapi({ description: "How many friends this user has (always public)" }),
-    mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends (0 for yourself)" }),
-  })
-  .openapi("UserProfile");
-
-export const UserFriendSchema = z
-  .object({
-    id: z.string().uuid().openapi({ description: "User id" }),
-    name: z.string().openapi({ example: "Cami" }),
-    username: z.string().nullable().openapi({ example: "cami", description: "Unique handle without the @" }),
-    avatarUrl: z.string().nullable(),
-  })
-  .openapi("UserFriend");
-
-export const UserFriendsSchema = z
-  .object({
-    scope: z.enum(["all", "mutual"]).openapi({
-      description: "all: every friend of this user (canSee); mutual: only the friends you have in common",
-    }),
-    friends: z.array(UserFriendSchema).openapi({ description: "Sorted by name, case-insensitive" }),
-  })
-  .openapi("UserFriends");
 
 export const AddMembersSchema = z
   .object({
