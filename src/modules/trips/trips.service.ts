@@ -1,3 +1,4 @@
+import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import { blockedIdsFor } from "../../lib/moderation";
 import { actorName, sendPush } from "../../lib/push";
@@ -9,12 +10,6 @@ import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
 import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
-
-/**
- * Work to run after the response is sent (a push). The service builds it; the controller defers it with
- * `deferPush(c, notify())`, so services never need the Hono context. `null` when there is nothing to send.
- */
-export type AfterResponse = (() => Promise<unknown>) | null;
 
 function requireName(user: Pick<UserRow, "name" | "username">) {
   if (!user.name) throw conflict("Completá tu nombre en el perfil");

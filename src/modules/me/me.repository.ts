@@ -8,10 +8,6 @@ export type MyTripRow = TripRow & { my_role: Role; total_uploaded: number; cover
 
 export type ProfileFields = { name: string | null; username: string | null; bio: string | null; profile_visibility: "friends" | "public" };
 
-export function findOtherUserWithUsername(db: D1Database, username: string, userId: string): Promise<{ id: string } | null> {
-  return db.prepare("SELECT id FROM users WHERE username = ? AND id != ?").bind(username, userId).first<{ id: string }>();
-}
-
 export function updateProfile(db: D1Database, userId: string, next: ProfileFields): D1PreparedStatement {
   return db
     .prepare("UPDATE users SET name = ?, username = ?, bio = ?, profile_visibility = ? WHERE id = ?")

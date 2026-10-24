@@ -1,7 +1,9 @@
 import { canSeeProfile } from "../../lib/profile-access";
 import { isRevealed } from "../../lib/util";
+import { actorName, sendPush } from "../../lib/push";
+import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
-import type { UserRow } from "../../types";
+import type { Env, UserRow } from "../../types";
 import { MAX_FEATURED } from "./featured.schemas";
 import * as repo from "./featured.repository";
 
@@ -20,8 +22,9 @@ async function visibleOwner(db: D1Database, viewerId: string, userId: string) {
   return owner;
 }
 
-/** Features a photo. Returns the author's user id when they should be notified (a new feature of someone else's photo). */
-export async function featurePhoto(db: D1Database, user: UserRow, mediaId: string): Promise<{ notifyUserId: string | null }> {
+/** Features a photo. Returns the push to the author when it is a new feature of someone else's photo, else null. */
+export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Promise<AfterResponse> {
+  const db = env.DB;
   const now = Date.now();
   const row = await repo.findFeaturableMedia(db, user.id, mediaId);
   if (!row) throw notFound();
@@ -30,7 +33,7 @@ export async function featurePhoto(db: D1Database, user: UserRow, mediaId: strin
   }
   if (row.type !== "photo") throw badRequest("Solo se pueden destacar fotos");
 
-  if (await repo.isFeatured(db, user.id, row.id)) return { notifyUserId: null };
+  if (await repo.isFeatured(db, user.id, row.id)) return null;
 
   if (row.feature_blocked_at !== null && row.author_user_id !== user.id) {
     throw conflict("Quien sacó esta foto no quiere que se destaque");
@@ -39,9 +42,11 @@ export async function featurePhoto(db: D1Database, user: UserRow, mediaId: strin
   const inserted = await repo.insertFeaturedUnderCap(db, user.id, row.id, now, MAX_FEATURED).run();
   if (!inserted.meta.changes) {
     if (!(await repo.isFeatured(db, user.id, row.id))) throw conflict(`Podés destacar hasta ${MAX_FEATURED} fotos`);
-    return { notifyUserId: null };
+    return null;
   }
-  return { notifyUserId: row.author_user_id !== user.id ? row.author_user_id : null };
+  if (row.author_user_id === user.id) return null;
+  const authorId = row.author_user_id;
+  return () => sendPush(env, [authorId], "photoFeatured", { body: `${actorName(user)} destacó una foto tuya`, url: `/user/${user.id}` }, { actorId: user.id });
 }
 
 export async function unfeaturePhoto(db: D1Database, userId: string, mediaId: string): Promise<void> {

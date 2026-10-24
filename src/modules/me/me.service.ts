@@ -5,6 +5,7 @@ import { assertStorageAvailable } from "../../lib/storage";
 import { USERNAME_TAKEN_MESSAGE } from "../../lib/username";
 import { badRequest, conflict } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
+import { isUsernameTaken } from "../usernames/usernames.service";
 import { AVATAR_MAX_BYTES } from "./me.schemas";
 import * as repo from "./me.repository";
 
@@ -32,8 +33,7 @@ export async function updateProfile(db: D1Database, user: UserRow, body: Profile
     profile_visibility: body.profileVisibility ?? user.profile_visibility,
   };
   if (body.username !== undefined && body.username !== user.username) {
-    const owner = await repo.findOtherUserWithUsername(db, body.username, user.id);
-    if (owner) throw conflict(USERNAME_TAKEN_MESSAGE);
+    if (await isUsernameTaken(db, body.username, user.id)) throw conflict(USERNAME_TAKEN_MESSAGE);
   }
   try {
     await repo.updateProfile(db, user.id, next).run();

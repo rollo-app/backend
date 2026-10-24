@@ -1,5 +1,5 @@
 import type { RouteHandler } from "@hono/zod-openapi";
-import { actorName, deferPush, sendPush } from "../../lib/push";
+import { deferPush } from "../../lib/push";
 import { serveStrippedJpeg } from "../../lib/r2";
 import { avatarUrl } from "../../lib/util";
 import { zoneOf } from "../../lib/zone";
@@ -11,13 +11,8 @@ import * as service from "./featured.service";
 export const feature: RouteHandler<typeof featureRoute, AppEnv> = async (c) => {
   const user = c.get("user");
   const { mediaId } = c.req.valid("param");
-  const { notifyUserId } = await service.featurePhoto(c.env.DB, user, mediaId);
-  if (notifyUserId) {
-    deferPush(
-      c,
-      sendPush(c.env, [notifyUserId], "photoFeatured", { body: `${actorName(user)} destacó una foto tuya`, url: `/user/${user.id}` }, { actorId: user.id }),
-    );
-  }
+  const notify = await service.featurePhoto(c.env, user, mediaId);
+  if (notify) deferPush(c, notify());
   return c.body(null, 204);
 };
 

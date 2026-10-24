@@ -6,12 +6,14 @@ Backend de **Rollo**: Cloudflare Workers + Hono + D1 (SQLite) + R2.
 src/
   index.ts          app, errores, montaje de routers, /openapi.json, /docs y cron
   modules/<mod>/    un módulo por recurso, en capas: router → controller → service → repository
-    media/          registrar, confirmar subida, feed, descargar, borrar, bloquear destacadas
-  shared/errors.ts  errores de dominio que tiran los services (→ 400/403/404/409/429)
+    auth/ me/ users/ usernames/ avatars/      cuentas, perfil y usernames
+    trips/ media/                             rollos, subidas, feed y descargas
+    friends/ featured/ likes/                 amigos, destacadas y "me gusta"
+    blocks/ reports/ admin/                   moderación (admin queda fuera del contrato)
+  shared/           errores de dominio (→ 400/403/404/409/429/503) y el tipo de los push diferidos
   schemas.ts        contrato compartido (zod → validación, tipos y OpenAPI)
   types.ts          tipos de Env y filas de la base
-  lib/              auth (sesiones y middlewares), r2, push, mail y helpers
-  routes/           módulos todavía sin migrar a capas (trips, friends, me, users, featured...)
+  lib/              transversal: sesiones y middlewares, r2, push, mail, storage, rate limit y helpers
 migrations/         SQL de D1, incremental (se aplican solas en los tests)
 scripts/            export-openapi, seed, email-preview
 openapi.json        contrato versionado (lo consume la app mobile)
@@ -32,8 +34,7 @@ Cada módulo de `src/modules/<mod>/` tiene:
   service decide si la corre sola o en un `db.batch` atómico (D1 no tiene transacciones interactivas).
 - **`<mod>.schemas.ts`**: los schemas zod que usa solo ese módulo.
 
-Las reglas completas (qué puede usar un módulo de otro, etc.) están en `CLAUDE.md`. Los módulos de
-`src/routes/` se migran de a uno, sin cambiar el contrato.
+Las reglas completas (qué puede usar un módulo de otro, push, errores, etc.) están en `CLAUDE.md`.
 
 ## Tests
 

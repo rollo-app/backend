@@ -4,8 +4,10 @@ import { FRIEND_CLAIM_TTL, FRIEND_LINK_TTL, generateFriendCode, normalizeFriendC
 import { isBlockedEitherWay } from "../../lib/moderation";
 import { areFriends } from "../../lib/profile-access";
 import { isRevealed } from "../../lib/util";
+import { actorName, sendPush } from "../../lib/push";
+import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
-import type { TripRow } from "../../types";
+import type { Env, TripRow, UserRow } from "../../types";
 import * as repo from "./friends.repository";
 import type { LinkCreatorRow, PublicFriendRow } from "./friends.repository";
 
@@ -81,13 +83,15 @@ export async function claimLink(
 
 // ---------- Redeem ----------
 
-/** `newFriendOf` is the link creator's id when a friendship was just created (they get a push), else null. */
+/** `notify` is the push to the link creator when a friendship was just created, else null. */
 export async function redeem(
-  db: D1Database,
-  me: string,
+  env: Env,
+  user: Pick<UserRow, "id" | "name" | "username">,
   rawIp: string | undefined,
   body: { code?: string; claimToken?: string },
-): Promise<{ friend: PublicFriendRow; newFriendOf: string | null }> {
+): Promise<{ friend: PublicFriendRow; notify: AfterResponse }> {
+  const db = env.DB;
+  const me = user.id;
   const keys = attemptKeys(rawIp, me);
   await assertNotLocked(db, keys);
   const now = Date.now();
@@ -109,13 +113,15 @@ export async function redeem(
 
   const creator = (await repo.findUser(db, creatorId))!;
 
-  let newFriendOf: string | null = null;
+  let notify: AfterResponse = null;
   if (creatorId !== me) {
     const [a, b] = pairKey(me, creatorId);
     const inserted = await repo.insertFriendship(db, a, b, now).run();
-    if (inserted.meta.changes > 0) newFriendOf = creatorId;
+    if (inserted.meta.changes > 0) {
+      notify = () => sendPush(env, [creatorId], "newFriend", { body: `${actorName(user)} ahora es tu amigo`, url: `/user/${me}` }, { actorId: me });
+    }
   }
-  return { friend: creator, newFriendOf };
+  return { friend: creator, notify };
 }
 
 // ---------- List ----------

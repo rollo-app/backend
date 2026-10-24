@@ -1,5 +1,5 @@
 import type { RouteHandler } from "@hono/zod-openapi";
-import { actorName, deferPush, sendPush } from "../../lib/push";
+import { deferPush } from "../../lib/push";
 import { avatarUrl } from "../../lib/util";
 import type { AppEnv } from "../../types";
 import type { PublicFriendRow } from "./friends.repository";
@@ -32,10 +32,8 @@ export const claim: RouteHandler<typeof claimRoute, AppEnv> = async (c) => {
 
 export const redeem: RouteHandler<typeof redeemRoute, AppEnv> = async (c) => {
   const me = c.get("user");
-  const { friend, newFriendOf } = await service.redeem(c.env.DB, me.id, c.req.header("cf-connecting-ip"), c.req.valid("json"));
-  if (newFriendOf) {
-    deferPush(c, sendPush(c.env, [newFriendOf], "newFriend", { body: `${actorName(me)} ahora es tu amigo`, url: `/user/${me.id}` }, { actorId: me.id }));
-  }
+  const { friend, notify } = await service.redeem(c.env, me, c.req.header("cf-connecting-ip"), c.req.valid("json"));
+  if (notify) deferPush(c, notify());
   return c.json({ friend: publicFriend(friend) }, 200);
 };
 
