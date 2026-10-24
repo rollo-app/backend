@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   AuthSessionSchema,
   ErrorSchema,
-  MyTripsSchema,
   TripCreatedSchema,
   TripDetailSchema,
   TripResponseSchema,
   UserSchema,
 } from "../src/schemas";
+import { MyTripsSchema } from "../src/modules/me/me.schemas";
 import { FeedResponseSchema, MediaRegisteredSchema, MediaStatusSchema } from "../src/modules/media/media.schemas";
 import { api, joinAs, newTrip, photoBody, requestCode, signUp, uploadMedia } from "./helpers";
 

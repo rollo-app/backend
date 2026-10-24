@@ -204,17 +204,6 @@ export const UpdateProfileSchema = z
   })
   .openapi("UpdateProfileRequest");
 
-export const UsernameParams = z.object({
-  username: z.string().openapi({ param: { name: "username", in: "path" }, example: "juanifraga" }),
-});
-
-export const UsernameAvailabilitySchema = z
-  .object({
-    available: z.boolean().openapi({ description: "true if nobody else has it (also true if it is yours)" }),
-    username: z.string().openapi({ description: "The normalized username that was checked" }),
-  })
-  .openapi("UsernameAvailability");
-
 export const UpdateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
@@ -231,81 +220,6 @@ export const TripCreatedSchema = z
     member: MemberSchema,
   })
   .openapi("TripCreated");
-
-export const TripSummarySchema = z
-  .object({
-    id: z.string().uuid(),
-    name: z.string(),
-    joinCode: z.string(),
-    startsAt: epochMs("Trip start"),
-    endsAt: epochMs("Trip end"),
-    revealAt: epochMs("Automatic reveal"),
-    revealed: z.boolean(),
-    role: RoleSchema,
-    totalUploaded: z.number().int(),
-    coverThumbhash: z.string().nullable().openapi({
-      description:
-        "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
-    }),
-  })
-  .openapi("TripSummary");
-
-export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
-
-export const AvatarUploadRequestSchema = z
-  .object({
-    sizeBytes: z
-      .number()
-      .int()
-      .positive()
-      .max(AVATAR_MAX_BYTES, "La foto tiene que ser un JPEG de hasta 2 MB")
-      .openapi({ description: "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length" }),
-  })
-  .openapi("AvatarUploadRequest");
-
-export const AvatarUploadSchema = z
-  .object({
-    upload: z.string().url().openapi({ description: "PUT of the JPEG avatar (square, ~512px)" }),
-    expiresIn: z.number().int().openapi({ description: "Seconds the URL stays valid" }),
-  })
-  .openapi("AvatarUpload");
-
-export const AvatarParams = z.object({
-  userId: z.string().openapi({ param: { name: "userId", in: "path" } }),
-  file: z.string().openapi({ param: { name: "file", in: "path" }, example: "3f1c2a.jpg" }),
-});
-
-// ---------- Push tokens and settings ----------
-
-/** Expo push token as returned by getExpoPushTokenAsync. */
-export const EXPO_PUSH_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/;
-
-export const PushTokenParams = z.object({
-  token: z
-    .string()
-    .max(200, "El token de notificaciones no es válido")
-    .regex(EXPO_PUSH_TOKEN, "El token de notificaciones no es válido")
-    .openapi({ param: { name: "token", in: "path" }, example: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" }),
-});
-
-export const NotificationSettingsSchema = z
-  .object({
-    addedToTrip: z.boolean().openapi({ description: "Someone adds you to a rollo" }),
-    newFriend: z.boolean().openapi({ description: "Someone redeems your friend link" }),
-    tripStarted: z.boolean().openapi({ description: "A rollo you are in starts" }),
-    tripRevealed: z.boolean().openapi({ description: "A rollo you are in is revealed" }),
-    photoFeatured: z.boolean().openapi({ description: "Someone features a photo of yours on their profile" }),
-    photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
-  })
-  .openapi("NotificationSettings");
-
-export const UserSettingsSchema = z.object({ notifications: NotificationSettingsSchema }).openapi("UserSettings");
-
-export const UpdateUserSettingsSchema = z
-  .strictObject({ notifications: NotificationSettingsSchema.partial().strict().optional() })
-  .openapi("UpdateUserSettingsRequest");
-
-export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");
 
 export const TripDetailSchema = z
   .object({
