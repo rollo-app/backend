@@ -157,6 +157,9 @@ Reglas:
 
 ## Cómo trabajamos
 
+- **Decisiones grandes** (stack, proveedores, arquitectura) se discuten con Juani, con alternativas, antes de
+  implementarlas, y quedan en `docs/decisiones/NNNN-tema.md` (contexto, criterios, alternativas, decisión,
+  consecuencias, cuándo revisarla). La del stack: [`docs/decisiones/0001-stack.md`](docs/decisiones/0001-stack.md).
 - **TDD siempre:** primero el test, verlo fallar, código mínimo, refactor.
   Escenarios con los helpers de `test/helpers.ts` (`signUp`, `newTrip`, `joinAs`, `uploadMedia`...). Los códigos de login se leen de `devSentCodes` (y los links mágicos de `devSentLinks`) (`src/lib/email.ts`), que se llena cuando no hay `RESEND_API_KEY`.
 - **Si tocás la API:** `npm run openapi` y commiteá `openapi.json`. Hay un test que falla si quedó
