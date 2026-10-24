@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { FeedResponseSchema } from "../src/modules/media/media.schemas";
-import { FeaturedPhotosSchema } from "../src/schemas";
+import { FeaturedPhotosSchema } from "../src/modules/featured/featured.schemas";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 import { BASELINE_JPEG, photoWithMetadata } from "./jpeg-fixture";
 
