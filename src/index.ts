@@ -12,7 +12,8 @@ import friends, { friendLinks } from "./routes/friends";
 import likes from "./routes/likes";
 import avatars from "./routes/avatars";
 import me from "./routes/me";
-import media from "./routes/media";
+import media from "./modules/media/media.router";
+import { STATUS_BY_KIND, AppError } from "./shared/errors";
 import { checkStorage } from "./lib/storage";
 import { sweepOrphanAvatars } from "./lib/avatar-sweep";
 import { cleanupStalePending } from "./lib/pending-cleanup";
@@ -79,6 +80,7 @@ app.put(`${DEV_UPLOAD_PREFIX}*`, async (c, next) => {
 app.notFound((c) => c.json({ error: "No encontrado" }, 404));
 
 app.onError((err, c) => {
+  if (err instanceof AppError) return c.json({ error: err.message }, STATUS_BY_KIND[err.kind]);
   if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
   console.error(err);
   return c.json({ error: "Error interno" }, 500);

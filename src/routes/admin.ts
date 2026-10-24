@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { deleteAccount, deleteTripMedia } from "../lib/account";
+import { deleteAccount } from "../lib/account";
+import { deleteTripMedia } from "../modules/media/media.service";
 import type { AppEnv, UserRow } from "../types";
 
 /**

@@ -89,14 +89,44 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 - **Auth:** `Authorization: Bearer <token de sesión>`; en D1 solo se guarda el SHA-256 del token (`sessions`) y del código (`auth_codes`). Un middleware de membresía carga `member`/`trip` en las rutas con `{tripId}`.
 
 ```
-src/index.ts          app, /openapi.json, /docs, manejo de errores
-src/schemas.ts        contrato (zod + OpenAPI)
+src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de errores, cron (scheduled)
+src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"). Migrado: media
+src/shared/           errors.ts (errores de dominio → status HTTP)
+src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
 src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta")
-src/routes/           auth.ts, me.ts, users.ts, friends.ts, trips.ts, media.ts, featured.ts, likes.ts, blocks.ts, reports.ts, admin.ts
+src/routes/           módulos sin migrar todavía: auth.ts, me.ts, users.ts, friends.ts, trips.ts, featured.ts, likes.ts, blocks.ts, reports.ts, admin.ts
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
 ```
+
+### Arquitectura por capas
+
+Cada módulo vive en `src/modules/<mod>/` con cuatro capas más sus schemas. El modelo es `src/modules/media/`.
+Los módulos de `src/routes/` se migran de a uno por PR, sin cambiar comportamiento ni contrato (`openapi.json` idéntico).
+
+| Archivo | Hace | No hace |
+|---|---|---|
+| `<mod>.router.ts` | `createRoute` (contrato, middlewares, respuestas documentadas), exporta cada ruta y la monta con `router.openapi(route, controller.fn)` | lógica |
+| `<mod>.controller.ts` | handlers `RouteHandler<typeof xRoute, AppEnv>`: leen el input validado y el contexto (`user`, `trip`, `member`), llaman al service, mapean a la respuesta (presenters) y eligen el status | SQL, reglas de negocio |
+| `<mod>.service.ts` | toda la lógica de negocio: permisos finos, validaciones de estado, orquestar repos, decidir los `batch`, disparar push | importar `hono`, `HTTPException`, `Context` |
+| `<mod>.repository.ts` | todo el SQL. Primer argumento `db: D1Database` | decidir nada |
+| `<mod>.schemas.ts` | schemas zod que usa solo ese módulo | — |
+
+Reglas:
+- **Escrituras como sentencias:** en el repository las lecturas ejecutan y devuelven filas tipadas; las escrituras
+  devuelven un `D1PreparedStatement` sin ejecutar. El service hace `.run()` o las junta en `db.batch([...])`. Es
+  porque D1 no tiene transacciones interactivas: `batch` es la única forma de que varias escrituras sean atómicas, y
+  qué va junto es una decisión de negocio.
+- **Errores de dominio:** el service tira `badRequest` / `forbidden` / `notFound` / `conflict` / `rateLimited`
+  (`src/shared/errors.ts`) con el mensaje en español para el usuario; `onError` los traduce a 400/403/404/409/429.
+  Así un service se puede llamar desde el cron sin HTTP de por medio.
+- **Entre módulos:** un service puede llamar a services de otros módulos (ej. `admin` usa `deleteTripMedia` de
+  media) y pedir *sentencias de escritura* a repos de otros módulos solo para armar un `batch` atómico. Nadie
+  importa el router ni el controller de otro módulo.
+- **Sin interfaces por capa:** services y repos son módulos de funciones tipadas; el contrato es la firma exportada.
+  Interfaces explícitas solo donde hay más de una implementación (storage, mail, push).
+- **Comentarios explicativos** (por qué una regla es así) van junto a la lógica, o sea, en el service.
 
 ## Cómo trabajamos
 

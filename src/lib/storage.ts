@@ -1,4 +1,4 @@
-import { HTTPException } from "hono/http-exception";
+import { unavailable } from "../shared/errors";
 import type { Env } from "../types";
 import { sendStorageAlert } from "./email";
 
@@ -49,7 +49,7 @@ export async function storageUsage(env: Pick<Env, "DB">): Promise<number> {
 export async function assertStorageAvailable(env: Pick<Env, "DB" | "STORAGE_LIMIT_BYTES">, extraBytes: number): Promise<void> {
   const used = await storageUsage(env);
   if (used + extraBytes > storageLimitBytes(env) * BLOCK_RATIO) {
-    throw new HTTPException(503, { message: "Rollo llegó al límite de espacio por ahora. Avisale a Juani." });
+    throw unavailable("Rollo llegó al límite de espacio por ahora. Avisale a Juani.");
   }
 }
 
