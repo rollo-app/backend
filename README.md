@@ -4,30 +4,36 @@ Backend de **Rollo**: Cloudflare Workers + Hono + D1 (SQLite) + R2.
 
 ```
 src/
-  index.ts          app, errores, montaje de rutas, /openapi.json y /docs
-  schemas.ts        contrato de la API (zod → validación, tipos y OpenAPI)
+  index.ts          app, errores, montaje de routers, /openapi.json, /docs y cron
+  modules/<mod>/    un módulo por recurso, en capas: router → controller → service → repository
+    media/          registrar, confirmar subida, feed, descargar, borrar, bloquear destacadas
+  shared/errors.ts  errores de dominio que tiran los services (→ 400/403/404/409/429)
+  schemas.ts        contrato compartido (zod → validación, tipos y OpenAPI)
   types.ts          tipos de Env y filas de la base
-  lib/auth.ts       sesiones (solo se guarda el hash) y middlewares user/member/admin
-  lib/r2.ts         URLs prefirmadas para subir directo a R2
-  lib/util.ts       fecha local del viaje, revelado, códigos
-  lib/openapi.ts    app con validación por contrato y helpers de respuestas
-  routes/trips.ts   crear, unirse, info, editar, revelar, sacar miembros, sumar amigos, salirse
-  routes/friends.ts link de amistad (1 h), canje, lista de amigos
-  routes/media.ts   registrar, confirmar subida, feed, descargar, borrar
-migrations/
-  0001_init.sql     trips, members, media
-  0006_friends.sql  amistades, links, claims, intentos; members.left_at
-scripts/
-  export-openapi.ts genera openapi.json
+  lib/              auth (sesiones y middlewares), r2, push, mail y helpers
+  routes/           módulos todavía sin migrar a capas (trips, friends, me, users, featured...)
+migrations/         SQL de D1, incremental (se aplican solas en los tests)
+scripts/            export-openapi, seed, email-preview
 openapi.json        contrato versionado (lo consume la app mobile)
 test/
   setup.ts          base y bucket vacíos + migraciones antes de cada test
-  helpers.ts        api(), createTrip(), join(), uploadMedia()...
-  util.test.ts      unitarios: fechas, revelado, tokens, URLs firmadas
-  trips.test.ts     integración: viajes, auth, admin, revelado
-  media.test.ts     integración: registro, límites, subida, feed, descargas
-  openapi.test.ts   contrato: endpoints, auth, modelos y respuestas reales
+  helpers.ts        api(), signUp(), newTrip(), joinAs(), uploadMedia()...
+  <feature>.test.ts integración contra la app real, con D1 y R2 locales
 ```
+
+### Arquitectura por capas
+
+Cada módulo de `src/modules/<mod>/` tiene:
+
+- **`<mod>.router.ts`**: las rutas con `createRoute` (contrato, middlewares, respuestas) y su montaje.
+- **`<mod>.controller.ts`**: handlers finos; leen el input validado, llaman al service y arman la respuesta.
+- **`<mod>.service.ts`**: la lógica de negocio. No conoce Hono; tira errores de dominio.
+- **`<mod>.repository.ts`**: el SQL. Las lecturas ejecutan; las escrituras devuelven la sentencia y el
+  service decide si la corre sola o en un `db.batch` atómico (D1 no tiene transacciones interactivas).
+- **`<mod>.schemas.ts`**: los schemas zod que usa solo ese módulo.
+
+Las reglas completas (qué puede usar un módulo de otro, etc.) están en `CLAUDE.md`. Los módulos de
+`src/routes/` se migran de a uno, sin cambiar el contrato.
 
 ## Tests
 
@@ -46,7 +52,7 @@ son independientes y se pueden correr en cualquier orden.
 Para cada funcionalidad nueva (por ejemplo, Modo viaje):
 
 1. **Rojo:** escribí el test primero en `test/<feature>.test.ts`, describiendo el comportamiento
-   en español ("no deja votar dos veces"). Corré `npm run test:watch` y miralo fallar.
+   en inglés ("does not allow voting twice"). Corré `npm run test:watch` y miralo fallar.
 2. **Verde:** escribí el mínimo código en `src/` para que pase.
 3. **Refactor:** limpiá con los tests en verde.
 
@@ -115,6 +121,8 @@ De ahí salen la validación de requests, los tipos de las respuestas y el contr
 Todas las rutas salvo `/auth/email/*` llevan `Authorization: Bearer <token de sesión>`.
 Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 
+> Tabla parcial (las rutas originales). La referencia completa y al día es `GET /docs` / `openapi.json`.
+
 | Método | Ruta | Quién | Qué hace |
 |---|---|---|---|
 | POST | `/auth/email/start` | cualquiera | `{email}` → manda un código de 6 caracteres (letras y números, vence a los 5 min) (204) |
@@ -133,7 +141,7 @@ Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 | POST | `/media/:mediaId/complete` | dueño | Confirma que subió los archivos |
 | GET | `/trips/:tripId/feed` | miembro | Antes del revelado: solo metadata. Después: con archivos |
 | GET | `/trips/:tripId/media/:mediaId/thumb\|original` | miembro | Descarga (solo revelado) |
-| DELETE | `/media/:mediaId` | dueño | Borra una foto propia antes del revelado |
+| DELETE | `/media/:mediaId` | admin | Borra cualquier foto del rollo antes del revelado |
 
 ### Flujo de subida desde la app
 
@@ -149,7 +157,7 @@ server devuelve URLs nuevas sin duplicar ni gastar cupo del día.
 
 - **Revelado:** nadie descarga nada (ni lo propio) hasta `revealAt` o hasta que el admin revele.
 - **Límite diario:** por persona, tipo y fecha local del viaje (`timezone`). Cuentan también las pendientes.
-- **Videos:** hasta 15 s y 60 MB. Fotos: hasta 25 MB.
+- **Videos:** hasta 15 s y 30 MB. Fotos: hasta 12 MB. Thumbnail: hasta 2 MB. Los tamaños se declaran al registrar y se verifican en `complete`.
 - **Hora:** se usa la del celular al sacar la foto; se rechaza si está en el futuro o es de antes del viaje.
 
 ## Pendiente

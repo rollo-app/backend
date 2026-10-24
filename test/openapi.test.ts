@@ -2,15 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   AuthSessionSchema,
   ErrorSchema,
-  FeedResponseSchema,
-  MediaRegisteredSchema,
-  MediaStatusSchema,
   MyTripsSchema,
   TripCreatedSchema,
   TripDetailSchema,
   TripResponseSchema,
   UserSchema,
 } from "../src/schemas";
+import { FeedResponseSchema, MediaRegisteredSchema, MediaStatusSchema } from "../src/modules/media/media.schemas";
 import { api, joinAs, newTrip, photoBody, requestCode, signUp, uploadMedia } from "./helpers";
 
 type OpenAPIDoc = {

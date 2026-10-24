@@ -65,15 +65,3 @@ export async function deleteAccount(env: Env, user: UserRow): Promise<void> {
     DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
   ]);
 }
-
-/**
- * Deletes a photo or video for everyone: removes its files and marks it deleted. The id cannot be registered again.
- * Returns false if it does not exist or was already deleted.
- */
-export async function deleteTripMedia(env: Env, mediaId: string): Promise<boolean> {
-  const row = await env.DB.prepare("SELECT * FROM media WHERE id = ? AND deleted_at IS NULL").bind(mediaId).first<MediaRow>();
-  if (!row) return false;
-  await env.MEDIA.delete([row.original_key, row.thumb_key]);
-  await env.DB.prepare("UPDATE media SET deleted_at = ? WHERE id = ?").bind(Date.now(), row.id).run();
-  return true;
-}
