@@ -112,7 +112,7 @@ describe("report emails", () => {
 });
 
 describe("report email cap", () => {
-  it("emails at most 10 moderation emails per reporter per 24 hours but still stores the rest", async () => {
+  it("emails at most 3 moderation emails per reporter per 24 hours but still stores the rest", async () => {
     devSentReports.length = 0;
     const trip = await newTrip({ dailyPhotoLimit: 20 });
     const a = await joinAs(trip.code, "Ana");
@@ -122,7 +122,7 @@ describe("report email cap", () => {
     for (const mediaId of ids) {
       expect((await api("POST", "/reports", { token: a.token, body: { mediaId, reason: "other" } })).status).toBe(204);
     }
-    expect(devSentReports).toHaveLength(10);
+    expect(devSentReports).toHaveLength(3);
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE reporter_id = ?").bind(a.userId).first<{ n: number }>();
     expect(row!.n).toBe(11);
   });
@@ -140,15 +140,15 @@ describe("report email cap", () => {
     const b = await signUp();
     expect((await api("PUT", `/blocks/${b.userId}`, { token: a.token })).status).toBe(204);
     expect(devSentBlocks).toHaveLength(1);
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 2; i++) {
       const u = await signUp();
       await api("PUT", `/blocks/${u.userId}`, { token: a.token });
     }
-    expect(devSentBlocks).toHaveLength(10);
+    expect(devSentBlocks).toHaveLength(3);
     const extra = await signUp();
     expect((await api("PUT", `/blocks/${extra.userId}`, { token: a.token })).status).toBe(204);
-    expect(devSentBlocks).toHaveLength(10);
-    expect((await api("GET", "/blocks", { token: a.token })).body.blocked).toHaveLength(11);
+    expect(devSentBlocks).toHaveLength(3);
+    expect((await api("GET", "/blocks", { token: a.token })).body.blocked).toHaveLength(4);
   });
 });
 

@@ -90,7 +90,7 @@ async function deliverToSupport(env: Env, subject: string, text: string): Promis
   if (!res.ok) throw new Error(`Resend responded ${res.status}`);
 }
 
-const adminCurlFor = (adminBase: string, path: string) => `curl -X DELETE -H "Authorization: Bearer $ROLLO_ADMIN_TOKEN" ${adminBase}${path}`;
+export const adminCurlFor = (adminBase: string, path: string) => `curl -X DELETE -H "Authorization: Bearer $ROLLO_ADMIN_TOKEN" ${adminBase}${path}`;
 
 /**
  * Emails a report to support. Without `RESEND_API_KEY` it only logs it (and keeps it in `devSentReports`). Throws if Resend fails.
@@ -141,6 +141,19 @@ export async function sendBlockEmail(env: Env, block: BlockEmail): Promise<void>
   if (!env.RESEND_API_KEY) {
     console.log(`[block] ${subject}\n${text}`);
     devSentBlocks.push(block);
+    return;
+  }
+  await deliverToSupport(env, subject, text);
+}
+
+/** Alerts and daily summaries "sent" to support without a Resend key (local dev and tests). */
+export const devSentNotices: { subject: string; text: string }[] = [];
+
+/** Plain notice to support (cap alerts, the daily summary). Same dev/Resend behavior as the report email. Throws if Resend fails. */
+export async function sendSupportNotice(env: Env, subject: string, text: string): Promise<void> {
+  if (!env.RESEND_API_KEY) {
+    console.log(`[support] ${subject}\n${text}`);
+    devSentNotices.push({ subject, text });
     return;
   }
   await deliverToSupport(env, subject, text);

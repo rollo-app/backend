@@ -2,7 +2,9 @@ import { createRoute } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { generateToken, hashToken, requireUser, SESSION_TTL } from "../lib/auth";
+import { ipKey } from "../lib/ip";
 import { sendLoginCode } from "../lib/email";
+import { alertCapReached, type EmailKind, LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, releaseEmailSlot, reserveEmailSlot } from "../lib/email-caps";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../lib/login-code";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { publicUser } from "../lib/util";
@@ -37,7 +39,7 @@ const startRoute = createRoute({
     "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, " +
     "a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. " +
     "Using either one consumes both. A new request invalidates the previous codes. " +
-    "Rate limited per email and per IP. Works for new and existing users alike.",
+    "Rate limited per email and per IP, and capped globally per day (429). Works for new and existing users alike.",
   request: { body: { content: { "application/json": { schema: EmailStartSchema } }, required: true } },
   responses: { 204: { description: "Code sent" }, ...errors(400, 429, 502) },
 });
@@ -45,7 +47,8 @@ const startRoute = createRoute({
 auth.openapi(startRoute, async (c) => {
   const { email, linkChallenge } = c.req.valid("json");
   const now = Date.now();
-  const ip = c.req.header("cf-connecting-ip") ?? null;
+  const rawIp = c.req.header("cf-connecting-ip");
+  const ip = rawIp ? ipKey(rawIp) : null;
   const tooMany = () => new HTTPException(429, { message: "Esperá un momento antes de pedir otro código" });
 
   const count = async (column: "email" | "ip", value: string, since: number) =>
@@ -61,6 +64,35 @@ auth.openapi(startRoute, async (c) => {
 
   const isReview = !!c.env.REVIEW_EMAIL && !!c.env.REVIEW_CODE && email === c.env.REVIEW_EMAIL.trim().toLowerCase();
   const code = isReview ? c.env.REVIEW_CODE! : generateLoginCode();
+  // Global daily caps, to keep room for support emails within Resend's free quota. Emails with no account yet get only part
+  // of the budget, so spam of fake addresses cannot lock out existing users. The App Review account sends nothing.
+  let isNewUser = false;
+  let ipKind: EmailKind | null = null;
+  if (!isReview) {
+    isNewUser = !(await c.env.DB.prepare("SELECT 1 FROM users WHERE email = ?").bind(email).first());
+    if (isNewUser) {
+      // The new-user caps answer 204 like a success and send nothing: a 429 only for new emails would reveal whether an account exists.
+      if (ip) {
+        ipKind = `login_new_ip:${ip}`;
+        if (!(await reserveEmailSlot(c.env.DB, ipKind, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY))) {
+          console.warn("[auth] daily new-user login email cap reached for an IP");
+          return c.body(null, 204);
+        }
+      }
+      if (!(await reserveEmailSlot(c.env.DB, "login_new", LOGIN_NEW_USER_EMAILS_PER_DAY))) {
+        console.warn("[auth] daily login_new email cap reached");
+        await alertCapReached(c.env, "login_new");
+        return c.body(null, 204);
+      }
+    }
+    if (!(await reserveEmailSlot(c.env.DB, "login", LOGIN_EMAILS_PER_DAY))) {
+      if (isNewUser) await releaseEmailSlot(c.env.DB, "login_new");
+      if (ipKind) await releaseEmailSlot(c.env.DB, ipKind);
+      console.warn("[auth] daily login email cap reached");
+      await alertCapReached(c.env, "login");
+      throw new HTTPException(429, { message: "Hay muchos pedidos de código ahora. Probá en un rato." });
+    }
+  }
   // No challenge (old app builds): no magic link at all, only the code.
   const linkToken = linkChallenge ? generateToken() : null;
   const id = crypto.randomUUID();
@@ -88,6 +120,9 @@ auth.openapi(startRoute, async (c) => {
       console.error(err);
       // Don't burn the user's rate limit for an email we couldn't send.
       await c.env.DB.prepare("DELETE FROM auth_codes WHERE id = ?").bind(id).run();
+      await releaseEmailSlot(c.env.DB, "login");
+      if (isNewUser) await releaseEmailSlot(c.env.DB, "login_new");
+      if (ipKind) await releaseEmailSlot(c.env.DB, ipKind);
       throw new HTTPException(502, { message: "No pudimos mandar el email, probá de nuevo" });
     }
   }
