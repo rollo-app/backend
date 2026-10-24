@@ -21,7 +21,7 @@ import { purgeOldEmailCounters } from "./lib/email-caps";
 import { sendModerationSummary } from "./lib/moderation-summary";
 import { cleanupStalePending } from "./lib/pending-cleanup";
 import reports from "./routes/reports";
-import trips from "./routes/trips";
+import trips from "./modules/trips/trips.router";
 import users from "./routes/users";
 import usernames from "./routes/usernames";
 import type { Env } from "./types";
