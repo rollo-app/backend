@@ -26,6 +26,7 @@ const ERROR_DESCRIPTIONS: Record<number, string> = {
   404: "Not found",
   409: "Conflict with the current state",
   429: "Daily limit or rate limit reached",
+  503: "Storage limit reached; new uploads are paused",
   502: "Upstream service failed",
 };
 

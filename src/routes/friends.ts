@@ -2,6 +2,7 @@ import { createRoute } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { generateToken, hashToken, requireUser } from "../lib/auth";
+import { ipKey } from "../lib/ip";
 import {
   FRIEND_CLAIM_TTL,
   FRIEND_LINK_TTL,
@@ -46,7 +47,8 @@ const publicFriend = (u: PublicFriendRow) => ({
 // ---------- Rate limit (failed attempts per user and per IP) ----------
 
 function attemptKeys(c: Context<AppEnv>, userId?: string): string[] {
-  const ip = c.req.header("cf-connecting-ip");
+  const rawIp = c.req.header("cf-connecting-ip");
+  const ip = rawIp ? ipKey(rawIp) : undefined;
   return [...(userId ? [`user:${userId}`] : []), ...(ip ? [`ip:${ip}`] : [])];
 }
 

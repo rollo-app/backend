@@ -234,6 +234,20 @@
           "expiresIn"
         ]
       },
+      "AvatarUploadRequest": {
+        "type": "object",
+        "properties": {
+          "sizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2097152,
+            "description": "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length"
+          }
+        },
+        "required": [
+          "sizeBytes"
+        ]
+      },
       "MyTrips": {
         "type": "object",
         "properties": {
@@ -1188,12 +1202,12 @@
               "original": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT of the original file"
+                "description": "PUT of the original file; send exactly `sizeBytes` bytes as Content-Length"
               },
               "thumb": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT of the JPEG thumbnail (~800px)"
+                "description": "PUT of the JPEG thumbnail (~800px); send exactly `thumbSizeBytes` bytes as Content-Length"
               }
             },
             "required": [
@@ -1311,14 +1325,21 @@
           },
           "sizeBytes": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "Exact byte size of the original file; the upload URL is signed for exactly this Content-Length"
+          },
+          "thumbSizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length"
           }
         },
         "required": [
           "id",
           "type",
           "takenAt",
-          "sizeBytes"
+          "sizeBytes",
+          "thumbSizeBytes"
         ]
       },
       "MediaType": {
@@ -1641,7 +1662,7 @@
           "Auth"
         ],
         "summary": "Request a login code by email",
-        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. Using either one consumes both. A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
+        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. Using either one consumes both. A new request invalidates the previous codes. Rate limited per email and per IP, and capped globally per day (429). Works for new and existing users alike.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1931,12 +1952,22 @@
           "Profile"
         ],
         "summary": "Get a URL to upload your avatar",
-        "description": "Returns a signed URL to PUT a JPEG straight to R2. Then call POST /me/avatar/complete. Each call generates a new random file name, so the avatar URL changes when you replace it.",
+        "description": "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /me/avatar/complete. 503 when the storage limit is reached. A previous upload that was never completed is discarded. Each call generates a new random file name, so the avatar URL changes when you replace it.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvatarUploadRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Upload URL",
@@ -1948,8 +1979,38 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
             "content": {
               "application/json": {
                 "schema": {
@@ -1996,6 +2057,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -2728,7 +2799,7 @@
           "Blocks"
         ],
         "summary": "Block a user",
-        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 10 reports and blocks per user per 24 hours are emailed).",
+        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 3 reports and blocks per user per 24 hours, and 20 per day overall, are emailed). More than 50 blocks per user per 24 hours is a 429.",
         "security": [
           {
             "bearerAuth": []
@@ -2770,6 +2841,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -2824,7 +2905,7 @@
           "Reports"
         ],
         "summary": "Report a photo or a person",
-        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 10 reports and blocks per user per 24 hours are emailed to support; the rest are stored without email. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
         "security": [
           {
             "bearerAuth": []
@@ -2866,6 +2947,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -3356,6 +3447,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3502,7 +3603,7 @@
           "Media"
         ],
         "summary": "Register a photo or video",
-        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2. Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
+        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. 503 when the storage limit is reached (new registrations only, never retries).",
         "security": [
           {
             "bearerAuth": []
@@ -3605,6 +3706,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3615,7 +3726,7 @@
           "Media"
         ],
         "summary": "Confirm the files were uploaded",
-        "description": "Checks that the original and the thumbnail are in R2. Only then does the photo show up in the feed.",
+        "description": "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
         "security": [
           {
             "bearerAuth": []
@@ -3664,6 +3775,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -3813,6 +3934,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -4274,6 +4405,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4326,6 +4467,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {

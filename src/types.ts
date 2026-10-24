@@ -1,4 +1,12 @@
+/** Workers Rate Limiting binding (`ratelimits` in wrangler.jsonc). */
+export type RateLimitBinding = { limit(options: { key: string }): Promise<{ success: boolean }> };
+
 export type Env = {
+  /** Rate limiters (see `src/lib/rate-limit.ts`); optional so a missing binding fails open. */
+  RL_GLOBAL?: RateLimitBinding;
+  RL_IP?: RateLimitBinding;
+  RL_EXPENSIVE?: RateLimitBinding;
+  RL_FILES?: RateLimitBinding;
   DB: D1Database;
   MEDIA: R2Bucket;
   R2_BUCKET_NAME: string;
@@ -17,6 +25,8 @@ export type Env = {
   ADMIN_TOKEN?: string;
   /** Base URL of the login magic link (default https://rollo.juanifraga.com/entrar); token and email go in its fragment. */
   LOGIN_LINK_URL?: string;
+  /** R2 storage limit in bytes (decimal string). Defaults to 10 GB, R2's free tier; uploads stop at 95% of it. */
+  STORAGE_LIMIT_BYTES?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;
@@ -87,6 +97,8 @@ export type MediaRow = {
   width: number | null;
   height: number | null;
   size_bytes: number | null;
+  /** Exact byte size of the thumbnail the upload URL is signed for (null: legacy row). */
+  thumb_size_bytes: number | null;
   original_key: string;
   thumb_key: string;
   status: "pending" | "uploaded";

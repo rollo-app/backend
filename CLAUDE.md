@@ -57,11 +57,29 @@ Decisiones de producto que el backend tiene que respetar:
   sumándolos ("A Cami y 3 más les gustó tu foto"). La decisión es un `UPDATE ... WHERE like_notified_at IS NULL OR <= now - 30 min`
   en un batch con la lectura del contador, así dos "me gusta" a la vez no avisan los dos. Sacar un "me gusta" no avisa ni
   descuenta los callados; si nadie más da "me gusta" después de la ventana, los callados no se avisan.
+- **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
+  `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
+  (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).
+  `RL_EXPENSIVE` 20/60 s por usuario (`rateLimit("RL_EXPENSIVE")` después de `requireUser`): registrar/completar media, avatar y su complete, "me gusta" (PUT) y sumar amigos al rollo;
+  `RL_FILES` 300/60 s por usuario para descargas (rollo y destacadas). **Fail open:** sin el binding (o si falla) la request pasa y se loguea una vez. Los límites del contador son por ubicación de Cloudflare.
+  Topes diarios globales (día UTC, tabla `email_counters`, `reserveEmailSlot`): **80** mails de login (`/auth/email/start` → 429 "Hay muchos pedidos de código ahora. Probá en un rato."), de los cuales
+  **40** como máximo para emails sin cuenta (altas nuevas; así el spam de direcciones falsas no deja afuera a los usuarios existentes; la cuenta de App Review no cuenta), y **20** por IP por día (un grupo de amigos se registra junto desde el mismo Wi-Fi) (toda clave por IP usa `ipKey`, `src/lib/ip.ts`: IPv6 se corta al /64, IPv4 y `::ffff:a.b.c.d` quedan como IPv4; vale también para el límite de `auth_codes` y `friend_attempts`); al pasarse de cualquiera de los dos topes de altas nuevas **responde 204 igual que un éxito y no manda nada** (un 429 solo para emails nuevos revelaría si existe la cuenta) y **20** mails de soporte
+  (denuncias/bloqueos). La primera vez que cada día se llega a un tope de login, un mail de alerta a soporte (`alertCapReached`, usa un cupo de soporte). Cada usuario puede usar **3** mails de soporte por 24 h (denuncias + bloqueos)
+  del tope global; el resto se guarda igual pero sin mail (`reports.unemailed` / `blocks.unemailed` quedan en 1; se limpian al salir el mail). El cron (`sendModerationSummary`) manda **un** mail por día UTC a soporte
+  (puede pasarse del tope de soporte) con las denuncias y bloqueos que quedaron sin mail (> 10 min de antigüedad), con los curl de admin, y los marca; solo si hay alguno. Además 50 denuncias y 50 bloqueos por usuario cada 24 h (429).
+  El cron borra los `email_counters` de más de 2 días. Resend gratis: 100/día. En tests los bindings reales tienen límites enormes (`vitest.config.ts`); los tests de límite usan un binding falso por request.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
+- **Límites de subida:** al registrar el celular declara `sizeBytes` y `thumbSizeBytes` (exactos; tope foto 12 MB, video 30 MB, thumb 2 MB) y las URLs de R2 se firman con ese `Content-Length` (header firmado con `allHeaders` de aws4fetch; en dev el `PUT /dev/upload` chequea el largo del body). `complete` compara los tamaños reales con los declarados (o con los topes): si no coinciden borra ambos archivos, da 400 y el registro queda pendiente. El cron borra los pendientes de más de 7 días con sus archivos (`src/lib/pending-cleanup.ts`). Avatar: `POST /me/avatar` pide `sizeBytes` (firmado, hasta 2 MB), borra el pendiente anterior y el cron barre los huérfanos de `avatars/` con más de 1 h, hasta 1000 objetos por corrida y retomando donde quedó la anterior (`cron_state`, clave `avatar_sweep_after`; al llegar al final arranca de nuevo) (`src/lib/avatar-sweep.ts`).
 - **Límite diario por persona**, por tipo, según la fecha local en la zona horaria del viaje
   (default 10 fotos, 3 videos). Las pendientes también cuentan.
+- **Tope de almacenamiento** (`src/lib/storage.ts`): R2 gratis llega a 10 GB y no puede cobrarse nada. El uso es el máximo entre
+  la estimación de D1 (`size_bytes + thumb_size_bytes` de lo no borrado, pendientes incluidas, + 2 MB por usuario con avatar) y la
+  última medición real del bucket (`cron_state`). Al 95% de `STORAGE_LIMIT_BYTES` (default 10 GB decimales) los registros nuevos
+  (`POST /trips/{id}/media`, no los reintentos) y `POST /me/avatar` dan 503; leer nunca se frena. El cron mide el bucket entero
+  como mucho una vez por hora y manda un mail a soporte al cruzar 70%, 85% y 95% (una vez por umbral; se rearma al bajar de 70%).
+  En tests el tope se baja con `api(..., { env: { STORAGE_LIMIT_BYTES } })` o se siembra `storage_measured_bytes` en `cron_state`.
 - **Videos de hasta 15 s.** Fotos a resolución completa (~4000 px, para imprimir) + thumbnail ~800 px.
   La compresión y el thumbnail los hace el celular, no el Worker.
 - **Offline first:** el celular genera el UUID de cada foto y la hora al disparar. Registrar es
@@ -82,14 +100,44 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 - **Auth:** `Authorization: Bearer <token de sesión>`; en D1 solo se guarda el SHA-256 del token (`sessions`) y del código (`auth_codes`). Un middleware de membresía carga `member`/`trip` en las rutas con `{tripId}`.
 
 ```
-src/index.ts          app, /openapi.json, /docs, manejo de errores
-src/schemas.ts        contrato (zod + OpenAPI)
+src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de errores, cron (scheduled)
+src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"). Migrado: media
+src/shared/           errors.ts (errores de dominio → status HTTP)
+src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
 src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta")
-src/routes/           auth.ts, me.ts, users.ts, friends.ts, trips.ts, media.ts, featured.ts, likes.ts, blocks.ts, reports.ts, admin.ts
+src/routes/           módulos sin migrar todavía: auth.ts, me.ts, users.ts, friends.ts, trips.ts, featured.ts, likes.ts, blocks.ts, reports.ts, admin.ts
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
 ```
+
+### Arquitectura por capas
+
+Cada módulo vive en `src/modules/<mod>/` con cuatro capas más sus schemas. El modelo es `src/modules/media/`.
+Los módulos de `src/routes/` se migran de a uno por PR, sin cambiar comportamiento ni contrato (`openapi.json` idéntico).
+
+| Archivo | Hace | No hace |
+|---|---|---|
+| `<mod>.router.ts` | `createRoute` (contrato, middlewares, respuestas documentadas), exporta cada ruta y la monta con `router.openapi(route, controller.fn)` | lógica |
+| `<mod>.controller.ts` | handlers `RouteHandler<typeof xRoute, AppEnv>`: leen el input validado y el contexto (`user`, `trip`, `member`), llaman al service, mapean a la respuesta (presenters) y eligen el status | SQL, reglas de negocio |
+| `<mod>.service.ts` | toda la lógica de negocio: permisos finos, validaciones de estado, orquestar repos, decidir los `batch`, disparar push | importar `hono`, `HTTPException`, `Context` |
+| `<mod>.repository.ts` | todo el SQL. Primer argumento `db: D1Database` | decidir nada |
+| `<mod>.schemas.ts` | schemas zod que usa solo ese módulo | — |
+
+Reglas:
+- **Escrituras como sentencias:** en el repository las lecturas ejecutan y devuelven filas tipadas; las escrituras
+  devuelven un `D1PreparedStatement` sin ejecutar. El service hace `.run()` o las junta en `db.batch([...])`. Es
+  porque D1 no tiene transacciones interactivas: `batch` es la única forma de que varias escrituras sean atómicas, y
+  qué va junto es una decisión de negocio.
+- **Errores de dominio:** el service tira `badRequest` / `forbidden` / `notFound` / `conflict` / `rateLimited`
+  (`src/shared/errors.ts`) con el mensaje en español para el usuario; `onError` los traduce a 400/403/404/409/429.
+  Así un service se puede llamar desde el cron sin HTTP de por medio.
+- **Entre módulos:** un service puede llamar a services de otros módulos (ej. `admin` usa `deleteTripMedia` de
+  media) y pedir *sentencias de escritura* a repos de otros módulos solo para armar un `batch` atómico. Nadie
+  importa el router ni el controller de otro módulo.
+- **Sin interfaces por capa:** services y repos son módulos de funciones tipadas; el contrato es la firma exportada.
+  Interfaces explícitas solo donde hay más de una implementación (storage, mail, push).
+- **Comentarios explicativos** (por qué una regla es así) van junto a la lógica, o sea, en el service.
 
 ## Cómo trabajamos
 
@@ -113,7 +161,7 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 544 tests
+npm test              # 620 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar

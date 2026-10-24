@@ -105,7 +105,7 @@ export function ensureUser(name: string): Promise<string> {
 /** Real avatar flow: POST /me/avatar → PUT the JPEG → POST /me/avatar/complete (the API deletes the previous avatar). */
 async function uploadAvatar(name: string, token: string) {
   const jpeg = await renderAvatar(name, avatarIndex(name));
-  const { upload } = await api<{ upload: string }>("POST", "/me/avatar", undefined, token);
+  const { upload } = await api<{ upload: string }>("POST", "/me/avatar", { sizeBytes: jpeg.length }, token);
   await put(upload, jpeg, "image/jpeg");
   await api("POST", "/me/avatar/complete", undefined, token);
 }
@@ -293,6 +293,7 @@ export async function uploadShot(tripId: string, token: string, shot: Shot, imgI
       width: img.width,
       height: img.height,
       sizeBytes: img.original.length,
+      thumbSizeBytes: img.thumb.length,
       thumbhash: img.thumbhash,
       ...(isVideo && { durationS: Math.round(rand(3, 14.5) * 10) / 10 }),
     },

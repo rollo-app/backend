@@ -1,7 +1,9 @@
+import { assertStorageAvailable } from "../lib/storage";
 import { createRoute } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { deleteAccount } from "../lib/account";
 import { requireUser } from "../lib/auth";
+import { rateLimit } from "../lib/rate-limit";
 import { bearerAuth, createApp, errors, json } from "../lib/openapi";
 import { hiddenMediaSql } from "../lib/moderation";
 import { presignPut } from "../lib/r2";
@@ -9,6 +11,8 @@ import { isRevealed, publicUser } from "../lib/util";
 import { USERNAME_TAKEN_MESSAGE } from "../lib/username";
 import { getNotificationSettings, updateNotificationSettings } from "../lib/settings";
 import {
+  AVATAR_MAX_BYTES,
+  AvatarUploadRequestSchema,
   AvatarUploadSchema,
   MyTripsSchema,
   PushTokenParams,
@@ -78,7 +82,6 @@ me.openapi(updateMeRoute, async (c) => {
 });
 
 const AVATAR_URL_TTL = 15 * 60;
-const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const JPEG_MAGIC = [0xff, 0xd8, 0xff];
 
 /** The stored content type is client-controlled, so the magic bytes are the source of truth. */
@@ -92,18 +95,24 @@ const avatarRoute = createRoute({
   tags,
   summary: "Get a URL to upload your avatar",
   description:
-    "Returns a signed URL to PUT a JPEG straight to R2. Then call POST /me/avatar/complete. " +
+    "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /me/avatar/complete. " +
+    "503 when the storage limit is reached. A previous upload that was never completed is discarded. " +
     "Each call generates a new random file name, so the avatar URL changes when you replace it.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
-  responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(401) },
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  request: { body: { content: { "application/json": { schema: AvatarUploadRequestSchema } }, required: true } },
+  responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(400, 401, 429, 503) },
 });
 
 me.openapi(avatarRoute, async (c) => {
   const user = c.get("user");
+  const { sizeBytes } = c.req.valid("json");
+  await assertStorageAvailable(c.env, sizeBytes);
+  // Don't leave the previous unconfirmed upload orphaned in R2.
+  if (user.pending_avatar_key) await c.env.MEDIA.delete(user.pending_avatar_key);
   const key = `avatars/${user.id}/${crypto.randomUUID()}.jpg`;
   await c.env.DB.prepare("UPDATE users SET pending_avatar_key = ? WHERE id = ?").bind(key, user.id).run();
-  const upload = await presignPut(c.env, key, new URL(c.req.url).origin, AVATAR_URL_TTL);
+  const upload = await presignPut(c.env, key, new URL(c.req.url).origin, sizeBytes, AVATAR_URL_TTL);
   return c.json({ upload, expiresIn: AVATAR_URL_TTL }, 200);
 });
 
@@ -116,8 +125,8 @@ const avatarCompleteRoute = createRoute({
     "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, " +
     "makes it your avatar and deletes the previous one. Otherwise the upload is discarded and the response is a 400.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
-  responses: { 200: json(UserSchema, "Profile with the new avatar"), ...errors(400, 401) },
+  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  responses: { 200: json(UserSchema, "Profile with the new avatar"), ...errors(400, 401, 429) },
 });
 
 me.openapi(avatarCompleteRoute, async (c) => {
