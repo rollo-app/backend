@@ -2,7 +2,7 @@ import { badRequest } from "../shared/errors";
 
 /** Selfies of a moment (`media.paired_media_id`) travel inside their main photo: no likes, comments or featuring of their own. */
 export function rejectSelfie(pairedMediaId: string | null): void {
-  if (pairedMediaId !== null) throw badRequest("Esta foto no se puede usar así: es la selfie de un momento");
+  if (pairedMediaId !== null) throw badRequest("Esta foto es parte de un momento: usá la principal.");
 }
 
 /** For the endpoints that have no lookup of their own (unlike, unfeature). */
