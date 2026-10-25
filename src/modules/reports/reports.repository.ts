@@ -31,6 +31,11 @@ export async function listFeaturedOwners(db: D1Database, mediaId: string, now: n
   return results;
 }
 
+/** A live comment with the media it belongs to (only the fields a report needs). */
+export function findLiveComment(db: D1Database, commentId: string): Promise<{ id: string; media_id: string; user_id: string; text: string } | null> {
+  return db.prepare("SELECT id, media_id, user_id, text FROM comments WHERE id = ? AND deleted_at IS NULL").bind(commentId).first();
+}
+
 export function findMemberUserId(db: D1Database, memberId: string): Promise<{ user_id: string } | null> {
   return db.prepare("SELECT user_id FROM members WHERE id = ?").bind(memberId).first<{ user_id: string }>();
 }
@@ -42,11 +47,13 @@ export function findReportTarget(db: D1Database, userId: string): Promise<Report
 /** Starts flagged as not emailed (`unemailed = 1`): it is cleared once the email goes out. */
 export function insertReport(
   db: D1Database,
-  r: { id: string; reporterId: string; mediaId: string | null; targetUserId: string; tripId: string | null; reason: string; createdAt: number },
+  r: { id: string; reporterId: string; mediaId: string | null; commentId?: string | null; targetUserId: string; tripId: string | null; reason: string; createdAt: number },
 ): D1PreparedStatement {
   return db
-    .prepare("INSERT OR IGNORE INTO reports (id, reporter_id, media_id, target_user_id, trip_id, reason, created_at, unemailed) VALUES (?, ?, ?, ?, ?, ?, ?, 1)")
-    .bind(r.id, r.reporterId, r.mediaId, r.targetUserId, r.tripId, r.reason, r.createdAt);
+    .prepare(
+      "INSERT OR IGNORE INTO reports (id, reporter_id, media_id, comment_id, target_user_id, trip_id, reason, created_at, unemailed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)",
+    )
+    .bind(r.id, r.reporterId, r.mediaId, r.commentId ?? null, r.targetUserId, r.tripId, r.reason, r.createdAt);
 }
 
 export function findTripName(db: D1Database, tripId: string): Promise<{ name: string } | null> {

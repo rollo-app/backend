@@ -104,6 +104,9 @@ export const FeedItemSchema = z
       description: "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos",
     }),
     likedByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you like it" }),
+    commentCount: z.number().int().optional().openapi({
+      description: "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos",
+    }),
   })
   .openapi("FeedItem");
 

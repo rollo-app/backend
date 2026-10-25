@@ -140,6 +140,7 @@ const ALL_ON = {
   tripRevealed: true,
   photoFeatured: true,
   photoLiked: true,
+  photoCommented: true,
 };
 
 describe("GET /me/settings", () => {

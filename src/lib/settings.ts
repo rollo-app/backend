@@ -6,6 +6,7 @@ export const NOTIFICATION_COLUMNS = {
   tripRevealed: "notify_trip_revealed",
   photoFeatured: "notify_photo_featured",
   photoLiked: "notify_photo_liked",
+  photoCommented: "notify_photo_commented",
 } as const;
 
 export type NotificationKind = keyof typeof NOTIFICATION_COLUMNS;

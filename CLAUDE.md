@@ -42,7 +42,7 @@ Decisiones de producto que el backend tiene que respetar:
   `flushPendingPushes()` espera las push diferidas.
   **Tokens:** `PUT /me/push-tokens/{token}` (idempotente; si el token era de otra cuenta pasa a esta: mismo celular, otra
   sesión) y `DELETE` al cerrar sesión; borrar la cuenta los borra todos (tabla `push_tokens`). **Preferencias:**
-  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked } }`
+  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked, photoCommented } }`
   (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/lib/settings.ts`).
   `profileVisibility` sigue en `users`.
 - **"Me gusta"** (`src/modules/likes/`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
@@ -63,6 +63,14 @@ Decisiones de producto que el backend tiene que respetar:
   (`canSeeProfile` en SQL) donde sigue destacada (`{ kind: "featured", userId }`, sin rollo; si valen las dos, gana `trip`). Nunca salen
   denunciadas, de autores bloqueados (en ningún sentido) ni videos; el me gusta queda guardado y la foto vuelve si recuperás el acceso.
   Sin migración (un índice `(user_id, created_at)` queda para cuando haga falta).
+- **Comentarios** (`src/modules/comments/`, `src/lib/comments.ts`, tabla `comments`): `GET/POST /media/{mediaId}/comments` y `DELETE /comments/{commentId}`.
+  Solo fotos (un video da 400 al comentar y lista vacía) y **solo miembros activos del rollo ya revelado**: sin camino por perfiles (los comentarios
+  muestran nombres y charla del rollo), si no 404; tampoco si hay bloqueo con el autor de la foto o la denunciaste. Texto plano de 1 a 500 caracteres
+  (con trim). Borra el autor del comentario o el de la foto (soft delete, `deleted_at`; otro miembro 403). No se ven los de usuarios bloqueados (cualquier
+  sentido), los borrados ni los que denunciaste; el feed revelado trae `commentCount` con esa misma regla (`commentCountSql`). Se denuncia con
+  `POST /reports { commentId }` (`reports.comment_id`, `media_id` queda null para no ocultar la foto; solo miembros activos; el mail a soporte lleva el
+  texto). Push `photoCommented` ("Cami comentó tu foto" al autor y "Cami también comentó una foto" a quienes ya comentaron) con la misma ventana de 30 min
+  por foto que los "me gusta" (`media.comment_notified_at` / `comments_since_notified`); abre `/photo/<id>?tripId=<trip>&comments=1`. Borrar la cuenta borra sus comentarios.
 - **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
   `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
   (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).

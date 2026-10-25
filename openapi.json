@@ -367,6 +367,10 @@
           "photoLiked": {
             "type": "boolean",
             "description": "Someone likes a photo of yours"
+          },
+          "photoCommented": {
+            "type": "boolean",
+            "description": "Someone comments on a photo of yours, or on one you commented on"
           }
         },
         "required": [
@@ -375,7 +379,8 @@
           "tripStarted",
           "tripRevealed",
           "photoFeatured",
-          "photoLiked"
+          "photoLiked",
+          "photoCommented"
         ]
       },
       "UpdateUserSettingsRequest": {
@@ -407,6 +412,10 @@
               "photoLiked": {
                 "type": "boolean",
                 "description": "Someone likes a photo of yours"
+              },
+              "photoCommented": {
+                "type": "boolean",
+                "description": "Someone comments on a photo of yours, or on one you commented on"
               }
             },
             "additionalProperties": false
@@ -777,6 +786,12 @@
             "minLength": 1,
             "maxLength": 64,
             "description": "Person to report"
+          },
+          "commentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Comment to report (on a photo of a rollo you are in)"
           }
         },
         "required": [
@@ -1501,6 +1516,10 @@
           "likedByMe": {
             "type": "boolean",
             "description": "Only after the reveal: you like it"
+          },
+          "commentCount": {
+            "type": "integer",
+            "description": "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos"
           }
         },
         "required": [
@@ -1652,53 +1671,38 @@
           "lng": -71.475
         }
       },
-      "MyLikes": {
+      "CommentList": {
         "type": "object",
         "properties": {
-          "items": {
+          "comments": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LikedPhoto"
-            },
-            "description": "Most recent like first"
-          },
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "null on the last page"
-          },
-          "total": {
-            "type": "integer",
-            "description": "How many liked photos you can see today, across all pages"
+              "$ref": "#/components/schemas/Comment"
+            }
           }
         },
         "required": [
-          "items",
-          "nextCursor",
-          "total"
+          "comments"
         ]
       },
-      "LikedPhoto": {
+      "Comment": {
         "type": "object",
         "properties": {
-          "mediaId": {
+          "id": {
             "type": "string",
             "format": "uuid"
           },
-          "likedAt": {
+          "text": {
+            "type": "string"
+          },
+          "createdAt": {
             "type": "integer",
-            "description": "When you liked it (epoch ms)"
-          },
-          "authorUserId": {
-            "type": "string",
-            "format": "uuid"
+            "description": "Epoch milliseconds"
           },
           "author": {
             "type": "object",
             "properties": {
-              "id": {
+              "userId": {
                 "type": "string",
                 "format": "uuid"
               },
@@ -1719,80 +1723,38 @@
               }
             },
             "required": [
-              "id",
+              "userId",
               "name",
               "username",
               "avatarUrl"
-            ],
-            "description": "Who took it (for the badge on the thumbnail)"
-          },
-          "thumbPath": {
-            "type": "string",
-            "example": "/trips/<tripId>/media/<mediaId>/thumb"
-          },
-          "thumbHash": {
-            "type": [
-              "string",
-              "null"
             ]
           },
-          "source": {
-            "$ref": "#/components/schemas/LikedPhotoSource"
+          "canDelete": {
+            "type": "boolean",
+            "description": "You wrote it, or the photo is yours"
           }
         },
         "required": [
-          "mediaId",
-          "likedAt",
-          "authorUserId",
+          "id",
+          "text",
+          "createdAt",
           "author",
-          "thumbPath",
-          "thumbHash",
-          "source"
+          "canDelete"
         ]
       },
-      "LikedPhotoSource": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "trip"
-                ]
-              },
-              "tripId": {
-                "type": "string",
-                "format": "uuid"
-              }
-            },
-            "required": [
-              "kind",
-              "tripId"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "featured"
-                ]
-              },
-              "userId": {
-                "type": "string",
-                "format": "uuid",
-                "description": "Owner of the profile where it is featured"
-              }
-            },
-            "required": [
-              "kind",
-              "userId"
-            ]
+      "CreateCommentRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Plain text, trimmed, 1 to 500 characters"
           }
-        ],
-        "description": "Where you can open the photo today. `trip`: you are an active member of its revealed rollo. `featured`: you see it on that profile (the rollo is never revealed). If both work, it is `trip`."
+        },
+        "required": [
+          "text"
+        ]
       }
     },
     "parameters": {}
@@ -3046,8 +3008,8 @@
         "tags": [
           "Reports"
         ],
-        "summary": "Report a photo or a person",
-        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+        "summary": "Report a photo, a comment or a person",
+        "description": "Send exactly one of `mediaId`, `commentId` or `userId`. Idempotent: reporting the same photo, comment or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos); a reported comment, from their comment lists and counts. At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo or comment is not one the reporter can see (a comment: only active members of its rollo); 400 if it is theirs.",
         "security": [
           {
             "bearerAuth": []
@@ -3944,7 +3906,7 @@
           "Media"
         ],
         "summary": "Trip feed",
-        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, and its likes (`likeCount`, `likedByMe`). Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`). Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
         "security": [
           {
             "bearerAuth": []
@@ -4667,13 +4629,13 @@
         }
       }
     },
-    "/me/likes": {
+    "/media/{mediaId}/comments": {
       "get": {
         "tags": [
-          "Likes"
+          "Comments"
         ],
-        "summary": "Photos you liked",
-        "description": "Only yours. The photos you liked and can open today, most recent like first, paginated with `cursor`. Filtered by the server: a photo drops out if its rollo is not revealed or you left it and no profile you can see still features it, the profile became private, you are not friends anymore, the photo was un-featured, there is a block with its author or you reported it (the like is kept and the photo comes back if you regain access). `source` says where to open it: the rollo wins over a profile.",
+        "summary": "List the comments of a photo",
+        "description": "Oldest first. Only active members of the photo's rollo, once it is revealed: otherwise 404 (also with a block with the photo's author). Leaves out deleted comments, comments of users blocked in either direction and the ones you reported. A video has none (empty list).",
         "security": [
           {
             "bearerAuth": []
@@ -4682,34 +4644,84 @@
         "parameters": [
           {
             "schema": {
-              "type": "string",
-              "description": "`nextCursor` of the previous page"
+              "type": "string"
             },
-            "required": false,
-            "description": "`nextCursor` of the previous page",
-            "name": "cursor",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "description": "Page size (default 60)"
-            },
-            "required": false,
-            "description": "Page size (default 60)",
-            "name": "limit",
-            "in": "query"
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
           }
         ],
         "responses": {
           "200": {
-            "description": "A page of liked photos",
+            "description": "Comments",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MyLikes"
+                  "$ref": "#/components/schemas/CommentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "Comment on a photo",
+        "description": "Plain text, up to 500 characters. Same permissions as listing; 400 for a video. Notifies the photo's author and whoever commented before (`photoCommented`), at most once every 30 minutes per photo: the comments in between are counted and added to the next push.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new comment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
                 }
               }
             }
@@ -4726,6 +4738,85 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/comments/{commentId}": {
+      "delete": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "Delete a comment",
+        "description": "The author of the comment or the author of its photo. Another member of the rollo gets 403. 404 if the comment does not exist, is already deleted, or you can't see its photo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "commentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
