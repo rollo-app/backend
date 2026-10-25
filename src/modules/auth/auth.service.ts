@@ -12,7 +12,8 @@ import {
 import { ipKey } from "../../lib/ip";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../../lib/login-code";
 import { badRequest, rateLimited } from "../../shared/errors";
-import type { Env, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { UserRow } from "../../types";
 import * as repo from "./auth.repository";
 
 const MINUTE = 60_000;
@@ -33,7 +34,7 @@ const LINK_ERROR = "El link venció o ya se usó. Pedí otro código.";
 export type StartResult = "sent" | "send_failed";
 
 export async function startLogin(
-  env: Env,
+  deps: Pick<Deps, "db" | "mailer" | "config">,
   input: { email: string; linkChallenge?: string; rawIp: string | undefined },
 ): Promise<StartResult> {
   const { email, linkChallenge } = input;
@@ -41,38 +42,38 @@ export async function startLogin(
   const ip = input.rawIp ? ipKey(input.rawIp) : null;
   const tooMany = () => rateLimited("Esperá un momento antes de pedir otro código");
 
-  if ((await repo.countCodes(env.DB, "email", email, now - EMAIL_MIN_GAP)) > 0) throw tooMany();
-  if ((await repo.countCodes(env.DB, "email", email, now - HOUR)) >= EMAIL_PER_HOUR) throw tooMany();
-  if (ip && (await repo.countCodes(env.DB, "ip", ip, now - HOUR)) >= IP_PER_HOUR) throw tooMany();
+  if ((await repo.countCodes(deps.db, "email", email, now - EMAIL_MIN_GAP)) > 0) throw tooMany();
+  if ((await repo.countCodes(deps.db, "email", email, now - HOUR)) >= EMAIL_PER_HOUR) throw tooMany();
+  if (ip && (await repo.countCodes(deps.db, "ip", ip, now - HOUR)) >= IP_PER_HOUR) throw tooMany();
 
-  const isReview = !!env.REVIEW_EMAIL && !!env.REVIEW_CODE && email === env.REVIEW_EMAIL.trim().toLowerCase();
-  const code = isReview ? env.REVIEW_CODE! : generateLoginCode();
+  const isReview = !!deps.config.reviewEmail && !!deps.config.reviewCode && email === deps.config.reviewEmail.trim().toLowerCase();
+  const code = isReview ? deps.config.reviewCode! : generateLoginCode();
   // Global daily caps, to keep room for support emails within Resend's free quota. Emails with no account yet get only part
   // of the budget, so spam of fake addresses cannot lock out existing users. The App Review account sends nothing.
   let isNewUser = false;
   let ipKind: EmailKind | null = null;
   if (!isReview) {
-    isNewUser = !(await repo.userExists(env.DB, email));
+    isNewUser = !(await repo.userExists(deps.db, email));
     if (isNewUser) {
       // The new-user caps answer 204 like a success and send nothing: a 429 only for new emails would reveal whether an account exists.
       if (ip) {
         ipKind = `login_new_ip:${ip}`;
-        if (!(await reserveEmailSlot(env.DB, ipKind, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY))) {
+        if (!(await reserveEmailSlot(deps.db, ipKind, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY))) {
           console.warn("[auth] daily new-user login email cap reached for an IP");
           return "sent";
         }
       }
-      if (!(await reserveEmailSlot(env.DB, "login_new", LOGIN_NEW_USER_EMAILS_PER_DAY))) {
+      if (!(await reserveEmailSlot(deps.db, "login_new", LOGIN_NEW_USER_EMAILS_PER_DAY))) {
         console.warn("[auth] daily login_new email cap reached");
-        await alertCapReached(env, "login_new");
+        await alertCapReached(deps, "login_new");
         return "sent";
       }
     }
-    if (!(await reserveEmailSlot(env.DB, "login", LOGIN_EMAILS_PER_DAY))) {
-      if (isNewUser) await releaseEmailSlot(env.DB, "login_new");
-      if (ipKind) await releaseEmailSlot(env.DB, ipKind);
+    if (!(await reserveEmailSlot(deps.db, "login", LOGIN_EMAILS_PER_DAY))) {
+      if (isNewUser) await releaseEmailSlot(deps.db, "login_new");
+      if (ipKind) await releaseEmailSlot(deps.db, ipKind);
       console.warn("[auth] daily login email cap reached");
-      await alertCapReached(env, "login");
+      await alertCapReached(deps, "login");
       throw rateLimited("Hay muchos pedidos de código ahora. Probá en un rato.");
     }
   }
@@ -80,9 +81,9 @@ export async function startLogin(
   const linkToken = linkChallenge ? generateToken() : null;
   const id = crypto.randomUUID();
 
-  await env.DB.batch([
-    repo.invalidateOpenCodes(env.DB, email, now),
-    repo.insertCode(env.DB, {
+  await deps.db.batch([
+    repo.invalidateOpenCodes(deps.db, email, now),
+    repo.insertCode(deps.db, {
       id,
       email,
       codeHash: await codeHash(email, code),
@@ -96,14 +97,14 @@ export async function startLogin(
 
   if (!isReview) {
     try {
-      await sendLoginCode(env, email, code, linkToken);
+      await sendLoginCode(deps, email, code, linkToken);
     } catch (err) {
       console.error(err);
       // Don't burn the user's rate limit for an email we couldn't send.
-      await repo.deleteCode(env.DB, id).run();
-      await releaseEmailSlot(env.DB, "login");
-      if (isNewUser) await releaseEmailSlot(env.DB, "login_new");
-      if (ipKind) await releaseEmailSlot(env.DB, ipKind);
+      await repo.deleteCode(deps.db, id).run();
+      await releaseEmailSlot(deps.db, "login");
+      if (isNewUser) await releaseEmailSlot(deps.db, "login_new");
+      if (ipKind) await releaseEmailSlot(deps.db, ipKind);
       return "send_failed";
     }
   }

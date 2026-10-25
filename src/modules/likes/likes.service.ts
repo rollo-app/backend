@@ -4,7 +4,8 @@ import { isRevealed } from "../../lib/util";
 import { notifyLike } from "../../lib/likes";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, notFound } from "../../shared/errors";
-import type { Env, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { UserRow } from "../../types";
 import * as repo from "./likes.repository";
 
 /** Likes ("me gusta") on photos: one counter per photo, whether the like came from its rollo or from a profile. */
@@ -39,13 +40,13 @@ async function likeablePhoto(db: D1Database, viewerId: string, mediaId: string, 
 }
 
 /** Likes the photo. `notify` is the push (with its anti-spam decision) when the like is new and the author is someone else, else null. */
-export async function likePhoto(env: Env, viewer: Pick<UserRow, "id" | "name" | "username">, mediaId: string): Promise<{ notify: AfterResponse }> {
-  const db = env.DB;
+export async function likePhoto(deps: Pick<Deps, "db" | "push">, viewer: Pick<UserRow, "id" | "name" | "username">, mediaId: string): Promise<{ notify: AfterResponse }> {
+  const db = deps.db;
   const viewerId = viewer.id;
   const now = Date.now();
   const photo = await likeablePhoto(db, viewerId, mediaId, now);
   const inserted = await repo.insertLike(db, viewerId, photo.id, now).run();
-  return { notify: inserted.meta.changes > 0 && photo.authorUserId !== viewerId ? () => notifyLike(env, viewer, photo, now) : null };
+  return { notify: inserted.meta.changes > 0 && photo.authorUserId !== viewerId ? () => notifyLike(deps, viewer, photo, now) : null };
 }
 
 export async function unlikePhoto(db: D1Database, viewerId: string, mediaId: string): Promise<void> {

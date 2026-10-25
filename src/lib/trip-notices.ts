@@ -1,18 +1,19 @@
-import { sendPush, type PushMessage } from "./push";
+import type { Deps } from "../container";
+import { sendPush, type PushContent } from "./push";
 import { isRevealed } from "./util";
-import type { Env, TripRow } from "../types";
+import type { TripRow } from "../types";
 
 /**
  * "Arrancó" and "Se reveló" pushes. The cron (every 5 min) and the admin's manual reveal both claim the trip
  * first (`*_notified_at` set only if still null, in one statement), so whoever claims it is the only one who sends.
  */
 
-export function tripStartedMessage(trip: Pick<TripRow, "id" | "name" | "daily_photo_limit">): PushMessage {
+export function tripStartedMessage(trip: Pick<TripRow, "id" | "name" | "daily_photo_limit">): PushContent {
   const n = trip.daily_photo_limit;
   return { body: `Arrancó ${trip.name}. Tenés ${n} ${n === 1 ? "foto" : "fotos"} hoy.`, url: `/roll?trip=${trip.id}` };
 }
 
-export function tripRevealedMessage(trip: Pick<TripRow, "id" | "name">): PushMessage {
+export function tripRevealedMessage(trip: Pick<TripRow, "id" | "name">): PushContent {
   return { body: `Se reveló ${trip.name}`, url: `/reveal?trip=${trip.id}` };
 }
 
@@ -51,13 +52,13 @@ export async function activeMemberIds(db: D1Database, tripId: string): Promise<s
 }
 
 /** Sends "Se reveló" to the active members (except the actor, when the admin revealed it). Call after claimRevealed. */
-export async function sendTripRevealed(env: Pick<Env, "DB">, trip: Pick<TripRow, "id" | "name">, actorId?: string): Promise<void> {
-  await sendPush(env, await activeMemberIds(env.DB, trip.id), "tripRevealed", tripRevealedMessage(trip), { actorId });
+export async function sendTripRevealed(deps: Pick<Deps, "db" | "push">, trip: Pick<TripRow, "id" | "name">, actorId?: string): Promise<void> {
+  await sendPush(deps, await activeMemberIds(deps.db, trip.id), "tripRevealed", tripRevealedMessage(trip), { actorId });
 }
 
 /** Cron: announces the trips that started or revealed since the last run. Idempotent. */
-export async function runTripNotices(env: Pick<Env, "DB">, now = Date.now()): Promise<void> {
-  const db = env.DB;
+export async function runTripNotices(deps: Pick<Deps, "db" | "push">, now = Date.now()): Promise<void> {
+  const { db } = deps;
 
   // Started first, so a trip that started and revealed between two runs is marked without saying "Arrancó".
   const started = await db
@@ -67,7 +68,7 @@ export async function runTripNotices(env: Pick<Env, "DB">, now = Date.now()): Pr
   for (const trip of started.results) {
     if (!(await claimStarted(db, trip.id, now))) continue;
     if (!shouldAnnounceStart(trip, now)) continue;
-    await sendPush(env, await activeMemberIds(db, trip.id), "tripStarted", tripStartedMessage(trip));
+    await sendPush(deps, await activeMemberIds(db, trip.id), "tripStarted", tripStartedMessage(trip));
   }
 
   const revealed = await db
@@ -76,6 +77,6 @@ export async function runTripNotices(env: Pick<Env, "DB">, now = Date.now()): Pr
     .all<TripRow>();
   for (const trip of revealed.results) {
     if (!(await claimRevealed(db, trip.id, now))) continue;
-    await sendTripRevealed(env, trip);
+    await sendTripRevealed(deps, trip);
   }
 }

@@ -2,7 +2,8 @@ import { sendBlockEmail } from "../../lib/email";
 import { pairKey } from "../../lib/friend-code";
 import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../../lib/moderation";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
-import type { Env, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { UserRow } from "../../types";
 import * as repo from "./blocks.repository";
 
 export function listBlocked(db: D1Database, blockerId: string): Promise<repo.BlockedUserRow[]> {
@@ -10,9 +11,9 @@ export function listBlocked(db: D1Database, blockerId: string): Promise<repo.Blo
 }
 
 /** Idempotent block. Also removes the friendship and the blocked user's photos from the blocker's featured list. */
-export async function blockUser(env: Env, blocker: UserRow, targetId: string, adminBase: string): Promise<void> {
+export async function blockUser(deps: Pick<Deps, "db" | "mailer" | "config">, blocker: UserRow, targetId: string, adminBase: string): Promise<void> {
   const me = blocker.id;
-  const db = env.DB;
+  const db = deps.db;
   if (targetId === me) throw badRequest("No podés bloquearte");
   const blocked = await repo.findBlockTarget(db, targetId);
   if (!blocked) throw notFound("No existe ese usuario");
@@ -25,7 +26,7 @@ export async function blockUser(env: Env, blocker: UserRow, targetId: string, ad
   ]);
   if (inserted!.meta.changes === 1 && (await withinModerationEmailCap(db, me))) {
     try {
-      await sendBlockEmail(env, {
+      await sendBlockEmail(deps, {
         blocker: { id: blocker.id, name: blocker.name, username: blocker.username, email: blocker.email },
         blocked: { id: blocked.id, name: blocked.name, username: blocked.username, email: blocked.email },
         adminBase,

@@ -2,37 +2,17 @@ import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
 import { hashToken } from "./auth";
 import { ipKey } from "./ip";
-import type { AppEnv, Env, RateLimitBinding } from "../types";
+import type { RateLimitBucket } from "../ports/rate-limiter";
+import type { AppEnv } from "../types";
 
 export const RATE_LIMIT_MESSAGE = "Estás yendo muy rápido. Probá de nuevo en un minuto.";
 
-type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_EXPENSIVE" | "RL_FILES";
-const warned = new Set<string>();
-
-/** Consumes one hit of `key`. Fails open: without the binding (or if it throws) the request goes through. */
-async function allowed(env: Env, name: LimiterName, key: string): Promise<boolean> {
-  const binding: RateLimitBinding | undefined = env[name];
-  if (!binding) {
-    if (!warned.has(name)) {
-      warned.add(name);
-      console.warn(`[rate-limit] binding ${name} is missing: not limiting`);
-    }
-    return true;
-  }
-  try {
-    return (await binding.limit({ key })).success;
-  } catch (err) {
-    console.error(`[rate-limit] ${name} failed`, err);
-    return true;
-  }
-}
-
 const tooFast = () => new HTTPException(429, { message: RATE_LIMIT_MESSAGE });
 
-/** Per-route limiter keyed by user id: use after `requireUser`. */
-export const rateLimit = (name: "RL_EXPENSIVE" | "RL_FILES") =>
+/** Per-route limiter keyed by user id (bucket `expensive` or `files`): use after `requireUser`. */
+export const rateLimit = (bucket: Extract<RateLimitBucket, "expensive" | "files">) =>
   createMiddleware<AppEnv>(async (c, next) => {
-    if (!(await allowed(c.env, name, `u:${c.get("user").id}`))) throw tooFast();
+    if (!(await c.get("deps").rateLimiter.limit(bucket, `u:${c.get("user").id}`))) throw tooFast();
     await next();
   });
 
@@ -42,9 +22,10 @@ const SKIPPED = new Set(["/openapi.json", "/docs"]);
 /**
  * App-level limiter, before auth runs. It keys by a hash of the Bearer token (one key per session, so friends sharing
  * a Wi-Fi or mobile IP do not share a budget) or, without token, by IP. Tokens are not validated here, so with a token
- * the IP also gets a roomier `RL_IP` budget: inventing tokens does not dodge the limit.
+ * the IP also gets a roomier `ip` budget: inventing tokens does not dodge the limit.
  */
 export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
+  const { rateLimiter } = c.get("deps");
   const path = new URL(c.req.url).pathname;
   if (SKIPPED.has(path) || path.startsWith("/dev/upload/")) return next();
   const rawIp = c.req.header("cf-connecting-ip");
@@ -52,9 +33,9 @@ export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (token) {
-    if (!(await allowed(c.env, "RL_GLOBAL", `t:${(await hashToken(token)).slice(0, 32)}`))) throw tooFast();
-    if (!(await allowed(c.env, "RL_IP", `ip:${ip}`))) throw tooFast();
-  } else if (!(await allowed(c.env, "RL_GLOBAL", `ip:${ip}`))) {
+    if (!(await rateLimiter.limit("global", `t:${(await hashToken(token)).slice(0, 32)}`))) throw tooFast();
+    if (!(await rateLimiter.limit("ip", `ip:${ip}`))) throw tooFast();
+  } else if (!(await rateLimiter.limit("global", `ip:${ip}`))) {
     throw tooFast();
   }
   await next();

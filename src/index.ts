@@ -3,7 +3,8 @@ import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { globalRateLimit } from "./lib/rate-limit";
 import { checkPushReceipts } from "./lib/push";
-import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
+import { buildDeps, depsFor } from "./container";
+import { DEV_UPLOAD_PREFIX } from "./infra/r2/dev-upload-presigner";
 import { runTripNotices } from "./lib/trip-notices";
 import admin from "./modules/admin/admin.router";
 import auth from "./modules/auth/auth.router";
@@ -27,6 +28,12 @@ import usernames from "./modules/usernames/usernames.router";
 import type { Env } from "./types";
 
 const app = createApp();
+
+// Before every route and the rate limiter: services and middlewares reach everything external through `deps`.
+app.use("*", async (c, next) => {
+  c.set("deps", depsFor(c.env));
+  await next();
+});
 
 app.use("*", globalRateLimit);
 
@@ -66,19 +73,20 @@ app.doc31("/openapi.json", {
 
 app.get("/docs", swaggerUI({ url: "/openapi.json", title: "Rollo API" }));
 
-// Development only (DEV_LOCAL_UPLOADS=1): receives the PUTs that go straight to R2 in production.
+// Development only (when `deps.devUploads` exists, see the container): receives the PUTs that go straight to R2 in production.
 // Not part of the contract; when disabled, the route does not exist.
 app.put(`${DEV_UPLOAD_PREFIX}*`, async (c, next) => {
-  if (!devUploadsEnabled(c.env)) return next();
+  const { devUploads, storage } = c.get("deps");
+  if (!devUploads) return next();
   const key = decodeURIComponent(new URL(c.req.url).pathname.slice(DEV_UPLOAD_PREFIX.length));
-  const verified = await verifyDevUpload(c.env, key, c.req.query("exp"), c.req.query("sig"), c.req.query("size"));
+  const verified = await devUploads.verify(key, c.req.query("exp"), c.req.query("sig"), c.req.query("size"));
   if (!verified) return c.json({ error: "Firma inválida o vencida" }, 403);
   const contentType = c.req.header("content-type");
   const bytes = await c.req.arrayBuffer();
   if (verified.size !== null && bytes.byteLength !== verified.size) {
     return c.json({ error: "El tamaño del archivo no coincide con el firmado" }, 403);
   }
-  await c.env.MEDIA.put(key, bytes, contentType ? { httpMetadata: { contentType } } : undefined);
+  await storage.put(key, bytes, contentType ? { contentType } : undefined);
   return c.body(null, 200);
 });
 
@@ -94,8 +102,9 @@ app.onError((err, c) => {
 /** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads and the sweep of orphan avatar files. */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
+  const deps = buildDeps(env);
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(deps, now), checkPushReceipts(deps, now), cleanupStalePending(deps, now), sweepOrphanAvatars(deps, now), checkStorage(deps, now), sendModerationSummary(deps, now), purgeOldEmailCounters(deps.db, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

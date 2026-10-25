@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
+import { buildDeps } from "../src/container";
 import { describe, expect, it } from "vitest";
-import { devSentBlocks, devSentCodes, devSentNotices, devSentReports } from "../src/lib/email";
+import { devSentBlocks, devSentCodes, devSentNotices, devSentReports } from "../src/infra/dev/dev-mailer";
 import { sendModerationSummary } from "../src/lib/moderation-summary";
 import { LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
 import { api, newTrip, requestCode, signUp, uploadMedia, DAY } from "./helpers";
@@ -288,7 +289,7 @@ describe("daily moderation summary", () => {
   it("sends one email listing what was not emailed, then clears it, even over the support cap", async () => {
     const { a, b } = await pending();
     devSentNotices.length = 0;
-    await sendModerationSummary(env, later());
+    await sendModerationSummary(buildDeps(env), later());
     expect(devSentNotices).toHaveLength(1);
     const { subject, text } = devSentNotices[0]!;
     expect(subject).toContain("1 denuncias y 1 bloqueos");
@@ -300,17 +301,17 @@ describe("daily moderation summary", () => {
 
   it("sends nothing when there is nothing pending, and only one per day", async () => {
     devSentNotices.length = 0;
-    await sendModerationSummary(env, later());
+    await sendModerationSummary(buildDeps(env), later());
     expect(devSentNotices).toHaveLength(0);
     await pending();
     devSentNotices.length = 0;
-    await sendModerationSummary(env, later());
+    await sendModerationSummary(buildDeps(env), later());
     // New pending rows the same day wait for tomorrow.
     const c = await signUp();
     await env.DB.prepare("INSERT INTO blocks (blocker_id, blocked_id, created_at, unemailed) VALUES (?, ?, ?, 1)").bind(c.userId, await bareUser(), Date.now() - 3600_000).run();
-    await sendModerationSummary(env, later());
+    await sendModerationSummary(buildDeps(env), later());
     expect(devSentNotices).toHaveLength(1);
-    await sendModerationSummary(env, later() + DAY);
+    await sendModerationSummary(buildDeps(env), later() + DAY);
     expect(devSentNotices).toHaveLength(2);
   });
 
@@ -319,10 +320,10 @@ describe("daily moderation summary", () => {
     const b = await signUp();
     devSentNotices.length = 0;
     await api("POST", "/reports", { token: a.token, body: { userId: b.userId, reason: "abuse" } });
-    await sendModerationSummary(env, later());
+    await sendModerationSummary(buildDeps(env), later());
     expect(devSentNotices).toHaveLength(0);
     await env.DB.prepare("UPDATE reports SET unemailed = 1").run();
-    await sendModerationSummary(env, Date.now());
+    await sendModerationSummary(buildDeps(env), Date.now());
     expect(devSentNotices).toHaveLength(0);
   });
 });

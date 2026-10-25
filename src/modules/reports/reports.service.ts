@@ -1,12 +1,15 @@
 import { sendReportEmail } from "../../lib/email";
 import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../../lib/moderation";
 import { canSeeProfile } from "../../lib/profile-access";
-import { presignGet } from "../../lib/r2";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
-import type { Env, MediaRow, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { MediaRow, UserRow } from "../../types";
 import { deleteFeatured } from "../featured/featured.repository";
 import type { CreateReportInput } from "./reports.schemas";
 import * as repo from "./reports.repository";
+
+/** How long the link to the reported file in the support email stays valid. */
+const MEDIA_LINK_TTL = 7 * 24 * 3600;
 
 /** Whether the viewer may see the photo: active member of its trip, or a featured photo on a profile they can see. */
 async function canSeeMedia(db: D1Database, viewerId: string, media: Pick<MediaRow, "id" | "trip_id">): Promise<boolean> {
@@ -17,8 +20,8 @@ async function canSeeMedia(db: D1Database, viewerId: string, media: Pick<MediaRo
 }
 
 /** Stores a report (idempotent) and emails support within the caps. A reported photo leaves the reporter's featured list. */
-export async function createReport(env: Env, viewer: UserRow, input: CreateReportInput, adminBase: string): Promise<void> {
-  const db = env.DB;
+export async function createReport(deps: Pick<Deps, "db" | "storage" | "mailer" | "config">, viewer: UserRow, input: CreateReportInput, adminBase: string): Promise<void> {
+  const db = deps.db;
   const { reason, mediaId, userId } = input;
 
   let targetId: string;
@@ -58,7 +61,7 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
     try {
       if (!(await withinModerationEmailCap(db, viewer.id))) return;
       const trip = media ? await repo.findTripName(db, media.trip_id) : null;
-      await sendReportEmail(env, {
+      await sendReportEmail(deps, {
         reason,
         reporter: { id: viewer.id, name: viewer.name, username: viewer.username, email: viewer.email },
         target: { id: target.id, name: target.name, username: target.username, email: target.email },
@@ -69,7 +72,7 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
             type: media.type,
             caption: media.caption,
             takenAt: media.taken_at,
-            url: await presignGet(env, media.original_key),
+            url: await deps.storage.presignGet(media.original_key, MEDIA_LINK_TTL),
           },
         }),
         adminBase,

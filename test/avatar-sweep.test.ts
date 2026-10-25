@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { buildDeps } from "../src/container";
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
@@ -18,7 +19,7 @@ describe("sweepOrphanAvatars", () => {
     for (const k of [avatar, pending, orphan]) await put(k);
     await env.DB.prepare("UPDATE users SET avatar_key = ?, pending_avatar_key = ? WHERE id = ?").bind(avatar, pending, userId).run();
 
-    await sweepOrphanAvatars(env, Date.now() + 2 * HOUR);
+    await sweepOrphanAvatars(buildDeps(env), Date.now() + 2 * HOUR);
     expect(await exists(avatar)).toBe(true);
     expect(await exists(pending)).toBe(true);
     expect(await exists(orphan)).toBe(false);
@@ -28,16 +29,16 @@ describe("sweepOrphanAvatars", () => {
     const { userId } = await signUp();
     const fresh = key(userId);
     await put(fresh);
-    await sweepOrphanAvatars(env, Date.now() + 30 * 60 * 1000);
+    await sweepOrphanAvatars(buildDeps(env), Date.now() + 30 * 60 * 1000);
     expect(await exists(fresh)).toBe(true);
-    await sweepOrphanAvatars(env, Date.now() + 2 * HOUR);
+    await sweepOrphanAvatars(buildDeps(env), Date.now() + 2 * HOUR);
     expect(await exists(fresh)).toBe(false);
   });
 
   it("deletes objects of users that no longer exist", async () => {
     const ghost = key("deleted-user");
     await put(ghost);
-    await sweepOrphanAvatars(env, Date.now() + 2 * HOUR);
+    await sweepOrphanAvatars(buildDeps(env), Date.now() + 2 * HOUR);
     expect(await exists(ghost)).toBe(false);
   });
 
@@ -56,7 +57,7 @@ describe("sweepOrphanAvatars", () => {
         referenced.push(k);
       } else orphans.push(k);
     }
-    await sweepOrphanAvatars(env, Date.now() + 2 * HOUR);
+    await sweepOrphanAvatars(buildDeps(env), Date.now() + 2 * HOUR);
     for (const k of referenced) expect(await exists(k)).toBe(true);
     for (const k of orphans) expect(await exists(k)).toBe(false);
     for (let i = 0; i < 120; i += 2) await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(`bulk-${i}`).run();
@@ -72,12 +73,12 @@ describe("sweepOrphanAvatars", () => {
 
     // Cap smaller than the listing: the first run leaves the tail untouched and saves its position.
     const opts = { maxObjects: total - 2, pageSize: total - 2 };
-    await sweepOrphanAvatars(env, later, opts);
+    await sweepOrphanAvatars(buildDeps(env), later, opts);
     expect(await exists(keys[3]!)).toBe(true);
     expect((await state())?.value).toBeDefined();
 
     // The second run resumes after that key, reaches the end and resets.
-    await sweepOrphanAvatars(env, later, opts);
+    await sweepOrphanAvatars(buildDeps(env), later, opts);
     expect(await exists(keys[3]!)).toBe(false);
     expect(await state()).toBeNull();
   });

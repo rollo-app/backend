@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { vi } from "vitest";
 import app from "../src/index";
-import { devSentCodes } from "../src/lib/email";
+import { devSentCodes } from "../src/infra/dev/dev-mailer";
 
 export const MINUTE = 60_000;
 export const HOUR = 60 * MINUTE;

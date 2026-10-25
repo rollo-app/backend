@@ -18,7 +18,7 @@ export const likeRoute = createRoute({
     "Notifies the author (`photoLiked`) at most once every 30 minutes per photo: the likes in between are counted and added " +
     "to the next push (\"A Cami y 3 más les gustó tu foto\").",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  middleware: [requireUser, rateLimit("expensive")] as const,
   request: { params: MediaParams },
   responses: { 204: { description: "Liked" }, ...errors(400, 401, 404, 429) },
 });

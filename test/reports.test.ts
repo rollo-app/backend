@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { devSentBlocks, devSentReports } from "../src/lib/email";
+import { devSentBlocks, devSentReports } from "../src/infra/dev/dev-mailer";
 import { photoWithMetadata } from "./jpeg-fixture";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 

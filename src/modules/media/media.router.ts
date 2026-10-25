@@ -26,7 +26,7 @@ export const registerRoute = createRoute({
     "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. " +
     "503 when the storage limit is reached (new registrations only, never retries).",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireTripMember] as const,
+  middleware: [requireUser, rateLimit("expensive"), requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: RegisterMediaSchema } }, required: true },
@@ -49,7 +49,7 @@ export const completeRoute = createRoute({
     "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. " +
     "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireMediaMember] as const,
+  middleware: [requireUser, rateLimit("expensive"), requireMediaMember] as const,
   request: { params: MediaParams },
   responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404, 429) },
 });
@@ -81,7 +81,7 @@ export const downloadRoute = createRoute({
   summary: "Download a file (only after the reveal)",
   description: "Streamed from R2 with the same Bearer token.",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_FILES"), requireTripMember] as const,
+  middleware: [requireUser, rateLimit("files"), requireTripMember] as const,
   request: { params: MediaFileParams },
   responses: {
     200: {

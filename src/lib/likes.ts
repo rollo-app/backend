@@ -1,5 +1,6 @@
-import { actorName, sendPush, type PushMessage } from "./push";
-import type { Env, UserRow } from "../types";
+import type { Deps } from "../container";
+import { actorName, sendPush, type PushContent } from "./push";
+import type { UserRow } from "../types";
 
 /** After a "photoLiked" push, the next likes of that photo within this window are counted but not notified. */
 export const LIKE_PUSH_WINDOW_MS = 30 * 60_000;
@@ -9,7 +10,7 @@ export function photoLikedMessage(
   liker: Pick<UserRow, "name" | "username">,
   silenced: number,
   photo: { id: string; tripId: string },
-): PushMessage {
+): PushContent {
   const who = actorName(liker);
   return {
     body: silenced > 0 ? `A ${who} y ${silenced} más les gustó tu foto` : `A ${who} le gustó tu foto`,
@@ -40,12 +41,12 @@ export async function claimLikePush(db: D1Database, mediaId: string, now: number
 
 /** After a new like by someone other than the author: the anti-spam decision and, if it's time, the push. */
 export async function notifyLike(
-  env: Pick<Env, "DB">,
+  deps: Pick<Deps, "db" | "push">,
   liker: Pick<UserRow, "id" | "name" | "username">,
   photo: { id: string; tripId: string; authorUserId: string },
   now: number,
 ): Promise<void> {
-  const silenced = await claimLikePush(env.DB, photo.id, now);
+  const silenced = await claimLikePush(deps.db, photo.id, now);
   if (silenced === null) return;
-  await sendPush(env, [photo.authorUserId], "photoLiked", photoLikedMessage(liker, silenced, photo), { actorId: liker.id });
+  await sendPush(deps, [photo.authorUserId], "photoLiked", photoLikedMessage(liker, silenced, photo), { actorId: liker.id });
 }

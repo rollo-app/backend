@@ -6,7 +6,8 @@ import { areFriends } from "../../lib/profile-access";
 import { claimRevealedStatement, sendTripRevealed } from "../../lib/trip-notices";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
-import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { MemberRow, Role, TripRow, UserRow } from "../../types";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
 import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
@@ -186,14 +187,14 @@ export async function updateTrip(db: D1Database, trip: TripRow, b: UpdateTripInp
 // ---------- Reveal (admin) ----------
 
 /** Reveals now. Returns the revealed trip and, the first time, the "revealed" push to send after the response. */
-export async function revealTrip(env: Env, trip: TripRow, actorId: string): Promise<{ trip: TripRow; notify: AfterResponse }> {
+export async function revealTrip(deps: Pick<Deps, "db" | "push">, trip: TripRow, actorId: string): Promise<{ trip: TripRow; notify: AfterResponse }> {
   const now = Date.now();
   // Claim the notice and write revealed_at in one batch (a transaction), claim first: a cron run can never see
   // the trip revealed but unclaimed and notify the admin about their own reveal. Sent after the response.
-  const [claim] = await env.DB.batch([claimRevealedStatement(env.DB, trip.id, now), repo.markRevealed(env.DB, trip.id, now)]);
+  const [claim] = await deps.db.batch([claimRevealedStatement(deps.db, trip.id, now), repo.markRevealed(deps.db, trip.id, now)]);
   return {
     trip: { ...trip, revealed_at: trip.revealed_at ?? now },
-    notify: claim!.meta.changes > 0 ? () => sendTripRevealed(env, trip, actorId) : null,
+    notify: claim!.meta.changes > 0 ? () => sendTripRevealed(deps, trip, actorId) : null,
   };
 }
 
@@ -203,7 +204,7 @@ export type AddMembersResult = { userId: string; status: "added" | "already_memb
 
 /** Adds `friendIds` (a result per friend) and returns the "added to a rollo" push for those who were added. */
 export async function addFriendsToTrip(
-  env: Env,
+  deps: Pick<Deps, "db" | "push">,
   trip: TripRow,
   me: UserRow,
   myRole: Role,
@@ -217,16 +218,16 @@ export async function addFriendsToTrip(
       results.push({ userId, status: "already_member" });
       continue;
     }
-    if (!(await areFriends(env.DB, me.id, userId))) {
+    if (!(await areFriends(deps.db, me.id, userId))) {
       results.push({ userId, status: "unavailable" });
       continue;
     }
-    const added = await addMember(env.DB, trip.id, userId, me.id, Date.now(), myRole === "admin");
+    const added = await addMember(deps.db, trip.id, userId, me.id, Date.now(), myRole === "admin");
     results.push({ userId, status: added.status === "removed" ? "unavailable" : added.status });
   }
   const addedIds = results.filter((r) => r.status === "added").map((r) => r.userId);
   const notify: AfterResponse = addedIds.length
-    ? () => sendPush(env, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id })
+    ? () => sendPush(deps, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id })
     : null;
   return { results, notify };
 }

@@ -38,7 +38,7 @@ describe("ipKey", () => {
 describe("IPv6 per-IP limits", () => {
   it("addresses inside one /64 share the new-signup budget", async () => {
     const start = (email: string, ip: string) => api("POST", "/auth/email/start", { body: { email }, headers: { "cf-connecting-ip": ip } });
-    const { devSentCodes } = await import("../src/lib/email");
+    const { devSentCodes } = await import("../src/infra/dev/dev-mailer");
     for (let i = 0; i < LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY; i++) await start(`v6-${i}@rollo.test`, `2001:db8:aaaa:bbbb::${i + 1}`);
     expect(devSentCodes.has("v6-19@rollo.test")).toBe(true);
     // Past the hourly per-IP code limit, so the new-signup cap is the one answering.
@@ -54,7 +54,7 @@ describe("email counters purge", () => {
     for (const [kind, d] of [["login", day(3)], ["login", day(2)], ["support", day(0)], ["x", day(10)]] as const) {
       await env.DB.prepare("INSERT INTO email_counters (kind, day, count) VALUES (?, ?, 1)").bind(kind, d).run();
     }
-    await purgeOldEmailCounters(env, Date.now());
+    await purgeOldEmailCounters(env.DB, Date.now());
     const { results } = await env.DB.prepare("SELECT kind, day FROM email_counters ORDER BY day").all<{ kind: string; day: string }>();
     expect(results.map((r) => r.day)).toEqual([day(2), day(0)]);
   });

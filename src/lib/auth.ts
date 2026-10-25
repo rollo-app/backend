@@ -32,7 +32,7 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   if (!token) throw new HTTPException(401, { message: "Falta el token" });
 
   const now = Date.now();
-  const row = await c.env.DB.prepare(
+  const row = await c.get("deps").db.prepare(
     `SELECT s.id AS session_id, s.last_used_at, u.id, u.email, u.name, u.username, u.avatar_key, u.pending_avatar_key, u.bio, u.badge, u.profile_visibility, u.created_at
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
@@ -42,7 +42,7 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   if (!row) throw new HTTPException(401, { message: "Sesión inválida, volvé a entrar" });
 
   if (now - row.last_used_at > SESSION_TOUCH_INTERVAL) {
-    await c.env.DB.prepare("UPDATE sessions SET last_used_at = ?, expires_at = ? WHERE id = ?")
+    await c.get("deps").db.prepare("UPDATE sessions SET last_used_at = ?, expires_at = ? WHERE id = ?")
       .bind(now, now + SESSION_TTL, row.session_id)
       .run();
   }
@@ -54,9 +54,9 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
 });
 
 async function loadTripAndMember(c: Context<AppEnv>, tripId: string, notMember: () => HTTPException) {
-  const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>();
+  const trip = await c.get("deps").db.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>();
   if (!trip) throw new HTTPException(404, { message: "Rollo no encontrado" });
-  const member = await c.env.DB.prepare(
+  const member = await c.get("deps").db.prepare(
     "SELECT * FROM members WHERE trip_id = ? AND user_id = ? AND removed_at IS NULL AND left_at IS NULL",
   )
     .bind(tripId, c.get("user").id)
@@ -77,7 +77,7 @@ export const requireTripMember = createMiddleware<AppEnv>(async (c, next) => {
  * and the user must be an active member of it. Anything else looks like "not found".
  */
 export const requireMediaMember = createMiddleware<AppEnv>(async (c, next) => {
-  const row = await c.env.DB.prepare("SELECT trip_id FROM media WHERE id = ?")
+  const row = await c.get("deps").db.prepare("SELECT trip_id FROM media WHERE id = ?")
     .bind(c.req.param("mediaId"))
     .first<{ trip_id: string }>();
   const notFound = () => new HTTPException(404, { message: "No encontrado" });

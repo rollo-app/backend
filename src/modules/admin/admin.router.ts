@@ -19,7 +19,7 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 }
 
 admin.use("*", async (c, next) => {
-  const token = c.env.ADMIN_TOKEN;
+  const token = c.get("deps").config.adminToken;
   const header = c.req.header("authorization") ?? "";
   // Always compare, so timing does not depend on whether the header is present.
   const ok = await safeEqual(header, `Bearer ${token ?? ""}`);

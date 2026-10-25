@@ -1,20 +1,17 @@
 import type { Context } from "hono";
+import type { Deps } from "../container";
+import type { PushTicket } from "../ports/push";
 import { getNotificationSettings, type NotificationKind } from "./settings";
-import type { Env } from "../types";
 
 /**
- * Push notifications through the Expo Push Service. The single place that sends pushes:
- * filters the actor, blocks and preferences, finds the tokens and sends in batches.
+ * Push notifications through the `PushGateway` port. The single place that sends pushes:
+ * filters the actor, blocks and preferences and finds the tokens; the gateway delivers (batching included).
  * Never throws: a push that fails must not break the action that triggered it.
  */
 
-export const EXPO_SEND_URL = "https://exp.host/--/api/v2/push/send";
-export const EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts";
-
-/** Expo accepts up to 100 messages per request and 1000 receipt ids. */
-const SEND_BATCH = 100;
+/** Receipt ids asked per cron run. */
 const RECEIPTS_BATCH = 1000;
-/** Receipts are ready ~15 min after sending and Expo keeps them for a day. */
+/** Receipts are ready ~15 min after sending and the provider keeps them for a day. */
 export const RECEIPT_DELAY_MS = 15 * 60_000;
 const RECEIPT_TTL_MS = 24 * 60 * 60_000;
 // D1 caps bound parameters per statement at 100.
@@ -26,25 +23,12 @@ export function actorName(user: { name: string | null; username: string | null }
 }
 
 /** `url` is the app's deep link (expo-router path) opened when the push is tapped. */
-export type PushMessage = { title?: string; body: string; url: string };
-
-type Ticket = { status: "ok"; id: string } | { status: "error"; message?: string; details?: { error?: string } };
-type Receipt = { status: "ok" } | { status: "error"; message?: string; details?: { error?: string } };
+export type PushContent = { title?: string; body: string; url: string };
 
 function chunks<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
-}
-
-async function postExpo<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Expo ${res.status}: ${await res.text()}`);
-  return (await res.json()) as T;
 }
 
 /** Users (other than the actor) that the actor has blocked or that blocked the actor. */
@@ -59,17 +43,17 @@ async function blockedWith(db: D1Database, actorId: string): Promise<Set<string>
 /**
  * Sends `message` to the recipients' phones. Leaves out the actor (nobody is notified of their own actions),
  * anyone with a block with the actor in either direction, and anyone who turned this kind off.
- * Tokens Expo says are not registered anymore are deleted; ok tickets are kept for the receipts check.
+ * Tokens the provider says are not registered anymore are deleted; ok tickets are kept for the receipts check.
  */
 export async function sendPush(
-  env: Pick<Env, "DB">,
+  deps: Pick<Deps, "db" | "push">,
   recipients: string[],
   kind: NotificationKind,
-  message: PushMessage,
+  message: PushContent,
   opts: { actorId?: string } = {},
 ): Promise<void> {
   try {
-    const db = env.DB;
+    const { db } = deps;
     let ids = [...new Set(recipients)].filter((id) => id !== opts.actorId);
     if (opts.actorId && ids.length) {
       const blocked = await blockedWith(db, opts.actorId);
@@ -96,28 +80,15 @@ export async function sendPush(
     }
     if (!tokens.length) return;
 
-    for (const batch of chunks(tokens, SEND_BATCH)) {
-      try {
-        const messages = batch.map((to) => ({
-          to,
-          ...(message.title !== undefined && { title: message.title }),
-          body: message.body,
-          sound: "default",
-          data: { url: message.url },
-        }));
-        const { data } = await postExpo<{ data: Ticket[] }>(EXPO_SEND_URL, messages);
-        await handleTickets(db, batch, data ?? []);
-      } catch (err) {
-        console.error("push: send failed", err);
-      }
-    }
+    const tickets = await deps.push.send(tokens.map((token) => ({ token, ...(message.title !== undefined && { title: message.title }), body: message.body, url: message.url })));
+    await handleTickets(db, tokens, tickets);
   } catch (err) {
     console.error("push: failed", err);
   }
 }
 
 /** Tickets come back in the same order as the messages. */
-async function handleTickets(db: D1Database, tokens: string[], tickets: Ticket[]) {
+async function handleTickets(db: D1Database, tokens: string[], tickets: PushTicket[]) {
   const now = Date.now();
   const statements: D1PreparedStatement[] = [];
   tickets.forEach((ticket, i) => {
@@ -125,7 +96,7 @@ async function handleTickets(db: D1Database, tokens: string[], tickets: Ticket[]
     if (!token) return;
     if (ticket.status === "ok") {
       statements.push(db.prepare("INSERT OR IGNORE INTO push_receipts (id, token, created_at) VALUES (?, ?, ?)").bind(ticket.id, token, now));
-    } else if (ticket.details?.error === "DeviceNotRegistered") {
+    } else if (ticket.tokenInvalid) {
       statements.push(db.prepare("DELETE FROM push_tokens WHERE token = ?").bind(token));
     }
   });
@@ -133,12 +104,12 @@ async function handleTickets(db: D1Database, tokens: string[], tickets: Ticket[]
 }
 
 /**
- * Cron: asks Expo for the receipts of tickets older than ~15 min, deletes the tokens that are not
- * registered anymore and forgets the answered receipts (and the ones older than a day, which Expo dropped).
+ * Cron: asks the provider for the receipts of tickets older than ~15 min, deletes the tokens that are not
+ * registered anymore and forgets the answered receipts (and the ones older than a day, which the provider dropped).
  */
-export async function checkPushReceipts(env: Pick<Env, "DB">, now = Date.now()): Promise<void> {
+export async function checkPushReceipts(deps: Pick<Deps, "db" | "push">, now = Date.now()): Promise<void> {
   try {
-    const db = env.DB;
+    const { db } = deps;
     await db.prepare("DELETE FROM push_receipts WHERE created_at <= ?").bind(now - RECEIPT_TTL_MS).run();
     const { results } = await db
       .prepare("SELECT id, token FROM push_receipts WHERE created_at <= ? ORDER BY id LIMIT ?")
@@ -146,12 +117,12 @@ export async function checkPushReceipts(env: Pick<Env, "DB">, now = Date.now()):
       .all<{ id: string; token: string }>();
     if (!results.length) return;
 
-    const { data } = await postExpo<{ data: Record<string, Receipt> }>(EXPO_RECEIPTS_URL, { ids: results.map((r) => r.id) });
+    const data = await deps.push.getReceipts(results.map((r) => r.id));
     const statements: D1PreparedStatement[] = [];
     for (const r of results) {
-      const receipt = data?.[r.id];
+      const receipt = data[r.id];
       if (!receipt) continue; // not ready yet: next run
-      if (receipt.status === "error" && receipt.details?.error === "DeviceNotRegistered") {
+      if (receipt.status === "error" && receipt.tokenInvalid) {
         statements.push(db.prepare("DELETE FROM push_tokens WHERE token = ?").bind(r.token));
       }
       statements.push(db.prepare("DELETE FROM push_receipts WHERE id = ?").bind(r.id));
