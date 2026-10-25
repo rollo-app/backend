@@ -35,6 +35,11 @@ export type FeedRow = {
   likeCount: number;
   likedByMe: boolean;
   commentCount: number;
+  momentDay: string | null;
+  selfieId: string | null;
+  selfieWidth: number | null;
+  selfieHeight: number | null;
+  selfieThumbhash: string | null;
 };
 
 export type AuthoredMedia = { id: string; tripId: string; authorUserId: string };
@@ -99,6 +104,7 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
   const viewerLike = alias(likes, "viewer_like");
   const countedLike = alias(likes, "counted_like");
   const countedMedia = alias(media, "counted_media");
+  const selfie = alias(media, "selfie");
 
   // Likes per photo of this trip, so the feed gets every count in one query.
   const likeCounts = orm(db)
@@ -134,6 +140,11 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
       likeCount: sql<number>`COALESCE(${likeCounts.n}, 0)`,
       likedByMe: sql<boolean>`${viewerLike.mediaId} IS NOT NULL`.mapWith(Boolean),
       commentCount: commentCountSql(media.id, viewerId),
+      momentDay: media.momentDay,
+      selfieId: selfie.id,
+      selfieWidth: selfie.width,
+      selfieHeight: selfie.height,
+      selfieThumbhash: selfie.thumbhash,
     })
     .from(media)
     .innerJoin(members, eq(members.id, media.memberId))
@@ -142,11 +153,14 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
     .leftJoin(featured, and(eq(featured.mediaId, media.id), eq(featured.userId, viewerId)))
     .leftJoin(viewerLike, and(eq(viewerLike.mediaId, media.id), eq(viewerLike.userId, viewerId)))
     .leftJoin(likeCounts, eq(likeCounts.mediaId, media.id))
+    // The selfie of a moment photo travels inside it (never as an item of its own).
+    .leftJoin(selfie, and(eq(selfie.pairedMediaId, media.id), eq(selfie.status, "uploaded"), isNull(selfie.deletedAt)))
     .where(
       and(
         eq(media.tripId, tripId),
         eq(media.status, "uploaded"),
         isNull(media.deletedAt),
+        isNull(media.pairedMediaId),
         notHiddenFor(viewerId, media.id, members.userId),
       ),
     )

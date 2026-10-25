@@ -30,9 +30,9 @@ export async function listMyTrips(db: D1Database, userId: string): Promise<MyTri
   const { results } = await db
     .prepare(
       `SELECT t.*, m.role AS my_role,
-            (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL) AS total_uploaded,
+            (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL) AS total_uploaded,
             (SELECT cm.thumbhash FROM media cm JOIN members cmem ON cmem.id = cm.member_id
-             WHERE cm.trip_id = t.id AND cm.status = 'uploaded' AND cm.deleted_at IS NULL AND cm.thumbhash IS NOT NULL AND ${hiddenMediaSql("cm", "cmem")}
+             WHERE cm.trip_id = t.id AND cm.status = 'uploaded' AND cm.deleted_at IS NULL AND cm.paired_media_id IS NULL AND cm.thumbhash IS NOT NULL AND ${hiddenMediaSql("cm", "cmem")}
              ORDER BY cm.taken_at DESC, cm.id DESC LIMIT 1) AS cover_thumbhash
      FROM members m JOIN trips t ON t.id = m.trip_id
      WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL

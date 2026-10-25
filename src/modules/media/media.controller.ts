@@ -45,6 +45,24 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
       username: r.authorUsername,
       avatarUrl: avatarUrl(r.authorUserId, r.authorAvatarKey),
     },
+    ...(r.momentDay !== null && {
+      momentDay: r.momentDay,
+      selfie:
+        r.selfieId === null
+          ? null
+          : {
+              id: r.selfieId,
+              width: revealed ? r.selfieWidth : null,
+              height: revealed ? r.selfieHeight : null,
+              thumbhash: r.selfieThumbhash,
+              files: revealed
+                ? {
+                    thumb: `/trips/${tripId}/media/${r.selfieId}/thumb`,
+                    original: `/trips/${tripId}/media/${r.selfieId}/original`,
+                  }
+                : null,
+            },
+    }),
     ...(revealed && {
       width: r.width,
       height: r.height,

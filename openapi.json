@@ -1800,6 +1800,70 @@
           "commentCount": {
             "type": "integer",
             "description": "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos"
+          },
+          "momentDay": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Trip-local date (YYYY-MM-DD) when this photo is the answer to a daily moment; absent for ordinary photos"
+          },
+          "selfie": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "width": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "height": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "thumbhash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "files": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "thumb": {
+                    "type": "string"
+                  },
+                  "original": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "thumb",
+                  "original"
+                ],
+                "description": "Download paths; null before the reveal"
+              }
+            },
+            "required": [
+              "id",
+              "width",
+              "height",
+              "thumbhash",
+              "files"
+            ],
+            "description": "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. width/height are null before the reveal"
           }
         },
         "required": [

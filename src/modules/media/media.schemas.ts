@@ -130,6 +130,25 @@ export const FeedItemSchema = z
     commentCount: z.number().int().optional().openapi({
       description: "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos",
     }),
+    momentDay: z.string().nullable().optional().openapi({
+      description: "Trip-local date (YYYY-MM-DD) when this photo is the answer to a daily moment; absent for ordinary photos",
+    }),
+    selfie: z
+      .object({
+        id: z.string().uuid(),
+        width: nullableNumber,
+        height: nullableNumber,
+        thumbhash: z.string().nullable(),
+        files: z.object({ thumb: z.string(), original: z.string() }).nullable().openapi({
+          description: "Download paths; null before the reveal",
+        }),
+      })
+      .nullable()
+      .optional()
+      .openapi({
+        description:
+          "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. width/height are null before the reveal",
+      }),
   })
   .openapi("FeedItem");
 

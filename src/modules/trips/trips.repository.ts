@@ -103,7 +103,7 @@ export function countMediaByTypeTotal(db: D1Database, memberId: string): Promise
 
 export function countUploadedMedia(db: D1Database, tripId: string): Promise<{ n: number } | null> {
   return db
-    .prepare(`SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL`)
+    .prepare(`SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL`)
     .bind(tripId)
     .first<{ n: number }>();
 }
