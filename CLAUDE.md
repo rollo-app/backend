@@ -72,8 +72,11 @@ Decisiones de producto que el backend tiene que respetar:
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
 - **Límites de subida:** al registrar el celular declara `sizeBytes` y `thumbSizeBytes` (exactos; tope foto 12 MB, video 30 MB, thumb 2 MB) y las URLs de R2 se firman con ese `Content-Length` (header firmado con `allHeaders` de aws4fetch; en dev el `PUT /dev/upload` chequea el largo del body). `complete` compara los tamaños reales con los declarados (o con los topes): si no coinciden borra ambos archivos, da 400 y el registro queda pendiente. El cron borra los pendientes de más de 7 días con sus archivos (`src/lib/pending-cleanup.ts`). Avatar: `POST /me/avatar` pide `sizeBytes` (firmado, hasta 2 MB), borra el pendiente anterior y el cron barre los huérfanos de `avatars/` con más de 1 h, hasta 1000 objetos por corrida y retomando donde quedó la anterior (`cron_state`, clave `avatar_sweep_after`; al llegar al final arranca de nuevo) (`src/lib/avatar-sweep.ts`).
-- **Límite diario por persona**, por tipo, según la fecha local en la zona horaria del viaje
-  (default 10 fotos, 3 videos). Las pendientes también cuentan.
+- **Límite de fotos por persona**, según el modo del rollo (`photo_limit_mode`, se elige al crearlo): `daily` (default, `daily_photo_limit`
+  por día local en la zona horaria del viaje, default 10) o `total` (`total_photo_limit`, 1–500, para todo el rollo; en `daily` queda `null`).
+  Las pendientes y las borradas por el admin también cuentan. `today.photosLeft` del detalle es lo que queda hoy (`daily`) o en todo el
+  rollo (`total`), 0 fuera de las fechas. **Sin videos en rollos nuevos:** `dailyVideoLimit` es opcional al crear (default 0) y sigue en las
+  respuestas por compatibilidad con el build viejo; con 0, subir un video da 400 "Este rollo no admite videos". Los videos de rollos viejos se siguen sirviendo.
 - **Tope de almacenamiento** (`src/lib/storage.ts`): R2 gratis llega a 10 GB y no puede cobrarse nada. El uso es el máximo entre
   la estimación de D1 (`size_bytes + thumb_size_bytes` de lo no borrado, pendientes incluidas, + 2 MB por usuario con avatar) y la
   última medición real del bucket (`cron_state`). Al 95% de `STORAGE_LIMIT_BYTES` (default 10 GB decimales) los registros nuevos

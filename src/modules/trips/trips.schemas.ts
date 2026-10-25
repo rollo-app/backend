@@ -13,7 +13,15 @@ export const CreateTripSchema = z
     endsAt: epochMs("Trip end; must be after startsAt"),
     revealAt: epochMs("When the roll is revealed; must be >= endsAt"),
     dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
-    dailyVideoLimit: z.number().int().min(0).max(20).default(3),
+    dailyVideoLimit: z.number().int().min(0).max(20).default(0).openapi({ description: "Legacy: rollos have no videos, omit it" }),
+    photoLimitMode: z.enum(["daily", "total"]).default("daily"),
+    totalPhotoLimit: z.number().int().min(1).max(500).optional().openapi({
+      description: "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise",
+    }),
+  })
+  .refine((d) => d.photoLimitMode !== "total" || d.totalPhotoLimit !== undefined, {
+    message: "Elegí cuántas fotos por persona tiene el rollo",
+    path: ["totalPhotoLimit"],
   })
   .refine((d) => d.startsAt >= Date.now() - PAST_TOLERANCE_MS, { message: "El inicio no puede ser en el pasado", path: ["startsAt"] })
   .refine((d) => d.endsAt > d.startsAt, { message: "El rollo tiene que terminar después de empezar", path: ["endsAt"] })
@@ -33,6 +41,7 @@ export const UpdateTripSchema = z
     revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),
     dailyPhotoLimit: z.number().int().min(1).max(100).optional(),
     dailyVideoLimit: z.number().int().min(0).max(20).optional(),
+    totalPhotoLimit: z.number().int().min(1).max(500).optional().openapi({ description: "Only for rollos in total mode" }),
   })
   .openapi("UpdateTripRequest");
 

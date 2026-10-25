@@ -73,10 +73,18 @@ export async function registerMedia(
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.
   const day = localDate(input.takenAt, trip.timezone);
-  const limit = input.type === "photo" ? trip.daily_photo_limit : trip.daily_video_limit;
-  if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, input.type)) >= limit) {
-    const what = input.type === "photo" ? "fotos" : "videos";
-    throw rateLimited(`Ya usaste tus ${limit} ${what} de hoy`);
+  if (input.type === "video") {
+    if (trip.daily_video_limit === 0) throw badRequest("Este rollo no admite videos");
+    if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, "video")) >= trip.daily_video_limit) {
+      throw rateLimited(`Ya usaste tus ${trip.daily_video_limit} videos de hoy`);
+    }
+  } else if (trip.photo_limit_mode === "total") {
+    // The whole rollo counts, not just the day.
+    if ((await repo.countMemberMedia(env.DB, member.id, "photo")) >= (trip.total_photo_limit ?? 0)) {
+      throw rateLimited("Ya usaste todas tus fotos del rollo");
+    }
+  } else if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, "photo")) >= trip.daily_photo_limit) {
+    throw rateLimited(`Ya usaste tus ${trip.daily_photo_limit} fotos de hoy`);
   }
 
   const keys = mediaKeys(trip.id, input.id, input.type);

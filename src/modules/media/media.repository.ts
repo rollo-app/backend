@@ -68,6 +68,16 @@ export async function countMemberMediaOnDay(db: D1Database, memberId: string, da
   return row?.n ?? 0;
 }
 
+/** All the media of a given type a member has in the rollo (pending and admin-deleted ones count). */
+export async function countMemberMedia(db: D1Database, memberId: string, type: Media["type"]): Promise<number> {
+  const row = await orm(db)
+    .select({ n: count() })
+    .from(media)
+    .where(and(eq(media.memberId, memberId), eq(media.type, type)))
+    .get();
+  return row?.n ?? 0;
+}
+
 export function insertMedia(db: D1Database, m: NewMedia): D1PreparedStatement {
   return toStatement(db, orm(db).insert(media).values(m));
 }

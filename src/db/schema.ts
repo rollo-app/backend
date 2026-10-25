@@ -18,6 +18,8 @@ export const trips = sqliteTable("trips", {
   revealedAt: integer("revealed_at"),
   dailyPhotoLimit: integer("daily_photo_limit").notNull().default(10),
   dailyVideoLimit: integer("daily_video_limit").notNull().default(3),
+  photoLimitMode: text("photo_limit_mode").notNull().default("daily"),
+  totalPhotoLimit: integer("total_photo_limit"),
   createdAt: integer("created_at").notNull(),
   startedNotifiedAt: integer("started_notified_at"),
   revealedNotifiedAt: integer("revealed_notified_at"),

@@ -9,10 +9,10 @@ export type ActiveMemberRow = {
 
 export type NewTrip = Pick<
   TripRow,
-  "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "created_at"
+  "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit" | "created_at"
 > & { started_notified_at: number | null };
 
-export type TripEdit = Pick<TripRow, "name" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit">;
+export type TripEdit = Pick<TripRow, "name" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "total_photo_limit">;
 
 export async function joinCodeExists(db: D1Database, joinCode: string): Promise<boolean> {
   return (await db.prepare("SELECT 1 FROM trips WHERE join_code = ?").bind(joinCode).first()) !== null;
@@ -30,12 +30,12 @@ export function insertTrip(db: D1Database, t: NewTrip): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
-                          daily_photo_limit, daily_video_limit, created_at, started_notified_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
-      t.daily_photo_limit, t.daily_video_limit, t.created_at, t.started_notified_at,
+      t.daily_photo_limit, t.daily_video_limit, t.photo_limit_mode, t.total_photo_limit, t.created_at, t.started_notified_at,
     );
 }
 
@@ -90,6 +90,14 @@ export function countMediaByType(db: D1Database, memberId: string, localDate: st
     .all<{ type: string; n: number }>();
 }
 
+/** All the media of a member in the whole rollo (pending and admin-deleted ones count, like the daily quota). */
+export function countMediaByTypeTotal(db: D1Database, memberId: string): Promise<{ results: { type: string; n: number }[] }> {
+  return db
+    .prepare("SELECT type, COUNT(*) AS n FROM media WHERE member_id = ? GROUP BY type")
+    .bind(memberId)
+    .all<{ type: string; n: number }>();
+}
+
 export function countUploadedMedia(db: D1Database, tripId: string): Promise<{ n: number } | null> {
   return db
     .prepare(`SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL`)
@@ -100,10 +108,10 @@ export function countUploadedMedia(db: D1Database, tripId: string): Promise<{ n:
 export function updateTrip(db: D1Database, tripId: string, next: TripEdit): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?
+      `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, total_photo_limit = ?
      WHERE id = ?`,
     )
-    .bind(next.name, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, tripId);
+    .bind(next.name, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.total_photo_limit, tripId);
 }
 
 export function markRevealed(db: D1Database, tripId: string, now: number): D1PreparedStatement {

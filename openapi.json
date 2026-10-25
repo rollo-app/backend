@@ -910,7 +910,23 @@
             "type": "integer"
           },
           "dailyVideoLimit": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Legacy: new rollos have no videos (0)"
+          },
+          "photoLimitMode": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "total"
+            ],
+            "description": "daily: dailyPhotoLimit per person per local day; total: totalPhotoLimit per person for the whole rollo"
+          },
+          "totalPhotoLimit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Photos per person in the whole rollo; null in daily mode"
           }
         },
         "required": [
@@ -923,7 +939,9 @@
           "revealAt",
           "revealed",
           "dailyPhotoLimit",
-          "dailyVideoLimit"
+          "dailyVideoLimit",
+          "photoLimitMode",
+          "totalPhotoLimit"
         ]
       },
       "Member": {
@@ -1016,7 +1034,22 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 20,
-            "default": 3
+            "default": 0,
+            "description": "Legacy: rollos have no videos, omit it"
+          },
+          "photoLimitMode": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "total"
+            ],
+            "default": "daily"
+          },
+          "totalPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise"
           }
         },
         "required": [
@@ -1066,7 +1099,7 @@
               },
               "photosLeft": {
                 "type": "integer",
-                "description": "0 outside the rollo's dates"
+                "description": "Photos left today (daily mode) or in the whole rollo (total mode); 0 outside the rollo's dates"
               },
               "videosLeft": {
                 "type": "integer",
@@ -1129,6 +1162,12 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 20
+          },
+          "totalPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Only for rollos in total mode"
           }
         }
       },

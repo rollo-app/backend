@@ -48,6 +48,8 @@ export type TripRow = {
   revealed_at: number | null;
   daily_photo_limit: number;
   daily_video_limit: number;
+  photo_limit_mode: "daily" | "total";
+  total_photo_limit: number | null;
   created_at: number;
   /** When the "rollo started" push was sent (or the trip had already started when notifications shipped). */
   started_notified_at: number | null;
