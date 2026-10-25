@@ -30,8 +30,12 @@ export const TripSchema = z
     revealAt: epochMs("Automatic reveal"),
     revealed: z.boolean(),
     dailyPhotoLimit: z.number().int(),
-    dailyVideoLimit: z.number().int(),
+    dailyVideoLimit: z.number().int().openapi({ description: "Legacy: new rollos have no videos (0)" }),
     featuringDisabled: z.boolean().openapi({ description: "Private rollo: nobody can feature its photos on a profile, not even their author" }),
+    photoLimitMode: z.enum(["daily", "total"]).openapi({
+      description: "daily: dailyPhotoLimit per person per local day; total: totalPhotoLimit per person for the whole rollo",
+    }),
+    totalPhotoLimit: z.number().int().nullable().openapi({ description: "Photos per person in the whole rollo; null in daily mode" }),
   })
   .openapi("Trip");
 
@@ -142,7 +146,9 @@ export const TripDetailSchema = z
     members: z.array(MemberSchema),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),
-      photosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
+      photosLeft: z.number().int().openapi({
+        description: "Photos left today (daily mode) or in the whole rollo (total mode); 0 outside the rollo's dates",
+      }),
       videosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
     }),
     totalUploaded: z.number().int(),

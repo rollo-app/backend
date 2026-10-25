@@ -192,93 +192,6 @@
           "token"
         ]
       },
-      "ReceivedFriendRequests": {
-        "type": "object",
-        "properties": {
-          "requests": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ReceivedFriendRequest"
-            },
-            "description": "Pending requests to you, most recent first"
-          }
-        },
-        "required": [
-          "requests"
-        ]
-      },
-      "ReceivedFriendRequest": {
-        "type": "object",
-        "properties": {
-          "user": {
-            "$ref": "#/components/schemas/Friend"
-          },
-          "createdAt": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "description": "When the request was sent",
-            "example": 1767225600000
-          }
-        },
-        "required": [
-          "user",
-          "createdAt"
-        ]
-      },
-      "Friend": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "User id"
-          },
-          "name": {
-            "type": "string",
-            "example": "Cami"
-          },
-          "username": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "cami",
-            "description": "Unique handle without the @"
-          },
-          "avatarUrl": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "bio": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "Viajando por el sur",
-            "description": "Profile description (up to 3 lines); null if none"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "username",
-          "avatarUrl",
-          "bio"
-        ]
-      },
-      "FriendResponse": {
-        "type": "object",
-        "properties": {
-          "friend": {
-            "$ref": "#/components/schemas/Friend"
-          }
-        },
-        "required": [
-          "friend"
-        ]
-      },
       "UpdateProfileRequest": {
         "type": "object",
         "properties": {
@@ -422,14 +335,10 @@
         "properties": {
           "notifications": {
             "$ref": "#/components/schemas/NotificationSettings"
-          },
-          "privacy": {
-            "$ref": "#/components/schemas/PrivacySettings"
           }
         },
         "required": [
-          "notifications",
-          "privacy"
+          "notifications"
         ]
       },
       "NotificationSettings": {
@@ -458,10 +367,6 @@
           "photoLiked": {
             "type": "boolean",
             "description": "Someone likes a photo of yours"
-          },
-          "friendRequest": {
-            "type": "boolean",
-            "description": "Someone sends you a friend request"
           }
         },
         "required": [
@@ -470,20 +375,7 @@
           "tripStarted",
           "tripRevealed",
           "photoFeatured",
-          "photoLiked",
-          "friendRequest"
-        ]
-      },
-      "PrivacySettings": {
-        "type": "object",
-        "properties": {
-          "allowFeaturing": {
-            "type": "boolean",
-            "description": "Others may feature any of your photos on their profile (on by default)"
-          }
-        },
-        "required": [
-          "allowFeaturing"
+          "photoLiked"
         ]
       },
       "UpdateUserSettingsRequest": {
@@ -515,20 +407,6 @@
               "photoLiked": {
                 "type": "boolean",
                 "description": "Someone likes a photo of yours"
-              },
-              "friendRequest": {
-                "type": "boolean",
-                "description": "Someone sends you a friend request"
-              }
-            },
-            "additionalProperties": false
-          },
-          "privacy": {
-            "type": "object",
-            "properties": {
-              "allowFeaturing": {
-                "type": "boolean",
-                "description": "Others may feature any of your photos on their profile (on by default)"
               }
             },
             "additionalProperties": false
@@ -551,22 +429,6 @@
         "required": [
           "available",
           "username"
-        ]
-      },
-      "SendFriendRequestResponse": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "sent",
-              "friends"
-            ],
-            "description": "sent: the request is pending (or was rejected, which the sender never sees); friends: you are friends now (they had asked you too, or you already were)"
-          }
-        },
-        "required": [
-          "status"
         ]
       },
       "UserProfile": {
@@ -601,15 +463,6 @@
           "mutualCount": {
             "type": "integer",
             "description": "How many of your friends are also this user's friends (0 for yourself)"
-          },
-          "friendRequest": {
-            "type": "string",
-            "enum": [
-              "none",
-              "sent",
-              "received"
-            ],
-            "description": "Pending friend request between you and this user: sent (you sent one, also after they rejected it: they never tell), received (they sent you one you have not answered), none (also for friends, yourself and blocks)"
           }
         },
         "required": [
@@ -620,8 +473,7 @@
           "profileVisibility",
           "canSee",
           "friendCount",
-          "mutualCount",
-          "friendRequest"
+          "mutualCount"
         ]
       },
       "PublicUser": {
@@ -756,6 +608,60 @@
         "required": [
           "code",
           "expiresAt"
+        ]
+      },
+      "FriendResponse": {
+        "type": "object",
+        "properties": {
+          "friend": {
+            "$ref": "#/components/schemas/Friend"
+          }
+        },
+        "required": [
+          "friend"
+        ]
+      },
+      "Friend": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description (up to 3 lines); null if none"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl",
+          "bio"
         ]
       },
       "RedeemFriendRequest": {
@@ -1004,11 +910,23 @@
             "type": "integer"
           },
           "dailyVideoLimit": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Legacy: new rollos have no videos (0)"
           },
-          "featuringDisabled": {
-            "type": "boolean",
-            "description": "Private rollo: nobody can feature its photos on a profile, not even their author"
+          "photoLimitMode": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "total"
+            ],
+            "description": "daily: dailyPhotoLimit per person per local day; total: totalPhotoLimit per person for the whole rollo"
+          },
+          "totalPhotoLimit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Photos per person in the whole rollo; null in daily mode"
           }
         },
         "required": [
@@ -1022,7 +940,8 @@
           "revealed",
           "dailyPhotoLimit",
           "dailyVideoLimit",
-          "featuringDisabled"
+          "photoLimitMode",
+          "totalPhotoLimit"
         ]
       },
       "Member": {
@@ -1061,10 +980,6 @@
           "blockedByMe": {
             "type": "boolean",
             "description": "Whether you blocked this member"
-          },
-          "allowFeaturing": {
-            "type": "boolean",
-            "description": "Only on `me`: others may feature your photos of this rollo on their profile"
           }
         },
         "required": [
@@ -1119,12 +1034,22 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 20,
-            "default": 3
+            "default": 0,
+            "description": "Legacy: rollos have no videos, omit it"
           },
-          "featuringDisabled": {
-            "type": "boolean",
-            "default": false,
-            "description": "Private rollo: nobody can feature its photos on a profile, not even their author"
+          "photoLimitMode": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "total"
+            ],
+            "default": "daily"
+          },
+          "totalPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise"
           }
         },
         "required": [
@@ -1174,7 +1099,7 @@
               },
               "photosLeft": {
                 "type": "integer",
-                "description": "0 outside the rollo's dates"
+                "description": "Photos left today (daily mode) or in the whole rollo (total mode); 0 outside the rollo's dates"
               },
               "videosLeft": {
                 "type": "integer",
@@ -1238,9 +1163,11 @@
             "minimum": 0,
             "maximum": 20
           },
-          "featuringDisabled": {
-            "type": "boolean",
-            "description": "Private rollo. Turning it on removes every photo of the rollo from every profile; turning it off restores nothing"
+          "totalPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Only for rollos in total mode"
           }
         }
       },
@@ -1293,29 +1220,6 @@
         },
         "required": [
           "friendIds"
-        ]
-      },
-      "MyMembership": {
-        "type": "object",
-        "properties": {
-          "allowFeaturing": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "allowFeaturing"
-        ]
-      },
-      "UpdateMyMembershipRequest": {
-        "type": "object",
-        "properties": {
-          "allowFeaturing": {
-            "type": "boolean",
-            "description": "Others may feature your photos of this rollo. Turning it off removes them from other profiles; turning it on restores nothing"
-          }
-        },
-        "required": [
-          "allowFeaturing"
         ]
       },
       "MediaRegistered": {
@@ -1629,10 +1533,6 @@
             "type": "boolean",
             "description": "Only after the reveal: the author does not let others feature it (they still can)"
           },
-          "canFeature": {
-            "type": "boolean",
-            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private)"
-          },
           "likeCount": {
             "type": "integer",
             "description": "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos"
@@ -1945,137 +1845,6 @@
         "responses": {
           "204": {
             "description": "Signed out"
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/me/friend-requests": {
-      "get": {
-        "tags": [
-          "Friend requests"
-        ],
-        "summary": "Friend requests you received",
-        "description": "Pending ones only (the ones you rejected are gone), most recent first.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Received requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReceivedFriendRequests"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/me/friend-requests/{userId}/accept": {
-      "post": {
-        "tags": [
-          "Friend requests"
-        ],
-        "summary": "Accept a friend request",
-        "description": "Makes you friends and notifies whoever sent it (`newFriend`). 404 if there is no pending request from that user.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "userId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The new friend",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FriendResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/me/friend-requests/{userId}/reject": {
-      "post": {
-        "tags": [
-          "Friend requests"
-        ],
-        "summary": "Reject a friend request",
-        "description": "Silent: the sender is not notified and keeps seeing it as sent. Also 204 if there was none.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "userId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Request rejected"
           },
           "401": {
             "description": "Missing or invalid session token",
@@ -2670,119 +2439,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/users/{userId}/friend-request": {
-      "post": {
-        "tags": [
-          "Friend requests"
-        ],
-        "summary": "Send a friend request",
-        "description": "Asks to become friends with someone whose profile you can open. They are friends only once the receiver accepts. If they already sent you one, you become friends at once (`friends`). Sending again while it is pending, or to a friend, is not an error. A request the receiver rejected is silent: you still get `sent`, nothing reaches them until 30 days after the rejection. Notifies the receiver (`friendRequest`). 400 to yourself, 404 if the user does not exist or there is a block in either direction, 429 past 30 sent requests in 24 hours.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "userId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Request status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SendFriendRequestResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Daily limit or rate limit reached",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "Friend requests"
-        ],
-        "summary": "Cancel a friend request you sent",
-        "description": "Also 204 if there was none.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "userId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Request cancelled"
           },
           "401": {
             "description": "Missing or invalid session token",
@@ -3845,80 +3501,6 @@
       }
     },
     "/trips/{tripId}/members/me": {
-      "patch": {
-        "tags": [
-          "Trips"
-        ],
-        "summary": "Your settings in this rollo",
-        "description": "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). Turning it off removes them from other profiles; turning it on restores nothing.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "tripId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMyMembershipRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MyMembership"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
       "delete": {
         "tags": [
           "Trips"

@@ -50,6 +50,8 @@ export async function createTrip(
       reveal_at: body.revealAt,
       daily_photo_limit: body.dailyPhotoLimit,
       daily_video_limit: body.dailyVideoLimit,
+      photo_limit_mode: body.photoLimitMode,
+      total_photo_limit: body.photoLimitMode === "total" ? body.totalPhotoLimit! : null,
       created_at: now,
       // Starting now ("Empezar ahora"): the creator is the only member and just did it, so no "Arrancó" push.
       started_notified_at: body.startsAt <= now ? now : null,
@@ -134,6 +136,11 @@ export type TripDetail = {
   totalUploaded: number;
 };
 
+/** Photos per person that apply to this rollo: per day or for the whole rollo. */
+function photoLimit(trip: TripRow): number {
+  return trip.photo_limit_mode === "total" ? (trip.total_photo_limit ?? 0) : trip.daily_photo_limit;
+}
+
 /** Active members, how many photos and videos `me` has left today, and how much has been uploaded. */
 export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow, userId: string): Promise<TripDetail> {
   const now = Date.now();
@@ -141,7 +148,7 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
 
   const [members, usage, totals, blocked] = await Promise.all([
     repo.listActiveMembers(db, trip.id),
-    repo.countMediaByType(db, me.id, today),
+    trip.photo_limit_mode === "total" ? repo.countMediaByTypeTotal(db, me.id) : repo.countMediaByType(db, me.id, today),
     repo.countUploadedMedia(db, trip.id),
     blockedIdsFor(db, userId),
   ]);
@@ -155,7 +162,7 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
     blocked,
     today: {
       date: today,
-      photosLeft: !active ? 0 : Math.max(0, trip.daily_photo_limit - used("photo")),
+      photosLeft: !active ? 0 : Math.max(0, photoLimit(trip) - used("photo")),
       videosLeft: !active ? 0 : Math.max(0, trip.daily_video_limit - used("video")),
     },
     totalUploaded: totals?.n ?? 0,
@@ -177,6 +184,7 @@ export async function updateTrip(db: D1Database, trip: TripRow, b: UpdateTripInp
     daily_photo_limit: b.dailyPhotoLimit ?? trip.daily_photo_limit,
     daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
     featuring_disabled: b.featuringDisabled === undefined ? trip.featuring_disabled : b.featuringDisabled ? 1 : 0,
+    total_photo_limit: trip.photo_limit_mode === "total" ? (b.totalPhotoLimit ?? trip.total_photo_limit) : null,
   };
   if (next.ends_at <= trip.starts_at) throw badRequest("El rollo tiene que terminar después de empezar");
   if (next.reveal_at < next.ends_at) throw badRequest("El revelado no puede ser antes del fin");

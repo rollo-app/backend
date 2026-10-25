@@ -20,11 +20,40 @@ describe("POST /trips", () => {
       name: "Viaje al sur",
       revealed: false,
       dailyPhotoLimit: 10,
-      dailyVideoLimit: 3,
+      dailyVideoLimit: 0,
     });
     expect(res.body.trip.joinCode).toMatch(/^[A-Z2-9]{6}$/);
     expect(res.body.member).toMatchObject({ userId, name: "Juani", avatarUrl: null, role: "admin" });
     expect(res.body).not.toHaveProperty("token");
+  });
+
+  it("defaults to no videos and a daily photo limit", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: tripBody() });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ dailyVideoLimit: 0, photoLimitMode: "daily", totalPhotoLimit: null });
+  });
+
+  it("creates a trip with a total photo limit", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: { ...tripBody(), photoLimitMode: "total", totalPhotoLimit: 20 } });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ photoLimitMode: "total", totalPhotoLimit: 20 });
+  });
+
+  it("requires totalPhotoLimit in total mode and rejects out of range values", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const post = (extra: object) => api("POST", "/trips", { token, body: { ...tripBody(), ...extra } });
+    expect((await post({ photoLimitMode: "total" })).status).toBe(400);
+    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 0 })).status).toBe(400);
+    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 501 })).status).toBe(400);
+  });
+
+  it("ignores totalPhotoLimit in daily mode", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: { ...tripBody(), totalPhotoLimit: 20 } });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ photoLimitMode: "daily", totalPhotoLimit: null });
   });
 
   it("requires a session", async () => {
@@ -326,6 +355,15 @@ describe("GET /trips/:id", () => {
     expect(res.body.members.map((m: { name: string }) => m.name)).toEqual(["Juani", "Fede"]);
     expect(res.body.today).toMatchObject({ photosLeft: 1, videosLeft: 1 });
     expect(res.body.totalUploaded).toBe(1);
+  });
+
+  it("counts what is left in the whole rollo in total mode", async () => {
+    const { tripId, adminToken } = await newTrip({ photoLimitMode: "total", totalPhotoLimit: 3, startsAt: Date.now() - 3 * DAY });
+    await uploadMedia(tripId, adminToken);
+    await uploadMedia(tripId, adminToken, { takenAt: Date.now() - DAY - HOUR });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.trip).toMatchObject({ photoLimitMode: "total", totalPhotoLimit: 3 });
+    expect(res.body.today.photosLeft).toBe(1);
   });
 
   it("has nothing left today before the rollo starts", async () => {
