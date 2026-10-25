@@ -296,7 +296,7 @@ export async function deleteMediaFromTrip(env: Env, trip: TripRow, mediaId: stri
 
 /**
  * `DELETE /media/{id}`: before the reveal it is the admin's moderation delete (anyone else 403); after it, only the
- * author deletes their own photo for good. The admin keeps getting 409 on other people's photos once revealed.
+ * author deletes their own photo or video for good. The admin keeps getting 409 on other people's photos once revealed.
  */
 export async function deleteMedia(env: Env, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
   if (!isRevealed(trip)) {
@@ -315,9 +315,9 @@ export async function deleteMedia(env: Env, trip: TripRow, member: MemberRow, me
 const NOT_AUTHOR = "Solo quien sacó la foto puede hacer esto";
 
 /**
- * The member's own uploaded photo of a revealed rollo: what archive, unarchive and the author's delete act on.
+ * The member's own uploaded photo or video of a revealed rollo: what archive, unarchive and the author's delete act on.
  * 404 if it doesn't exist (or is deleted, or of another rollo), 403 if someone else took it, 400 for a moment's linked
- * image (it follows its main photo) or a video, 409 before the reveal.
+ * image (it follows its main photo), 409 before the reveal.
  */
 async function ownRevealedPhoto(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string) {
   const row = await repo.findLiveMediaById(db, mediaId);
@@ -325,7 +325,6 @@ async function ownRevealedPhoto(db: D1Database, trip: TripRow, member: MemberRow
   if (row.memberId !== member.id) throw forbidden(NOT_AUTHOR);
   rejectSelfie(row.pairedMediaId);
   if (!isRevealed(trip)) throw conflict("Todavía no se reveló el rollo");
-  if (row.type !== "photo") throw badRequest("Solo se pueden archivar o eliminar fotos");
   return row;
 }
 

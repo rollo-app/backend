@@ -105,9 +105,9 @@ export const deleteRoute = createRoute({
   description:
     "**Before the reveal** only the admin can delete (in case someone sends something inappropriate): any photo or video of the trip; " +
     "anyone else gets 403. The files are deleted but the quota is **not given back** to anyone, and the id cannot be registered again. " +
-    "**After the reveal** only the author can delete their own photo, for good: it disappears for everyone, with its files, " +
+    "**After the reveal** only the author can delete their own photo or video, for good: it disappears for everyone, with its files, " +
     "likes, comments and every profile that featured it. Another member gets 403 (the admin 409, as before). " +
-    "A video is 400. Deleting a daily moment's main photo deletes its linked image too; the linked image's own id is 400.",
+    "Deleting a daily moment's main photo deletes its linked image too; the linked image's own id is 400.",
   security: bearerAuth,
   middleware: [requireUser, requireMediaMember] as const,
   request: { params: MediaParams },
@@ -117,8 +117,8 @@ export const deleteRoute = createRoute({
 // ---------- Archive (author, after the reveal) ----------
 
 const archiveDescription =
-  "Author only, photos only, once the rollo is revealed, and while you are an active member (else 404). " +
-  "Another member gets 403; before the reveal 409; a video 400. A daily moment's main photo takes its linked image along; " +
+  "Author only (photos and videos), once the rollo is revealed, and while you are an active member (else 404). " +
+  "Another member gets 403; before the reveal 409. A daily moment's main photo takes its linked image along; " +
   "the linked image's own id is 400. Idempotent.";
 
 export const archiveRoute = createRoute({

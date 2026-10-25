@@ -197,11 +197,6 @@ describe("POST /media/:id/archive", () => {
     expect((await unarchive(fede.token, id)).status).toBe(409);
   });
 
-  it("only photos: a video is 400", async () => {
-    const t = await revealedTrip();
-    expect((await archive(t.fede.token, t.video)).status).toBe(400);
-  });
-
   it("requires a session", async () => {
     const t = await revealedTrip();
     expect((await api("POST", `/media/${t.photo}/archive`)).status).toBe(401);
@@ -298,11 +293,6 @@ describe("DELETE /media/:id by the author (after the reveal)", () => {
     expect((await remove(t.juani.token, t.juaniPhoto)).status).toBe(204);
   });
 
-  it("only photos: a video is 400", async () => {
-    const t = await revealedTrip();
-    expect((await remove(t.fede.token, t.video)).status).toBe(400);
-  });
-
   it("before the reveal the author who is not admin still can't (403)", async () => {
     const trip = await newTrip();
     const fede = await joinAs(trip.code, "Fede");
@@ -315,5 +305,56 @@ describe("DELETE /media/:id by the author (after the reveal)", () => {
     await befriend(t.fede.token, t.cami.token);
     await remove(t.fede.token, t.photo);
     expect(await featuredIds(t.cami.token, t.fede.userId)).not.toContain(t.photo);
+  });
+});
+
+describe("the author's videos (old rollos still have them)", () => {
+  it("archiving hides it from everyone but the author, in the feed, downloads and totals; unarchiving restores it", async () => {
+    const t = await revealedTrip();
+    const before = (await api("GET", `/trips/${t.tripId}`, { token: t.juani.token })).body.totalUploaded;
+    expect((await archive(t.fede.token, t.video)).status).toBe(204);
+    expect((await archive(t.fede.token, t.video)).status).toBe(204);
+
+    expect(await feedIds(t.tripId, t.juani.token)).not.toContain(t.video);
+    expect(await feedIds(t.tripId, t.cami.token)).not.toContain(t.video);
+    const own = (await feed(t.tripId, t.fede.token)).body.items;
+    expect(own.find((i: any) => i.id === t.video)).toMatchObject({ archived: true, type: "video" });
+    for (const variant of ["thumb", "original"]) {
+      expect((await file(t.tripId, t.video, variant, t.juani.token)).status).toBe(404);
+      expect((await file(t.tripId, t.video, variant, t.fede.token)).status).toBe(200);
+    }
+    expect((await api("GET", `/trips/${t.tripId}`, { token: t.juani.token })).body.totalUploaded).toBe(before - 1);
+    expect((await api("GET", `/trips/${t.tripId}`, { token: t.fede.token })).body.totalUploaded).toBe(before);
+
+    expect((await unarchive(t.fede.token, t.video)).status).toBe(204);
+    expect(await feedIds(t.tripId, t.juani.token)).toContain(t.video);
+    expect((await file(t.tripId, t.video, "original", t.juani.token)).status).toBe(200);
+  });
+
+  it("only the author: another member 403, even the admin", async () => {
+    const t = await revealedTrip();
+    for (const token of [t.cami.token, t.juani.token]) {
+      expect((await archive(token, t.video)).status).toBe(403);
+      expect((await unarchive(token, t.video)).status).toBe(403);
+      expect((await remove(token, t.video)).status).toBe(token === t.juani.token ? 409 : 403);
+    }
+    expect(await feedIds(t.tripId, t.cami.token)).toContain(t.video);
+  });
+
+  it("deleting removes it for everyone and deletes its files", async () => {
+    const t = await revealedTrip();
+    expect((await remove(t.fede.token, t.video)).status).toBe(204);
+    for (const token of [t.juani.token, t.fede.token, t.cami.token]) expect(await feedIds(t.tripId, token)).not.toContain(t.video);
+    const row = await env.DB.prepare("SELECT original_key, thumb_key, deleted_at FROM media WHERE id = ?").bind(t.video).first<any>();
+    expect(row.deleted_at).not.toBeNull();
+    expect(await env.MEDIA.head(row.original_key)).toBeNull();
+    expect(await env.MEDIA.head(row.thumb_key)).toBeNull();
+    expect((await remove(t.fede.token, t.video)).status).toBe(404);
+  });
+
+  it("works on an archived video too", async () => {
+    const t = await revealedTrip();
+    await archive(t.fede.token, t.video);
+    expect((await remove(t.fede.token, t.video)).status).toBe(204);
   });
 });
