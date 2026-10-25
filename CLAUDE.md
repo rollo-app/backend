@@ -57,6 +57,12 @@ Decisiones de producto que el backend tiene que respetar:
   sumándolos ("A Cami y 3 más les gustó tu foto"). La decisión es un `UPDATE ... WHERE like_notified_at IS NULL OR <= now - 30 min`
   en un batch con la lectura del contador, así dos "me gusta" a la vez no avisan los dos. Sacar un "me gusta" no avisa ni
   descuenta los callados; si nadie más da "me gusta" después de la ventana, los callados no se avisan.
+- **"Tu actividad" → `GET /me/likes?cursor&limit`** (`likes.service.ts`/`likes.repository.ts`): las fotos que te gustaron y **hoy** podés abrir,
+  de la más reciente a la más vieja (`likedAt`, desempate por id; cursor opaco, `limit` 1–100, default 60), con `total` (campo extra) para la
+  cantidad. Filtra el server, en SQL: miembro activo del rollo revelado (`source: { kind: "trip", tripId }`) o dueño de un perfil que ves
+  (`canSeeProfile` en SQL) donde sigue destacada (`{ kind: "featured", userId }`, sin rollo; si valen las dos, gana `trip`). Nunca salen
+  denunciadas, de autores bloqueados (en ningún sentido) ni videos; el me gusta queda guardado y la foto vuelve si recuperás el acceso.
+  Sin migración (un índice `(user_id, created_at)` queda para cuando haga falta).
 - **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
   `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
   (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).
