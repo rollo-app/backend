@@ -1695,6 +1695,37 @@
             "type": "string",
             "format": "uuid"
           },
+          "author": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "avatarUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "username",
+              "avatarUrl"
+            ],
+            "description": "Who took it (for the badge on the thumbnail)"
+          },
           "thumbPath": {
             "type": "string",
             "example": "/trips/<tripId>/media/<mediaId>/thumb"
@@ -1713,6 +1744,7 @@
           "mediaId",
           "likedAt",
           "authorUserId",
+          "author",
           "thumbPath",
           "thumbHash",
           "source"

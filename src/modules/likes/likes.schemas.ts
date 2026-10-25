@@ -30,6 +30,9 @@ export const LikedPhotoSchema = z
     mediaId: z.string().uuid(),
     likedAt: z.number().int().openapi({ description: "When you liked it (epoch ms)" }),
     authorUserId: z.string().uuid(),
+    author: z
+      .object({ id: z.string().uuid(), name: z.string(), username: z.string().nullable(), avatarUrl: z.string().nullable() })
+      .openapi({ description: "Who took it (for the badge on the thumbnail)" }),
     thumbPath: z.string().openapi({ example: "/trips/<tripId>/media/<mediaId>/thumb" }),
     thumbHash: z.string().nullable(),
     source: LikedPhotoSourceSchema,

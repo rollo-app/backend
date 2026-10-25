@@ -55,6 +55,7 @@ describe("GET /me/likes", () => {
       mediaId: t.fedePhoto,
       likedAt: 1_000,
       authorUserId: t.fede.userId,
+      author: { id: t.fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null },
       thumbPath: `/trips/${t.tripId}/media/${t.fedePhoto}/thumb`,
       source: { kind: "trip", tripId: t.tripId },
     });
@@ -156,6 +157,7 @@ describe("GET /me/likes", () => {
             mediaId: t.fedePhoto,
             likedAt: expect.any(Number),
             authorUserId: t.fede.userId,
+            author: { id: t.fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null },
             thumbPath: `/featured/${t.juani.userId}/${t.fedePhoto}/thumb`,
             thumbHash: null,
             source: { kind: "featured", userId: t.juani.userId },

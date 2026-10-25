@@ -1,6 +1,6 @@
 import { isBlockedEitherWay } from "../../lib/moderation";
 import { canSeeProfile } from "../../lib/profile-access";
-import { isRevealed } from "../../lib/util";
+import { avatarUrl, isRevealed } from "../../lib/util";
 import { notifyLike } from "../../lib/likes";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, notFound } from "../../shared/errors";
@@ -56,6 +56,7 @@ export type LikedPhoto = {
   mediaId: string;
   likedAt: number;
   authorUserId: string;
+  author: { id: string; name: string; username: string | null; avatarUrl: string | null };
   thumbPath: string;
   thumbHash: string | null;
   source: { kind: "trip"; tripId: string } | { kind: "featured"; userId: string };
@@ -98,6 +99,7 @@ export async function listMyLikes(
       mediaId: r.media_id,
       likedAt: r.liked_at,
       authorUserId: r.author_user_id,
+      author: { id: r.author_user_id, name: r.author_name ?? "", username: r.author_username, avatarUrl: avatarUrl(r.author_user_id, r.author_avatar_key) },
       thumbPath: viaTrip ? `/trips/${r.trip_id}/media/${r.media_id}/thumb` : `/featured/${r.featured_owner_id}/${r.media_id}/thumb`,
       thumbHash: r.thumbhash,
       source: viaTrip ? { kind: "trip", tripId: r.trip_id } : { kind: "featured", userId: r.featured_owner_id! },

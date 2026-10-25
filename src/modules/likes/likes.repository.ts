@@ -47,6 +47,9 @@ export type LikedPhotoRow = {
   media_id: string;
   liked_at: number;
   author_user_id: string;
+  author_name: string | null;
+  author_username: string | null;
+  author_avatar_key: string | null;
   trip_id: string;
   thumbhash: string | null;
   via_trip: number;
@@ -86,6 +89,7 @@ const VISIBLE_LIKES = `
   JOIN media m ON m.id = l.media_id
   JOIN trips t ON t.id = m.trip_id
   JOIN members author ON author.id = m.member_id
+  JOIN users au ON au.id = author.user_id
   ${VIEWER}
   WHERE l.user_id = v.viewer_id
     AND m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL
@@ -108,7 +112,8 @@ export async function listVisibleLikes(
   const cursorBinds = after ? [after.likedAt, after.likedAt, after.mediaId] : [];
   const { results } = await db
     .prepare(
-      `SELECT m.id AS media_id, l.created_at AS liked_at, author.user_id AS author_user_id, m.trip_id, m.thumbhash,
+      `SELECT m.id AS media_id, l.created_at AS liked_at, author.user_id AS author_user_id, au.name AS author_name, au.username AS author_username,
+              au.avatar_key AS author_avatar_key, m.trip_id, m.thumbhash,
               ${VIA_TRIP} AS via_trip, ${FEATURED_OWNER} AS featured_owner_id
        ${VISIBLE_LIKES} ${cursorSql}
        ORDER BY l.created_at DESC, m.id DESC LIMIT ?`,
