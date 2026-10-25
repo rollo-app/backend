@@ -14,6 +14,7 @@ export const CreateTripSchema = z
     revealAt: epochMs("When the roll is revealed; must be >= endsAt"),
     dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
     dailyVideoLimit: z.number().int().min(0).max(20).default(3),
+    featuringDisabled: z.boolean().default(false).openapi({ description: "Private rollo: nobody can feature its photos on a profile, not even their author" }),
   })
   .refine((d) => d.startsAt >= Date.now() - PAST_TOLERANCE_MS, { message: "El inicio no puede ser en el pasado", path: ["startsAt"] })
   .refine((d) => d.endsAt > d.startsAt, { message: "El rollo tiene que terminar después de empezar", path: ["endsAt"] })
@@ -33,8 +34,21 @@ export const UpdateTripSchema = z
     revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),
     dailyPhotoLimit: z.number().int().min(1).max(100).optional(),
     dailyVideoLimit: z.number().int().min(0).max(20).optional(),
+    featuringDisabled: z.boolean().optional().openapi({
+      description: "Private rollo. Turning it on removes every photo of the rollo from every profile; turning it off restores nothing",
+    }),
   })
   .openapi("UpdateTripRequest");
+
+export const UpdateMyMembershipSchema = z
+  .object({
+    allowFeaturing: z.boolean().openapi({
+      description: "Others may feature your photos of this rollo. Turning it off removes them from other profiles; turning it on restores nothing",
+    }),
+  })
+  .openapi("UpdateMyMembershipRequest");
+
+export const MyMembershipSchema = z.object({ allowFeaturing: z.boolean() }).openapi("MyMembership");
 
 export const AddMembersSchema = z
   .object({

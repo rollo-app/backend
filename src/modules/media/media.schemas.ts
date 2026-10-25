@@ -100,6 +100,10 @@ export const FeedItemSchema = z
     featureBlocked: z.boolean().optional().openapi({
       description: "Only after the reveal: the author does not let others feature it (they still can)",
     }),
+    canFeature: z.boolean().optional().openapi({
+      description:
+        "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private)",
+    }),
     likeCount: z.number().int().optional().openapi({
       description: "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos",
     }),

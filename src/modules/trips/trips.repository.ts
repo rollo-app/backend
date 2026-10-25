@@ -10,9 +10,9 @@ export type ActiveMemberRow = {
 export type NewTrip = Pick<
   TripRow,
   "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "created_at"
-> & { started_notified_at: number | null };
+> & { started_notified_at: number | null; featuring_disabled: number };
 
-export type TripEdit = Pick<TripRow, "name" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit">;
+export type TripEdit = Pick<TripRow, "name" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "featuring_disabled">;
 
 export async function joinCodeExists(db: D1Database, joinCode: string): Promise<boolean> {
   return (await db.prepare("SELECT 1 FROM trips WHERE join_code = ?").bind(joinCode).first()) !== null;
@@ -30,12 +30,12 @@ export function insertTrip(db: D1Database, t: NewTrip): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
-                          daily_photo_limit, daily_video_limit, created_at, started_notified_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          daily_photo_limit, daily_video_limit, created_at, started_notified_at, featuring_disabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
-      t.daily_photo_limit, t.daily_video_limit, t.created_at, t.started_notified_at,
+      t.daily_photo_limit, t.daily_video_limit, t.created_at, t.started_notified_at, t.featuring_disabled,
     );
 }
 
@@ -100,10 +100,10 @@ export function countUploadedMedia(db: D1Database, tripId: string): Promise<{ n:
 export function updateTrip(db: D1Database, tripId: string, next: TripEdit): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?
+      `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, featuring_disabled = ?
      WHERE id = ?`,
     )
-    .bind(next.name, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, tripId);
+    .bind(next.name, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.featuring_disabled, tripId);
 }
 
 export function markRevealed(db: D1Database, tripId: string, now: number): D1PreparedStatement {
@@ -118,4 +118,8 @@ export function markRemoved(db: D1Database, memberId: string, tripId: string, no
   return db
     .prepare("UPDATE members SET removed_at = ? WHERE id = ? AND trip_id = ? AND removed_at IS NULL")
     .bind(now, memberId, tripId);
+}
+
+export function setMemberAllowFeaturing(db: D1Database, memberId: string, allow: boolean): D1PreparedStatement {
+  return db.prepare("UPDATE members SET allow_featuring = ? WHERE id = ?").bind(allow ? 1 : 0, memberId);
 }

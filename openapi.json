@@ -335,10 +335,14 @@
         "properties": {
           "notifications": {
             "$ref": "#/components/schemas/NotificationSettings"
+          },
+          "privacy": {
+            "$ref": "#/components/schemas/PrivacySettings"
           }
         },
         "required": [
-          "notifications"
+          "notifications",
+          "privacy"
         ]
       },
       "NotificationSettings": {
@@ -378,6 +382,18 @@
           "photoLiked"
         ]
       },
+      "PrivacySettings": {
+        "type": "object",
+        "properties": {
+          "allowFeaturing": {
+            "type": "boolean",
+            "description": "Others may feature any of your photos on their profile (on by default)"
+          }
+        },
+        "required": [
+          "allowFeaturing"
+        ]
+      },
       "UpdateUserSettingsRequest": {
         "type": "object",
         "properties": {
@@ -407,6 +423,16 @@
               "photoLiked": {
                 "type": "boolean",
                 "description": "Someone likes a photo of yours"
+              }
+            },
+            "additionalProperties": false
+          },
+          "privacy": {
+            "type": "object",
+            "properties": {
+              "allowFeaturing": {
+                "type": "boolean",
+                "description": "Others may feature any of your photos on their profile (on by default)"
               }
             },
             "additionalProperties": false
@@ -911,6 +937,10 @@
           },
           "dailyVideoLimit": {
             "type": "integer"
+          },
+          "featuringDisabled": {
+            "type": "boolean",
+            "description": "Private rollo: nobody can feature its photos on a profile, not even their author"
           }
         },
         "required": [
@@ -923,7 +953,8 @@
           "revealAt",
           "revealed",
           "dailyPhotoLimit",
-          "dailyVideoLimit"
+          "dailyVideoLimit",
+          "featuringDisabled"
         ]
       },
       "Member": {
@@ -962,6 +993,10 @@
           "blockedByMe": {
             "type": "boolean",
             "description": "Whether you blocked this member"
+          },
+          "allowFeaturing": {
+            "type": "boolean",
+            "description": "Only on `me`: others may feature your photos of this rollo on their profile"
           }
         },
         "required": [
@@ -1017,6 +1052,11 @@
             "minimum": 0,
             "maximum": 20,
             "default": 3
+          },
+          "featuringDisabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Private rollo: nobody can feature its photos on a profile, not even their author"
           }
         },
         "required": [
@@ -1129,6 +1169,10 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 20
+          },
+          "featuringDisabled": {
+            "type": "boolean",
+            "description": "Private rollo. Turning it on removes every photo of the rollo from every profile; turning it off restores nothing"
           }
         }
       },
@@ -1181,6 +1225,29 @@
         },
         "required": [
           "friendIds"
+        ]
+      },
+      "MyMembership": {
+        "type": "object",
+        "properties": {
+          "allowFeaturing": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allowFeaturing"
+        ]
+      },
+      "UpdateMyMembershipRequest": {
+        "type": "object",
+        "properties": {
+          "allowFeaturing": {
+            "type": "boolean",
+            "description": "Others may feature your photos of this rollo. Turning it off removes them from other profiles; turning it on restores nothing"
+          }
+        },
+        "required": [
+          "allowFeaturing"
         ]
       },
       "MediaRegistered": {
@@ -1493,6 +1560,10 @@
           "featureBlocked": {
             "type": "boolean",
             "description": "Only after the reveal: the author does not let others feature it (they still can)"
+          },
+          "canFeature": {
+            "type": "boolean",
+            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private)"
           },
           "likeCount": {
             "type": "integer",
@@ -3462,6 +3533,80 @@
       }
     },
     "/trips/{tripId}/members/me": {
+      "patch": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Your settings in this rollo",
+        "description": "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). Turning it off removes them from other profiles; turning it on restores nothing.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMyMembershipRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyMembership"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Trips"

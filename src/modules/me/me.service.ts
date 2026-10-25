@@ -1,6 +1,7 @@
 import { deleteAccount } from "../../lib/account";
 import { presignPut } from "../../lib/r2";
-import { getNotificationSettings, type NotificationSettings, updateNotificationSettings } from "../../lib/settings";
+import { getNotificationSettings, getPrivacySettings, type NotificationSettings, type PrivacySettings, updateNotificationSettings, updatePrivacySettings } from "../../lib/settings";
+import { deleteFeaturedByOthersOfAuthor } from "../featured/featured.repository";
 import { assertStorageAvailable } from "../../lib/storage";
 import { USERNAME_TAKEN_MESSAGE } from "../../lib/username";
 import { badRequest, conflict } from "../../shared/errors";
@@ -100,10 +101,28 @@ export async function unregisterPushToken(db: D1Database, userId: string, token:
   await repo.deletePushToken(db, token, userId).run();
 }
 
-export async function getSettings(db: D1Database, userId: string): Promise<NotificationSettings> {
-  return (await getNotificationSettings(db, [userId])).get(userId)!;
+export type UserSettings = { notifications: NotificationSettings; privacy: PrivacySettings };
+
+export async function getSettings(db: D1Database, userId: string): Promise<UserSettings> {
+  const [notifications, privacy] = await Promise.all([getNotificationSettings(db, [userId]), getPrivacySettings(db, userId)]);
+  return { notifications: notifications.get(userId)!, privacy };
 }
 
-export function updateSettings(db: D1Database, userId: string, patch: Partial<NotificationSettings>): Promise<NotificationSettings> {
-  return updateNotificationSettings(db, userId, patch);
+/**
+ * Applies a partial update. Turning `allowFeaturing` off removes every photo of yours from other profiles
+ * (yours stay); turning it back on restores nothing.
+ */
+export async function updateSettings(
+  db: D1Database,
+  userId: string,
+  patch: { notifications?: Partial<NotificationSettings>; privacy?: Partial<PrivacySettings> },
+): Promise<UserSettings> {
+  if (patch.notifications && Object.keys(patch.notifications).length) await updateNotificationSettings(db, userId, patch.notifications);
+  if (patch.privacy?.allowFeaturing !== undefined) {
+    await db.batch([
+      updatePrivacySettings(db, userId, patch.privacy.allowFeaturing),
+      ...(patch.privacy.allowFeaturing ? [] : [deleteFeaturedByOthersOfAuthor(db, userId)]),
+    ]);
+  }
+  return getSettings(db, userId);
 }

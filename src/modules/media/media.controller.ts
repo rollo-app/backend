@@ -1,3 +1,4 @@
+import { canFeature } from "../../lib/featuring";
 import type { RouteHandler } from "@hono/zod-openapi";
 import { serveMediaFile } from "../../lib/r2";
 import { avatarUrl } from "../../lib/util";
@@ -26,7 +27,7 @@ export const complete: RouteHandler<typeof completeRoute, AppEnv> = async (c) =>
 };
 
 /** Feed item for the API. Before the reveal only metadata goes out; the rest is added after it. */
-function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean) {
+function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPrivate: boolean, viewerId: string) {
   return {
     id: r.id,
     type: r.type,
@@ -53,6 +54,13 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean) {
       },
       featuredByMe: r.featuredByMe,
       featureBlocked: r.featureBlockedAt !== null,
+      canFeature: canFeature({
+        viewerIsAuthor: r.authorUserId === viewerId,
+        rolloPrivate,
+        photoBlocked: r.featureBlockedAt !== null,
+        memberAllows: r.memberAllowsFeaturing,
+        accountAllows: r.accountAllowsFeaturing,
+      }),
       likeCount: r.likeCount,
       likedByMe: r.likedByMe,
     }),
@@ -62,7 +70,7 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean) {
 export const feed: RouteHandler<typeof feedRoute, AppEnv> = async (c) => {
   const trip = c.get("trip");
   const { revealed, rows } = await service.getFeed(c.env.DB, trip, c.get("user").id);
-  const items = rows.map((r) => presentFeedItem(r, trip.id, revealed));
+  const items = rows.map((r) => presentFeedItem(r, trip.id, revealed, trip.featuring_disabled !== 0, c.get("user").id));
   return c.json({ revealed, revealAt: trip.reveal_at, items }, 200);
 };
 

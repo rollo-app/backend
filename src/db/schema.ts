@@ -21,6 +21,7 @@ export const trips = sqliteTable("trips", {
   createdAt: integer("created_at").notNull(),
   startedNotifiedAt: integer("started_notified_at"),
   revealedNotifiedAt: integer("revealed_notified_at"),
+  featuringDisabled: integer("featuring_disabled").notNull().default(0),
 });
 
 export const users = sqliteTable(
@@ -84,6 +85,7 @@ export const members = sqliteTable(
     removedAt: integer("removed_at"),
     leftAt: integer("left_at"),
     addedByUserId: text("added_by_user_id"),
+    allowFeaturing: integer("allow_featuring").notNull().default(1),
   },
   (t) => [
     unique().on(t.tripId, t.userId),
@@ -242,6 +244,7 @@ export const userSettings = sqliteTable("user_settings", {
   notifyTripRevealed: integer("notify_trip_revealed").notNull().default(1),
   notifyPhotoFeatured: integer("notify_photo_featured").notNull().default(1),
   notifyPhotoLiked: integer("notify_photo_liked").notNull().default(1),
+  allowFeaturing: integer("allow_featuring").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
 

@@ -7,6 +7,7 @@ import { claimRevealedStatement, sendTripRevealed } from "../../lib/trip-notices
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
+import { deleteFeaturedOfTrip, deleteFeaturedByOthersOfMember } from "../featured/featured.repository";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
 import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
@@ -52,6 +53,7 @@ export async function createTrip(
       created_at: now,
       // Starting now ("Empezar ahora"): the creator is the only member and just did it, so no "Arrancó" push.
       started_notified_at: body.startsAt <= now ? now : null,
+      featuring_disabled: body.featuringDisabled ? 1 : 0,
     }),
     repo.insertAdminMember(db, memberId, tripId, user.id, now),
   ]);
@@ -174,11 +176,14 @@ export async function updateTrip(db: D1Database, trip: TripRow, b: UpdateTripInp
     reveal_at: b.revealAt ?? trip.reveal_at,
     daily_photo_limit: b.dailyPhotoLimit ?? trip.daily_photo_limit,
     daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
+    featuring_disabled: b.featuringDisabled === undefined ? trip.featuring_disabled : b.featuringDisabled ? 1 : 0,
   };
   if (next.ends_at <= trip.starts_at) throw badRequest("El rollo tiene que terminar después de empezar");
   if (next.reveal_at < next.ends_at) throw badRequest("El revelado no puede ser antes del fin");
 
-  await repo.updateTrip(db, trip.id, next).run();
+  // A private rollo takes its photos off every profile (the authors' own too); turning it off restores nothing.
+  const makingPrivate = next.featuring_disabled !== 0 && trip.featuring_disabled === 0;
+  await db.batch([repo.updateTrip(db, trip.id, next), ...(makingPrivate ? [deleteFeaturedOfTrip(db, trip.id)] : [])]);
 
   return { ...trip, ...next };
 }
@@ -229,6 +234,19 @@ export async function addFriendsToTrip(
     ? () => sendPush(env, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id })
     : null;
   return { results, notify };
+}
+
+// ---------- My membership ----------
+
+/**
+ * Whether others may feature my photos of this rollo. Turning it off removes them from other profiles
+ * (mine stay); turning it on restores nothing.
+ */
+export async function setMyFeaturing(db: D1Database, member: MemberRow, allow: boolean): Promise<void> {
+  await db.batch([
+    repo.setMemberAllowFeaturing(db, member.id, allow),
+    ...(allow ? [] : [deleteFeaturedByOthersOfMember(db, member.id, member.user_id)]),
+  ]);
 }
 
 // ---------- Leave ----------

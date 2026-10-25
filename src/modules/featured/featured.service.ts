@@ -1,3 +1,4 @@
+import { featuringDenial } from "../../lib/featuring";
 import { canSeeProfile } from "../../lib/profile-access";
 import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
@@ -35,9 +36,15 @@ export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Pr
 
   if (await repo.isFeatured(db, user.id, row.id)) return null;
 
-  if (row.feature_blocked_at !== null && row.author_user_id !== user.id) {
-    throw conflict("Quien sacó esta foto no quiere que se destaque");
-  }
+  const denial = featuringDenial({
+    viewerIsAuthor: row.author_user_id === user.id,
+    rolloPrivate: row.featuring_disabled !== 0,
+    photoBlocked: row.feature_blocked_at !== null,
+    memberAllows: row.member_allow_featuring !== 0,
+    accountAllows: row.account_allow_featuring !== 0,
+  });
+  if (denial === "private_rollo") throw conflict("Las fotos de este rollo no se pueden destacar");
+  if (denial) throw conflict("Quien sacó esta foto no quiere que se destaque");
 
   const inserted = await repo.insertFeaturedUnderCap(db, user.id, row.id, now, MAX_FEATURED).run();
   if (!inserted.meta.changes) {

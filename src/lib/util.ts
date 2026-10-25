@@ -52,6 +52,7 @@ export function publicTrip(trip: TripRow, now = Date.now()) {
     revealed: isRevealed(trip, now),
     dailyPhotoLimit: trip.daily_photo_limit,
     dailyVideoLimit: trip.daily_video_limit,
+    featuringDisabled: trip.featuring_disabled !== 0,
   };
 }
 
