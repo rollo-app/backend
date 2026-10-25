@@ -9,6 +9,7 @@ import admin from "./modules/admin/admin.router";
 import auth from "./modules/auth/auth.router";
 import blocks from "./modules/blocks/blocks.router";
 import featured from "./modules/featured/featured.router";
+import { meFriendRequests, userFriendRequests } from "./modules/friend-requests/friend-requests.router";
 import friends, { friendLinks } from "./modules/friends/friends.router";
 import likes from "./modules/likes/likes.router";
 import avatars from "./modules/avatars/avatars.router";
@@ -40,9 +41,11 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 
 app.route("/admin", admin);
 app.route("/auth", auth);
+app.route("/me", meFriendRequests);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);
+app.route("/users", userFriendRequests);
 app.route("/users", users);
 app.route("/friends", friends);
 app.route("/blocks", blocks);

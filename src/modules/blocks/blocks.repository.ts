@@ -29,6 +29,13 @@ export function deleteFriendship(db: D1Database, userA: string, userB: string): 
   return db.prepare("DELETE FROM friendships WHERE user_a = ? AND user_b = ?").bind(userA, userB);
 }
 
+/** Pending friend requests between the two users, in both directions. */
+export function deleteFriendRequests(db: D1Database, userA: string, userB: string): D1PreparedStatement {
+  return db
+    .prepare("DELETE FROM friend_requests WHERE (from_user_id = ?1 AND to_user_id = ?2) OR (from_user_id = ?2 AND to_user_id = ?1)")
+    .bind(userA, userB);
+}
+
 /** Their photos leave the blocker's featured list too (and its cap). */
 export function deleteFeaturedByAuthor(db: D1Database, blockerId: string, authorUserId: string): D1PreparedStatement {
   return db

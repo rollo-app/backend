@@ -9,7 +9,7 @@ export function listBlocked(db: D1Database, blockerId: string): Promise<repo.Blo
   return repo.listBlocked(db, blockerId);
 }
 
-/** Idempotent block. Also removes the friendship and the blocked user's photos from the blocker's featured list. */
+/** Idempotent block. Also removes the friendship, the pending friend requests and the blocked user's photos from the blocker's featured list. */
 export async function blockUser(env: Env, blocker: UserRow, targetId: string, adminBase: string): Promise<void> {
   const me = blocker.id;
   const db = env.DB;
@@ -21,6 +21,7 @@ export async function blockUser(env: Env, blocker: UserRow, targetId: string, ad
   const [inserted] = await db.batch([
     repo.insertBlock(db, me, targetId, Date.now()),
     repo.deleteFriendship(db, a, b),
+    repo.deleteFriendRequests(db, me, targetId),
     repo.deleteFeaturedByAuthor(db, me, targetId),
   ]);
   if (inserted!.meta.changes === 1 && (await withinModerationEmailCap(db, me))) {

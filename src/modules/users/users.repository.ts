@@ -58,3 +58,17 @@ export async function listFriendsOf(db: D1Database, ownerId: string, mutualWith?
     .all<UserFriendRow>();
   return results;
 }
+
+/** Pending friend request between viewer and owner: `sent` by the viewer (rejected ones included, silently) or `received` from the owner. */
+export async function friendRequestState(db: D1Database, viewerId: string, ownerId: string): Promise<"none" | "sent" | "received"> {
+  const row = await db
+    .prepare(
+      `SELECT from_user_id, rejected_at FROM friend_requests
+       WHERE (from_user_id = ?1 AND to_user_id = ?2) OR (from_user_id = ?2 AND to_user_id = ?1)`,
+    )
+    .bind(viewerId, ownerId)
+    .all<{ from_user_id: string; rejected_at: number | null }>();
+  if (row.results.some((r) => r.from_user_id === viewerId)) return "sent";
+  if (row.results.some((r) => r.from_user_id === ownerId && r.rejected_at === null)) return "received";
+  return "none";
+}

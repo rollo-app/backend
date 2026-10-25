@@ -234,6 +234,21 @@ export const pushTokens = sqliteTable(
   (t) => [index("idx_push_tokens_user").on(t.userId), index("idx_push_tokens_session").on(t.sessionId)],
 );
 
+export const friendRequests = sqliteTable(
+  "friend_requests",
+  {
+    fromUserId: text("from_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    toUserId: text("to_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+    rejectedAt: integer("rejected_at"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.fromUserId, t.toUserId] }),
+    index("idx_friend_requests_to").on(t.toUserId),
+    index("idx_friend_requests_from_time").on(t.fromUserId, t.createdAt),
+  ],
+);
+
 export const userSettings = sqliteTable("user_settings", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   notifyAddedToTrip: integer("notify_added_to_trip").notNull().default(1),
@@ -242,6 +257,7 @@ export const userSettings = sqliteTable("user_settings", {
   notifyTripRevealed: integer("notify_trip_revealed").notNull().default(1),
   notifyPhotoFeatured: integer("notify_photo_featured").notNull().default(1),
   notifyPhotoLiked: integer("notify_photo_liked").notNull().default(1),
+  notifyFriendRequest: integer("notify_friend_request").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -377,6 +393,7 @@ export type Member = typeof members.$inferSelect;
 export type NewMember = typeof members.$inferInsert;
 export type Media = typeof media.$inferSelect;
 export type NewMedia = typeof media.$inferInsert;
+export type FriendRequest = typeof friendRequests.$inferSelect;
 export type Friendship = typeof friendships.$inferSelect;
 export type NewFriendship = typeof friendships.$inferInsert;
 export type FriendLink = typeof friendLinks.$inferSelect;

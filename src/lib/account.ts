@@ -54,6 +54,7 @@ export async function deleteAccount(env: Env, user: UserRow): Promise<void> {
     DB.prepare("DELETE FROM user_settings WHERE user_id = ?").bind(user.id),
     DB.prepare("DELETE FROM likes WHERE user_id = ?").bind(user.id),
     DB.prepare("DELETE FROM friendships WHERE user_a = ? OR user_b = ?").bind(user.id, user.id),
+    DB.prepare("DELETE FROM friend_requests WHERE from_user_id = ? OR to_user_id = ?").bind(user.id, user.id),
     DB.prepare("DELETE FROM reports WHERE reporter_id = ? OR target_user_id = ?").bind(user.id, user.id),
     DB.prepare("DELETE FROM blocks WHERE blocker_id = ? OR blocked_id = ?").bind(user.id, user.id),
     DB.prepare("DELETE FROM friend_links WHERE user_id = ?").bind(user.id),
