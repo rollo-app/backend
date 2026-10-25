@@ -65,10 +65,21 @@ export const NotificationSettingsSchema = z
   })
   .openapi("NotificationSettings");
 
-export const UserSettingsSchema = z.object({ notifications: NotificationSettingsSchema }).openapi("UserSettings");
+export const PrivacySettingsSchema = z
+  .object({
+    allowFeaturing: z.boolean().openapi({ description: "Others may feature any of your photos on their profile (on by default)" }),
+  })
+  .openapi("PrivacySettings");
+
+export const UserSettingsSchema = z
+  .object({ notifications: NotificationSettingsSchema, privacy: PrivacySettingsSchema })
+  .openapi("UserSettings");
 
 export const UpdateUserSettingsSchema = z
-  .strictObject({ notifications: NotificationSettingsSchema.partial().strict().optional() })
+  .strictObject({
+    notifications: NotificationSettingsSchema.partial().strict().optional(),
+    privacy: PrivacySettingsSchema.partial().strict().optional(),
+  })
   .openapi("UpdateUserSettingsRequest");
 
 export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");

@@ -473,10 +473,10 @@ describe("DELETE /trips/:id/members/:memberId", () => {
     expect((await api("DELETE", `/trips/${tripId}/members/${adminId}`, { token: fede.token })).status).toBe(403);
   });
 
-  it("the old per-trip name endpoint no longer exists", async () => {
+  it("the old per-trip name no longer exists (PATCH members/me only takes allowFeaturing)", async () => {
     const { tripId, adminToken } = await newTrip();
     const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: adminToken, body: { name: "Otro" } });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -485,7 +485,7 @@ describe("member shape", () => {
     const { tripId, code, adminUserId } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const res = await api("GET", `/trips/${tripId}`, { token: fede.token });
-    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", blockedByMe: false });
+    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", blockedByMe: false, allowFeaturing: true });
     expect(res.body.members[0]).toMatchObject({ userId: adminUserId, name: "Juani", role: "admin" });
   });
 

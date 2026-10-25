@@ -1,6 +1,6 @@
 import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { featured, likes, media, members, users, type Media, type NewMedia } from "../../db/schema";
+import { featured, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
 // A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
 import { commentCountSql } from "../comments/comments.repository";
 import { notHiddenFor } from "../../lib/moderation";
@@ -29,6 +29,8 @@ export type FeedRow = {
   authorUserId: string;
   authorAvatarKey: string | null;
   featureBlockedAt: number | null;
+  memberAllowsFeaturing: boolean;
+  accountAllowsFeaturing: boolean;
   featuredByMe: boolean;
   likeCount: number;
   likedByMe: boolean;
@@ -116,6 +118,8 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
       authorUserId: members.userId,
       authorAvatarKey: users.avatarKey,
       featureBlockedAt: media.featureBlockedAt,
+      memberAllowsFeaturing: sql<boolean>`${members.allowFeaturing} != 0`.mapWith(Boolean),
+      accountAllowsFeaturing: sql<boolean>`COALESCE(${userSettings.allowFeaturing}, 1) != 0`.mapWith(Boolean),
       featuredByMe: sql<boolean>`${featured.mediaId} IS NOT NULL`.mapWith(Boolean),
       likeCount: sql<number>`COALESCE(${likeCounts.n}, 0)`,
       likedByMe: sql<boolean>`${viewerLike.mediaId} IS NOT NULL`.mapWith(Boolean),
@@ -124,6 +128,7 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
     .from(media)
     .innerJoin(members, eq(members.id, media.memberId))
     .innerJoin(users, eq(users.id, members.userId))
+    .leftJoin(userSettings, eq(userSettings.userId, members.userId))
     .leftJoin(featured, and(eq(featured.mediaId, media.id), eq(featured.userId, viewerId)))
     .leftJoin(viewerLike, and(eq(viewerLike.mediaId, media.id), eq(viewerLike.userId, viewerId)))
     .leftJoin(likeCounts, eq(likeCounts.mediaId, media.id))

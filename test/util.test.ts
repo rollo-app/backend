@@ -19,6 +19,7 @@ const baseTrip: TripRow = {
   created_at: 0,
   started_notified_at: null,
   revealed_notified_at: null,
+  featuring_disabled: 0,
 };
 
 describe("localDate", () => {
@@ -83,6 +84,7 @@ describe("publicTrip", () => {
       revealed: false,
       dailyPhotoLimit: 10,
       dailyVideoLimit: 3,
+      featuringDisabled: false,
     });
   });
 });

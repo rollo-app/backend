@@ -1,3 +1,4 @@
+import { featuringDenial } from "../../lib/featuring";
 import { canSeeProfile } from "../../lib/profile-access";
 import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
@@ -22,6 +23,22 @@ async function visibleOwner(db: D1Database, viewerId: string, userId: string) {
   return owner;
 }
 
+function denialFor(row: repo.FeaturableMedia, viewerId: string) {
+  return featuringDenial({
+    viewerIsAuthor: row.author_user_id === viewerId,
+    rolloPrivate: row.featuring_disabled !== 0,
+    photoBlocked: row.feature_blocked_at !== null,
+    memberAllows: row.member_allow_featuring !== 0,
+    accountAllows: row.account_allow_featuring !== 0,
+  });
+}
+
+function denialError(denial: NonNullable<ReturnType<typeof featuringDenial>>) {
+  return denial === "private_rollo"
+    ? conflict("Las fotos de este rollo no se pueden destacar")
+    : conflict("Quien sacó esta foto no quiere que se destaque");
+}
+
 /** Features a photo. Returns the push to the author when it is a new feature of someone else's photo, else null. */
 export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Promise<AfterResponse> {
   const db = env.DB;
@@ -35,14 +52,17 @@ export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Pr
 
   if (await repo.isFeatured(db, user.id, row.id)) return null;
 
-  if (row.feature_blocked_at !== null && row.author_user_id !== user.id) {
-    throw conflict("Quien sacó esta foto no quiere que se destaque");
-  }
+  const denial = denialFor(row, user.id);
+  if (denial) throw denialError(denial);
 
   const inserted = await repo.insertFeaturedUnderCap(db, user.id, row.id, now, MAX_FEATURED).run();
   if (!inserted.meta.changes) {
-    if (!(await repo.isFeatured(db, user.id, row.id))) throw conflict(`Podés destacar hasta ${MAX_FEATURED} fotos`);
-    return null;
+    if (await repo.isFeatured(db, user.id, row.id)) return null;
+    // Not inserted: a level was turned off since the read above, or the cap. Read again to tell which.
+    const again = await repo.findFeaturableMedia(db, user.id, mediaId);
+    const nowDenied = again && denialFor(again, user.id);
+    if (nowDenied) throw denialError(nowDenied);
+    throw conflict(`Podés destacar hasta ${MAX_FEATURED} fotos`);
   }
   if (row.author_user_id === user.id) return null;
   const authorId = row.author_user_id;

@@ -31,6 +31,7 @@ export const TripSchema = z
     revealed: z.boolean(),
     dailyPhotoLimit: z.number().int(),
     dailyVideoLimit: z.number().int(),
+    featuringDisabled: z.boolean().openapi({ description: "Private rollo: nobody can feature its photos on a profile, not even their author" }),
   })
   .openapi("Trip");
 
@@ -69,6 +70,7 @@ export const MemberSchema = z
     avatarUrl: z.string().nullable(),
     role: RoleSchema,
     blockedByMe: z.boolean().openapi({ description: "Whether you blocked this member" }),
+    allowFeaturing: z.boolean().optional().openapi({ description: "Only on `me`: others may feature your photos of this rollo on their profile" }),
   })
   .openapi("Member");
 

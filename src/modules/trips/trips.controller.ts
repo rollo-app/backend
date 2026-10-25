@@ -11,6 +11,7 @@ import type {
   leaveRoute,
   removeMemberRoute,
   revealRoute,
+  updateMyMembershipRoute,
   updateTripRoute,
 } from "./trips.router";
 import * as service from "./trips.service";
@@ -38,7 +39,7 @@ export const detail: RouteHandler<typeof getTripRoute, AppEnv> = async (c) => {
   return c.json(
     {
       trip: publicTrip(trip, Date.now()),
-      me: publicMember(c.get("member"), user),
+      me: { ...publicMember(c.get("member"), user), allowFeaturing: c.get("member").allow_featuring !== 0 },
       members: members.map((m) => publicMember(m, m, blocked.has(m.user_id))),
       today,
       totalUploaded,
@@ -68,6 +69,12 @@ export const addMembers: RouteHandler<typeof addMembersRoute, AppEnv> = async (c
   );
   if (notify) deferPush(c, notify());
   return c.json({ results }, 200);
+};
+
+export const updateMyMembership: RouteHandler<typeof updateMyMembershipRoute, AppEnv> = async (c) => {
+  const { allowFeaturing } = c.req.valid("json");
+  await service.setMyFeaturing(c.env.DB, c.get("member"), allowFeaturing);
+  return c.json({ allowFeaturing }, 200);
 };
 
 export const leave: RouteHandler<typeof leaveRoute, AppEnv> = async (c) => {

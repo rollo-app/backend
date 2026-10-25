@@ -72,12 +72,10 @@ export const deletePushToken: RouteHandler<typeof deletePushTokenRoute, AppEnv> 
 };
 
 export const getSettings: RouteHandler<typeof getSettingsRoute, AppEnv> = async (c) => {
-  const notifications = await service.getSettings(c.env.DB, c.get("user").id);
-  return c.json({ notifications }, 200);
+  return c.json(await service.getSettings(c.env.DB, c.get("user").id), 200);
 };
 
 export const updateSettings: RouteHandler<typeof updateSettingsRoute, AppEnv> = async (c) => {
   const body = c.req.valid("json");
-  const notifications = await service.updateSettings(c.env.DB, c.get("user").id, body.notifications ?? {});
-  return c.json({ notifications }, 200);
+  return c.json(await service.updateSettings(c.env.DB, c.get("user").id, body), 200);
 };

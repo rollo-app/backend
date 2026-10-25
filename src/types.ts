@@ -53,6 +53,8 @@ export type TripRow = {
   started_notified_at: number | null;
   /** When the "rollo revealed" push was sent (or the trip had already revealed when notifications shipped). */
   revealed_notified_at: number | null;
+  /** Private rollo: nobody can feature its photos (0/1). */
+  featuring_disabled: number;
 };
 
 export type UserRow = {
@@ -77,6 +79,8 @@ export type MemberRow = {
   removed_at: number | null;
   left_at: number | null;
   added_by_user_id: string | null;
+  /** Others may feature this member's photos of the rollo (0/1). */
+  allow_featuring: number;
 };
 
 export type MediaType = "photo" | "video";

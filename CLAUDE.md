@@ -29,8 +29,15 @@ Decisiones de producto que el backend tiene que respetar:
   409; él sí puede. `GET /users/{id}/featured` (permiso del perfil, si no 403 "Este perfil es privado") **nunca** devuelve el rollo, el
   caption ni la coordenada exacta: solo una **zona** (centro de la celda de 0.05°, ~5 km) y el autor si no es el dueño. Los archivos se
   sirven por `/featured/{userId}/{mediaId}/{variant}` con el permiso del perfil, no del rollo. No se ven (ni sus archivos) si la foto se
-  borró, se bloqueó o el dueño ya no es miembro activo de ese rollo. El feed revelado trae `featuredByMe` y `featureBlocked`, y todo
+  borró, se bloqueó o el dueño ya no es miembro activo de ese rollo. El feed revelado trae `featuredByMe`, `featureBlocked` y `canFeature`, y todo
   ítem del feed trae `author.userId`.
+  **Adónde pueden ir tus fotos** (`src/lib/featuring.ts`, la regla en un solo lugar: `featuringDenial` / `canFeature`): cuatro niveles, gana el más
+  restrictivo. (1) cuenta: `user_settings.allow_featuring`, `PATCH /me/settings` `{ privacy: { allowFeaturing } }` (también en `GET`); (2) rollo:
+  `members.allow_featuring`, `PATCH /trips/{id}/members/me` `{ allowFeaturing }` (`me.allowFeaturing` en el detalle); (3) foto: `feature-block`;
+  (4) rollo privado: `trips.featuring_disabled` (`featuringDisabled` al crear y en `PATCH /trips/{id}`, solo admin; está en `Trip`): nadie
+  destaca sus fotos, **ni el autor**. El autor siempre puede con las suyas salvo en el rollo privado. Destacar da 409 si algún nivel lo frena.
+  **Al apagar un nivel se limpia** (en un `batch` con el cambio): cuenta → las fotos del autor de todos los rollos salen de los perfiles ajenos;
+  rollo → las de esa membresía; rollo privado → todas las del rollo, también las del autor. Prender no restaura nada.
 - **Notificaciones push** (`src/lib/push.ts`, `src/lib/trip-notices.ts`): se mandan con Expo Push Service
   (`POST https://exp.host/--/api/v2/push/send`, lotes de 100, sin access token). `sendPush(env, userIds, kind, message, { actorId })`
   es el único lugar que manda: saca al actor, a quien tenga un bloqueo con él (cualquier sentido) y a quien apagó ese tipo
