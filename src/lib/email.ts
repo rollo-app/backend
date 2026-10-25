@@ -55,6 +55,8 @@ export type ReportEmail = {
   target: Person;
   trip?: { name: string };
   media?: { id: string; type: "photo" | "video"; caption: string | null; takenAt: number; url: string };
+  /** A reported comment (its photo is not attached: it is not the reported content). */
+  comment?: { id: string; text: string };
   /** Origin of the API, used to build the admin commands. */
   adminBase: string;
 };
@@ -99,7 +101,9 @@ export const adminCurlFor = (adminBase: string, path: string) => `curl -X DELETE
 export async function sendReportEmail(env: Env, report: ReportEmail): Promise<void> {
   const subject = report.media
     ? `Denuncia en Rollo: ${report.media.type === "video" ? "video" : "foto"} de ${handle(report.target)}`
-    : `Denuncia en Rollo: ${handle(report.target)}`;
+    : report.comment
+      ? `Denuncia en Rollo: comentario de ${handle(report.target)}`
+      : `Denuncia en Rollo: ${handle(report.target)}`;
 
   const lines: string[] = [];
   if (report.media) lines.push("Borrar el archivo:", adminCurlFor(report.adminBase, `/admin/media/${report.media.id}`), "");
@@ -110,6 +114,7 @@ export async function sendReportEmail(env: Env, report: ReportEmail): Promise<vo
     `Denunciado: ${describePerson(report.target)}`,
   );
   if (report.trip) lines.push(`Rollo: ${report.trip.name}`);
+  if (report.comment) lines.push(`Comentario: ${JSON.stringify(report.comment.text)}`);
   if (report.media) {
     lines.push(
       `${report.media.type === "video" ? "Video" : "Foto"}: ${report.media.url}`,

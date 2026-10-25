@@ -10,6 +10,7 @@ import auth from "./modules/auth/auth.router";
 import blocks from "./modules/blocks/blocks.router";
 import featured from "./modules/featured/featured.router";
 import friends, { friendLinks } from "./modules/friends/friends.router";
+import comments from "./modules/comments/comments.router";
 import likes from "./modules/likes/likes.router";
 import avatars from "./modules/avatars/avatars.router";
 import me from "./modules/me/me.router";
@@ -52,6 +53,7 @@ app.route("/trips", trips);
 app.route("/", media);
 app.route("/", featured);
 app.route("/", likes);
+app.route("/", comments);
 
 // Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {

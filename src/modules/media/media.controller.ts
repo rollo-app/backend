@@ -55,6 +55,7 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean) {
       featureBlocked: r.featureBlockedAt !== null,
       likeCount: r.likeCount,
       likedByMe: r.likedByMe,
+      commentCount: r.commentCount,
     }),
   };
 }

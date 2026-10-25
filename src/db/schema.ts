@@ -119,6 +119,8 @@ export const media = sqliteTable(
     featureBlockedAt: integer("feature_blocked_at"),
     likeNotifiedAt: integer("like_notified_at"),
     likesSinceNotified: integer("likes_since_notified").notNull().default(0),
+    commentNotifiedAt: integer("comment_notified_at"),
+    commentsSinceNotified: integer("comments_since_notified").notNull().default(0),
     thumbSizeBytes: integer("thumb_size_bytes"),
   },
   (t) => [
@@ -199,10 +201,12 @@ export const reports = sqliteTable(
     reason: text("reason").notNull(),
     createdAt: integer("created_at").notNull(),
     unemailed: integer("unemailed").notNull().default(0),
+    commentId: text("comment_id").references(() => comments.id, { onDelete: "cascade" }),
   },
   (t) => [
     uniqueIndex("idx_reports_media").on(t.reporterId, t.mediaId).where(sql`${t.mediaId} IS NOT NULL`),
-    uniqueIndex("idx_reports_user").on(t.reporterId, t.targetUserId).where(sql`${t.mediaId} IS NULL`),
+    uniqueIndex("idx_reports_comment").on(t.reporterId, t.commentId).where(sql`${t.commentId} IS NOT NULL`),
+    uniqueIndex("idx_reports_user").on(t.reporterId, t.targetUserId).where(sql`${t.mediaId} IS NULL AND ${t.commentId} IS NULL`),
     index("idx_reports_unemailed").on(t.createdAt).where(sql`${t.unemailed} = 1`),
   ],
 );
@@ -242,6 +246,7 @@ export const userSettings = sqliteTable("user_settings", {
   notifyTripRevealed: integer("notify_trip_revealed").notNull().default(1),
   notifyPhotoFeatured: integer("notify_photo_featured").notNull().default(1),
   notifyPhotoLiked: integer("notify_photo_liked").notNull().default(1),
+  notifyPhotoCommented: integer("notify_photo_commented").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -253,6 +258,19 @@ export const likes = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.mediaId] }), index("idx_likes_media").on(t.mediaId)],
+);
+
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: text("id").primaryKey(),
+    mediaId: text("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    createdAt: integer("created_at").notNull(),
+    deletedAt: integer("deleted_at"),
+  },
+  (t) => [index("idx_comments_media").on(t.mediaId, t.createdAt), index("idx_comments_user").on(t.userId)],
 );
 
 export const pushReceipts = sqliteTable(
@@ -395,6 +413,8 @@ export type PushToken = typeof pushTokens.$inferSelect;
 export type NewPushToken = typeof pushTokens.$inferInsert;
 export type UserSettings = typeof userSettings.$inferSelect;
 export type NewUserSettings = typeof userSettings.$inferInsert;
+export type Comment = typeof comments.$inferSelect;
+export type NewComment = typeof comments.$inferInsert;
 export type Like = typeof likes.$inferSelect;
 export type NewLike = typeof likes.$inferInsert;
 export type PushReceipt = typeof pushReceipts.$inferSelect;

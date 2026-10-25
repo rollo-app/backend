@@ -111,6 +111,10 @@ export type MediaRow = {
   like_notified_at: number | null;
   /** Likes since like_notified_at that did not send a push. */
   likes_since_notified: number;
+  /** Last time a comment on this photo sent a push (anti-spam window). */
+  comment_notified_at: number | null;
+  /** Comments since comment_notified_at that did not send a push. */
+  comments_since_notified: number;
 };
 
 export type AppEnv = {

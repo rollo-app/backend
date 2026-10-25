@@ -8,10 +8,10 @@ export const createReportRoute = createRoute({
   method: "post",
   path: "/",
   tags: ["Reports"],
-  summary: "Report a photo or a person",
+  summary: "Report a photo, a comment or a person",
   description:
-    "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. " +
-    "A reported photo disappears from the reporter's own views (and from their featured photos). At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+    "Send exactly one of `mediaId`, `commentId` or `userId`. Idempotent: reporting the same photo, comment or person again is a 204 and does not email support again. " +
+    "A reported photo disappears from the reporter's own views (and from their featured photos); a reported comment, from their comment lists and counts. At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo or comment is not one the reporter can see (a comment: only active members of its rollo); 400 if it is theirs.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateReportSchema } }, required: true } },

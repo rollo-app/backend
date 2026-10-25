@@ -60,6 +60,7 @@ export const NotificationSettingsSchema = z
     tripRevealed: z.boolean().openapi({ description: "A rollo you are in is revealed" }),
     photoFeatured: z.boolean().openapi({ description: "Someone features a photo of yours on their profile" }),
     photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
+    photoCommented: z.boolean().openapi({ description: "Someone comments on a photo of yours, or on one you commented on" }),
   })
   .openapi("NotificationSettings");
 
