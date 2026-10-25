@@ -4,7 +4,9 @@ import { mediaKeys, presignPut } from "../../lib/r2";
 import { isRevealed, localDate } from "../../lib/util";
 import { MOMENT_WINDOW_MS } from "../../lib/moments";
 import { PAST_TOLERANCE_MS } from "../../schemas";
-import type { Env, MemberRow, TripRow } from "../../types";
+import { actorName, sendPush } from "../../lib/push";
+import type { AfterResponse } from "../../shared/after-response";
+import type { Env, MemberRow, TripRow, UserRow } from "../../types";
 import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
 import { deleteFeaturedByOthers } from "../featured/featured.repository";
 import { findMoment, findMomentSlots, recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
@@ -185,10 +187,17 @@ export async function registerMedia(
 }
 
 /** Verifies the files are in R2 with the registered sizes and marks the media as uploaded. */
-export async function completeUpload(env: Env, member: MemberRow, mediaId: string): Promise<{ id: string; status: "uploaded" }> {
+export async function completeUpload(
+  env: Env,
+  trip: TripRow,
+  member: MemberRow,
+  user: Pick<UserRow, "id" | "name" | "username">,
+  mediaId: string,
+): Promise<{ body: { id: string; status: "uploaded" }; notify: AfterResponse }> {
   const row = await repo.findOwnLiveMedia(env.DB, mediaId, member.id);
   if (!row) throw notFound();
-  if (row.status === "uploaded") return { id: row.id, status: "uploaded" };
+  const done = { id: row.id, status: "uploaded" as const };
+  if (row.status === "uploaded") return { body: done, notify: null };
 
   const [original, thumb] = await Promise.all([env.MEDIA.head(row.originalKey), env.MEDIA.head(row.thumbKey)]);
   if (!original || !thumb) {
@@ -204,8 +213,27 @@ export async function completeUpload(env: Env, member: MemberRow, mediaId: strin
     throw badRequest("El archivo no coincide con el que registraste; volvé a subirlo");
   }
 
-  await repo.markUploaded(env.DB, row.id, Date.now(), original.size).run();
-  return { id: row.id, status: "uploaded" };
+  const now = Date.now();
+  const marked = await repo.markUploaded(env.DB, row.id, now, original.size).run();
+
+  // "momentPosted": only the main photo of a moment (the linked image never notifies), only for the request that
+  // actually flipped the row to uploaded (retries and concurrent completes lose the claim), never once revealed
+  // (the reveal push covers it).
+  const isMomentMain = row.momentDay !== null && row.pairedMediaId === null;
+  if (!isMomentMain || marked.meta.changes === 0 || isRevealed(trip, now)) return { body: done, notify: null };
+  return {
+    body: done,
+    notify: async () => {
+      const recipients = await repo.listActiveMemberUserIds(env.DB, trip.id);
+      await sendPush(
+        env,
+        recipients,
+        "momentPosted",
+        { title: `${actorName(user)} subió su momento`, body: trip.name, url: `/photo/${row.id}?tripId=${trip.id}` },
+        { actorId: user.id },
+      );
+    },
+  };
 }
 
 /** Feed rows of the trip for the viewer; `revealed` decides how much of each row the controller exposes. */
@@ -214,11 +242,14 @@ export async function getFeed(db: D1Database, trip: TripRow, viewerId: string): 
   return { revealed, rows: await repo.listFeed(db, trip.id, viewerId) };
 }
 
-/** R2 key of the requested variant; only after the reveal. */
+/**
+ * R2 key of the requested variant. Only after the reveal, except for the two images of a daily moment, which any
+ * active member (the route already requires it) can fetch as soon as they are uploaded.
+ */
 export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: string, variant: "thumb" | "original"): Promise<string> {
-  if (!isRevealed(trip)) throw forbidden("Todavía no se reveló el rollo");
-
+  const revealed = isRevealed(trip);
   const row = await repo.findDownloadKeys(db, mediaId, trip.id);
+  if (!revealed && !row?.isMoment) throw forbidden("Todavía no se reveló el rollo");
   if (!row) throw notFound();
   return variant === "thumb" ? row.thumbKey : row.originalKey;
 }

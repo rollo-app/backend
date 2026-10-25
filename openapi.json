@@ -480,6 +480,10 @@
           "dailyMoment": {
             "type": "boolean",
             "description": "It is your moment of the day in a rollo with the daily moment on"
+          },
+          "momentPosted": {
+            "type": "boolean",
+            "description": "Someone in a rollo you are in uploaded their daily moment"
           }
         },
         "required": [
@@ -491,7 +495,8 @@
           "photoLiked",
           "photoCommented",
           "friendRequest",
-          "dailyMoment"
+          "dailyMoment",
+          "momentPosted"
         ]
       },
       "PrivacySettings": {
@@ -547,6 +552,10 @@
               "dailyMoment": {
                 "type": "boolean",
                 "description": "It is your moment of the day in a rollo with the daily moment on"
+              },
+              "momentPosted": {
+                "type": "boolean",
+                "description": "Someone in a rollo you are in uploaded their daily moment"
               }
             },
             "additionalProperties": false
@@ -1762,14 +1771,14 @@
               "number",
               "null"
             ],
-            "description": "Only after the reveal"
+            "description": "Only after the reveal (and for the photos of a daily moment, right away)"
           },
           "height": {
             "type": [
               "number",
               "null"
             ],
-            "description": "Only after the reveal"
+            "description": "Only after the reveal (and for the photos of a daily moment, right away)"
           },
           "files": {
             "type": "object",
@@ -1785,7 +1794,7 @@
               "thumb",
               "original"
             ],
-            "description": "Download paths; only after the reveal"
+            "description": "Download paths; only after the reveal, except for the photos of a daily moment (main and linked image), which any active member gets as soon as they are uploaded"
           },
           "featuredByMe": {
             "type": "boolean",
@@ -1863,7 +1872,7 @@
                   "thumb",
                   "original"
                 ],
-                "description": "Download paths; null before the reveal"
+                "description": "Download paths (the linked image of a moment is visible to active members as soon as it is uploaded)"
               }
             },
             "required": [
@@ -1873,7 +1882,7 @@
               "thumbhash",
               "files"
             ],
-            "description": "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. width/height are null before the reveal"
+            "description": "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. it comes with files and dimensions right away"
           }
         },
         "required": [
@@ -4831,8 +4840,8 @@
         "tags": [
           "Media"
         ],
-        "summary": "Download a file (only after the reveal)",
-        "description": "Streamed from R2 with the same Bearer token.",
+        "summary": "Download a file (only after the reveal, except daily moment photos)",
+        "description": "Streamed from R2 with the same Bearer token. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
         "security": [
           {
             "bearerAuth": []

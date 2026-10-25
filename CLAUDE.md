@@ -43,7 +43,7 @@ Decisiones de producto que el backend tiene que respetar:
   es el único lugar que manda: saca al actor, a quien tenga un bloqueo con él (cualquier sentido) y a quien apagó ese tipo
   (`user_settings`); cada push lleva `data.url` (deep link de la app). Nunca tira error: en las rutas se corre con `deferPush(c, ...)`
   (`waitUntil`) **después** de guardar. Eventos: sumar a un rollo (`addedToTrip`), canjear tu link (`newFriend`), destacar una foto
-  ajena (`photoFeatured`), revelado manual (`tripRevealed`, al resto de los miembros activos). El **Cron Trigger** (cada 5 min,
+  ajena (`photoFeatured`), subir el momento del día (`momentPosted`, ver "Momento del día"), revelado manual (`tripRevealed`, al resto de los miembros activos). El **Cron Trigger** (cada 5 min,
   `scheduled` en `src/index.ts`) manda "Arrancó" y "Se reveló" a los miembros activos y revisa los recibos de Expo (`push_receipts`,
   ~15 min después) para borrar tokens con `DeviceNotRegistered`. Para no avisar dos veces se "reclama" el rollo con
   `started_notified_at` / `revealed_notified_at` en un solo `UPDATE ... WHERE ... IS NULL`; un rollo ya revelado (o terminado)
@@ -51,7 +51,7 @@ Decisiones de producto que el backend tiene que respetar:
   `flushPendingPushes()` espera las push diferidas.
   **Tokens:** `PUT /me/push-tokens/{token}` (idempotente; si el token era de otra cuenta pasa a esta: mismo celular, otra
   sesión) y `DELETE` al cerrar sesión; borrar la cuenta los borra todos (tabla `push_tokens`). **Preferencias:**
-  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked, photoCommented, friendRequest } }`
+  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked, photoCommented, friendRequest, dailyMoment, momentPosted } }`
   (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/lib/settings.ts`).
   `profileVisibility` sigue en `users`.
 - **"Me gusta"** (`src/modules/likes/`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
@@ -95,6 +95,7 @@ Decisiones de producto que el backend tiene que respetar:
   días y queda `in_window` (la app avisa "Se pasó tu momento"). **Feed:** los ítems traen `momentDay` y `selfie`; `GET /me/trips` trae `momentMode` de cada rollo; el admin que borra la foto principal de un momento borra también su selfie; la selfie nunca es un
   ítem propio (tampoco para clientes viejos), sus archivos son `null` antes del revelado y los totales no la cuentan; me gusta
   y comentarios rechazan el id de una selfie (400); **el momento no se destaca en el perfil**: `PUT /me/featured` rechaza con 400 ("Las fotos del momento no se pueden agregar a tu perfil.") la principal y la vinculada (`moment_day` o `paired_media_id`), y el feed revelado trae `canFeature: false` en la principal; **la primera foto que se saca es la principal** (trasera o frontal) y la vinculada es la otra cámara (el nombre `selfie` del contrato significa "la imagen vinculada"); denunciar una selfie sí se puede y oculta solo la selfie para quien denunció.
+  **El momento se ve apenas se sube** (excepción a "nadie ve nada hasta el revelado"): antes del revelado el feed trae `files`, `width` y `height` **solo** en la foto principal del momento (`moment_day` y sin `paired_media_id`) y en `selfie` (la imagen vinculada), a miembros activos (la ruta ya lo exige); una foto normal sigue sin nada. Los campos de después del revelado (`likeCount`, `commentCount`, `featuredByMe`, `canFeature`...) siguen ausentes. `GET /trips/{tripId}/media/{id}/{thumb|original}` deja bajar esas dos imágenes antes del revelado (`getDownloadKey`; una normal da 403; la regla de bloqueos/denuncias es la de después del revelado: el feed las esconde, la descarga por id no mira). Me gusta, comentarios y destacar siguen dando error antes del revelado (404: sin revelado no hay camino por rollo ni por perfil). Push **`momentPosted`** (`notifications.momentPosted`, `notify_moment_posted`, migración 0025) a los demás miembros activos al **completar** la subida de la principal (`POST /media/{id}/complete`): título "{Nombre} subió su momento", cuerpo = nombre del rollo, abre `/photo/<id>?tripId=<trip>`; una vez por momento (el `UPDATE ... WHERE status != 'uploaded'` de `markUploaded` decide el ganador: reintentos y completes simultáneos no reenvían), nunca para la vinculada, ni al autor ni entre bloqueados (lo hace `sendPush`), ni con el rollo ya revelado.
 - **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
   `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
   (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).

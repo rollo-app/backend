@@ -1,5 +1,6 @@
 import { canFeature } from "../../lib/featuring";
 import type { RouteHandler } from "@hono/zod-openapi";
+import { deferPush } from "../../lib/push";
 import { serveMediaFile } from "../../lib/r2";
 import { avatarUrl } from "../../lib/util";
 import type { AppEnv } from "../../types";
@@ -23,7 +24,9 @@ export const register: RouteHandler<typeof registerRoute, AppEnv> = async (c) =>
 
 export const complete: RouteHandler<typeof completeRoute, AppEnv> = async (c) => {
   const { mediaId } = c.req.valid("param");
-  return c.json(await service.completeUpload(c.env, c.get("member"), mediaId), 200);
+  const { body, notify } = await service.completeUpload(c.env, c.get("trip"), c.get("member"), c.get("user"), mediaId);
+  if (notify) deferPush(c, notify());
+  return c.json(body, 200);
 };
 
 /** Feed item for the API. Before the reveal only metadata goes out; the rest is added after it. */
@@ -45,6 +48,16 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
       username: r.authorUsername,
       avatarUrl: avatarUrl(r.authorUserId, r.authorAvatarKey),
     },
+    // The daily moment is the exception to "nothing before the reveal": its two images (main and linked) come with
+    // files and dimensions to any active member (the route requires it). Reveal-only fields stay out.
+    ...(!revealed && r.momentDay !== null && {
+      width: r.width,
+      height: r.height,
+      files: {
+        thumb: `/trips/${tripId}/media/${r.id}/thumb`,
+        original: `/trips/${tripId}/media/${r.id}/original`,
+      },
+    }),
     ...(r.momentDay !== null && {
       momentDay: r.momentDay,
       selfie:
@@ -52,15 +65,13 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
           ? null
           : {
               id: r.selfieId,
-              width: revealed ? r.selfieWidth : null,
-              height: revealed ? r.selfieHeight : null,
+              width: r.selfieWidth,
+              height: r.selfieHeight,
               thumbhash: r.selfieThumbhash,
-              files: revealed
-                ? {
-                    thumb: `/trips/${tripId}/media/${r.selfieId}/thumb`,
-                    original: `/trips/${tripId}/media/${r.selfieId}/original`,
-                  }
-                : null,
+              files: {
+                thumb: `/trips/${tripId}/media/${r.selfieId}/thumb`,
+                original: `/trips/${tripId}/media/${r.selfieId}/original`,
+              },
             },
     }),
     ...(revealed && {

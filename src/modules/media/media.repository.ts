@@ -1,4 +1,4 @@
-import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { featured, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
 // A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
@@ -92,8 +92,22 @@ export function insertMedia(db: D1Database, m: NewMedia): D1PreparedStatement {
   return toStatement(db, orm(db).insert(media).values(m));
 }
 
+/** Only flips a row that is not uploaded yet, so `meta.changes` tells who completed it first (one winner per media). */
 export function markUploaded(db: D1Database, id: string, now: number, size: number): D1PreparedStatement {
-  return toStatement(db, orm(db).update(media).set({ status: "uploaded", uploadedAt: now, sizeBytes: size }).where(eq(media.id, id)));
+  return toStatement(
+    db,
+    orm(db).update(media).set({ status: "uploaded", uploadedAt: now, sizeBytes: size }).where(and(eq(media.id, id), ne(media.status, "uploaded"))),
+  );
+}
+
+/** User ids of the trip's active members (not left, not removed). */
+export async function listActiveMemberUserIds(db: D1Database, tripId: string): Promise<string[]> {
+  const rows = await orm(db)
+    .select({ userId: members.userId })
+    .from(members)
+    .where(and(eq(members.tripId, tripId), isNull(members.removedAt), isNull(members.leftAt)))
+    .all();
+  return rows.map((r) => r.userId);
 }
 
 export function markDeleted(db: D1Database, id: string, now: number): D1PreparedStatement {
@@ -177,9 +191,14 @@ export async function findDownloadKeys(
   db: D1Database,
   id: string,
   tripId: string,
-): Promise<Pick<Media, "originalKey" | "thumbKey"> | null> {
+): Promise<(Pick<Media, "originalKey" | "thumbKey"> & { isMoment: boolean }) | null> {
   const row = await orm(db)
-    .select({ originalKey: media.originalKey, thumbKey: media.thumbKey })
+    .select({
+      originalKey: media.originalKey,
+      thumbKey: media.thumbKey,
+      // Either image of a daily moment (the main photo or the linked one).
+      isMoment: sql<boolean>`${media.momentDay} IS NOT NULL OR ${media.pairedMediaId} IS NOT NULL`.mapWith(Boolean),
+    })
     .from(media)
     .where(and(eq(media.id, id), eq(media.tripId, tripId), eq(media.status, "uploaded"), isNull(media.deletedAt)))
     .get();

@@ -275,6 +275,7 @@ export const userSettings = sqliteTable("user_settings", {
   notifyFriendRequest: integer("notify_friend_request").notNull().default(1),
   allowFeaturing: integer("allow_featuring").notNull().default(1),
   notifyDailyMoment: integer("notify_daily_moment").notNull().default(1),
+  notifyMomentPosted: integer("notify_moment_posted").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
 

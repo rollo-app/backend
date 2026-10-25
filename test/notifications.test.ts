@@ -143,6 +143,7 @@ const ALL_ON = {
   photoCommented: true,
   friendRequest: true,
   dailyMoment: true,
+  momentPosted: true,
 };
 
 describe("GET /me/settings", () => {

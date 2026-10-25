@@ -64,6 +64,7 @@ export const NotificationSettingsSchema = z
     photoCommented: z.boolean().openapi({ description: "Someone comments on a photo of yours, or on one you commented on" }),
     friendRequest: z.boolean().openapi({ description: "Someone sends you a friend request" }),
     dailyMoment: z.boolean().openapi({ description: "It is your moment of the day in a rollo with the daily moment on" }),
+    momentPosted: z.boolean().openapi({ description: "Someone in a rollo you are in uploaded their daily moment" }),
   })
   .openapi("NotificationSettings");
 

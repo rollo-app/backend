@@ -18,14 +18,14 @@ async function fixture(overrides: Record<string, unknown> = {}) {
 const feed = (tripId: string, token: string) => api("GET", `/trips/${tripId}/feed`, { token });
 
 describe("feed with moments", () => {
-  it("before the reveal: the main photo carries momentDay and a selfie without files; the selfie is not an item", async () => {
+  it("before the reveal: the main photo carries momentDay and a selfie with files (a moment is visible); the selfie is not an item", async () => {
     const fx = await fixture();
     const res = await feed(fx.tripId, fx.adminToken);
     expect(res.body.revealed).toBe(false);
     expect(res.body.items.map((i: any) => i.id)).toEqual([fx.mainId]);
     const item = res.body.items[0];
     expect(item.momentDay).toBe(fx.day);
-    expect(item.selfie).toMatchObject({ id: fx.selfieId, thumbhash: "SELF", files: null });
+    expect(item.selfie).toMatchObject({ id: fx.selfieId, thumbhash: "SELF", files: { thumb: `/trips/${fx.tripId}/media/${fx.selfieId}/thumb`, original: `/trips/${fx.tripId}/media/${fx.selfieId}/original` } });
   });
 
   it("after the reveal: the selfie has its files and can be downloaded by id", async () => {
@@ -45,9 +45,9 @@ describe("feed with moments", () => {
     }
   });
 
-  it("the selfie is not downloadable before the reveal", async () => {
+  it("the selfie is downloadable by a member before the reveal, like its main photo", async () => {
     const fx = await fixture();
-    expect((await api("GET", `/trips/${fx.tripId}/media/${fx.selfieId}/thumb`, { token: fx.adminToken })).status).toBe(403);
+    expect((await api("GET", `/trips/${fx.tripId}/media/${fx.selfieId}/thumb`, { token: fx.adminToken })).status).toBe(200);
   });
 
   it("ordinary photos have no momentDay or selfie, and a moment without selfie has selfie null", async () => {

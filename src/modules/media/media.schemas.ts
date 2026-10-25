@@ -109,12 +109,12 @@ export const FeedItemSchema = z
         avatarUrl: z.string().nullable(),
       })
       .openapi({ description: "`id` is the author's membership id; `userId` their user id" }),
-    width: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
-    height: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
+    width: nullableNumber.optional().openapi({ description: "Only after the reveal (and for the photos of a daily moment, right away)" }),
+    height: nullableNumber.optional().openapi({ description: "Only after the reveal (and for the photos of a daily moment, right away)" }),
     files: z
       .object({ thumb: z.string(), original: z.string() })
       .optional()
-      .openapi({ description: "Download paths; only after the reveal" }),
+      .openapi({ description: "Download paths; only after the reveal, except for the photos of a daily moment (main and linked image), which any active member gets as soon as they are uploaded" }),
     featuredByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you featured it on your profile" }),
     featureBlocked: z.boolean().optional().openapi({
       description: "Only after the reveal: the author does not let others feature it (they still can)",
@@ -140,14 +140,14 @@ export const FeedItemSchema = z
         height: nullableNumber,
         thumbhash: z.string().nullable(),
         files: z.object({ thumb: z.string(), original: z.string() }).nullable().openapi({
-          description: "Download paths; null before the reveal",
+          description: "Download paths (the linked image of a moment is visible to active members as soon as it is uploaded)",
         }),
       })
       .nullable()
       .optional()
       .openapi({
         description:
-          "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. width/height are null before the reveal",
+          "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. it comes with files and dimensions right away",
       }),
   })
   .openapi("FeedItem");
