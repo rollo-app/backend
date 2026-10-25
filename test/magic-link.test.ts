@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { devSentCodes, devSentLinks } from "../src/lib/email";
+import { devSentCodes, devSentLinks } from "../src/infra/dev/dev-mailer";
 import { api, MINUTE } from "./helpers";
 
 const LINK_ERROR = { error: "El link venció o ya se usó. Pedí otro código." };

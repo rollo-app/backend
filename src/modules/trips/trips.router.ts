@@ -93,7 +93,7 @@ export const addMembersRoute = createRoute({
     "The rollo's admin can add back someone who was removed (they become active again with their old photos); " +
     "for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireTripMember] as const,
+  middleware: [requireUser, rateLimit("expensive"), requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: AddMembersSchema } }, required: true },

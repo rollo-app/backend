@@ -65,7 +65,7 @@ export const fileRoute = createRoute({
     "Streamed from R2 under the profile's permission (not the rollo's): 403 if you can't see the profile, " +
     "404 if that user does not feature this photo (or it no longer shows on their profile). Same caching as the trip download.",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_FILES")] as const,
+  middleware: [requireUser, rateLimit("files")] as const,
   request: { params: FeaturedFileParams },
   responses: {
     200: { description: "File", content: { "image/jpeg": { schema: z.string().openapi({ format: "binary" }) } } },

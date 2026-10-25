@@ -1,9 +1,11 @@
 import { conflict, badRequest, forbidden, notFound, rateLimited } from "../../shared/errors";
 import { assertStorageAvailable } from "../../lib/storage";
-import { mediaKeys, presignPut } from "../../lib/r2";
+import { mediaKeys } from "../../lib/media-files";
 import { isRevealed, localDate } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
-import type { Env, MemberRow, TripRow } from "../../types";
+import type { Deps } from "../../container";
+import type { ObjectStorage } from "../../ports/storage";
+import type { MemberRow, TripRow } from "../../types";
 import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
 import { deleteFeaturedByOthers } from "../featured/featured.repository";
 import * as repo from "./media.repository";
@@ -17,7 +19,7 @@ export type RegisterResult =
   | { created: false; body: UploadResponse | { id: string; status: "uploaded" } };
 
 async function uploadResponse(
-  env: Env,
+  storage: ObjectStorage,
   origin: string,
   id: string,
   originalKey: string,
@@ -25,15 +27,15 @@ async function uploadResponse(
   sizes: { original: number | null; thumb: number | null },
 ) {
   const [original, thumb] = await Promise.all([
-    presignPut(env, originalKey, origin, sizes.original),
-    presignPut(env, thumbKey, origin, sizes.thumb),
+    storage.presignPut(originalKey, { origin, size: sizes.original, expiresIn: UPLOAD_URL_TTL }),
+    storage.presignPut(thumbKey, { origin, size: sizes.thumb, expiresIn: UPLOAD_URL_TTL }),
   ]);
   return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
 }
 
 /** Registers a photo or video and returns signed upload URLs. Idempotent by `input.id`; `created` tells a new row from a retry. */
 export async function registerMedia(
-  env: Env,
+  deps: Pick<Deps, "db" | "storage" | "config">,
   origin: string,
   trip: TripRow,
   member: MemberRow,
@@ -44,14 +46,14 @@ export async function registerMedia(
   if (isRevealed(trip, now)) throw conflict("El rollo ya se reveló");
   if (input.takenAt > now + PAST_TOLERANCE_MS) throw badRequest("La hora de la foto está en el futuro");
 
-  const existing = await repo.findMediaById(env.DB, input.id);
+  const existing = await repo.findMediaById(deps.db, input.id);
   if (existing) {
     if (existing.memberId !== member.id) throw conflict("Ese id ya existe");
     if (existing.deletedAt !== null) throw conflict("El admin borró esta foto");
     if (existing.status === "uploaded") return { created: false, body: { id: existing.id, status: "uploaded" as const } };
     return {
       created: false,
-      body: await uploadResponse(env, origin, existing.id, existing.originalKey, existing.thumbKey, {
+      body: await uploadResponse(deps.storage, origin, existing.id, existing.originalKey, existing.thumbKey, {
         original: existing.sizeBytes,
         thumb: existing.thumbSizeBytes,
       }),
@@ -68,20 +70,20 @@ export async function registerMedia(
     throw badRequest("Este rollo ya terminó");
   }
 
-  await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes);
+  await assertStorageAvailable(deps, input.sizeBytes + input.thumbSizeBytes);
 
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.
   const day = localDate(input.takenAt, trip.timezone);
   const limit = input.type === "photo" ? trip.daily_photo_limit : trip.daily_video_limit;
-  if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, input.type)) >= limit) {
+  if ((await repo.countMemberMediaOnDay(deps.db, member.id, day, input.type)) >= limit) {
     const what = input.type === "photo" ? "fotos" : "videos";
     throw rateLimited(`Ya usaste tus ${limit} ${what} de hoy`);
   }
 
   const keys = mediaKeys(trip.id, input.id, input.type);
   await repo
-    .insertMedia(env.DB, {
+    .insertMedia(deps.db, {
       id: input.id,
       tripId: trip.id,
       memberId: member.id,
@@ -106,17 +108,17 @@ export async function registerMedia(
 
   return {
     created: true,
-    body: await uploadResponse(env, origin, input.id, keys.original, keys.thumb, { original: input.sizeBytes, thumb: input.thumbSizeBytes }),
+    body: await uploadResponse(deps.storage, origin, input.id, keys.original, keys.thumb, { original: input.sizeBytes, thumb: input.thumbSizeBytes }),
   };
 }
 
-/** Verifies the files are in R2 with the registered sizes and marks the media as uploaded. */
-export async function completeUpload(env: Env, member: MemberRow, mediaId: string): Promise<{ id: string; status: "uploaded" }> {
-  const row = await repo.findOwnLiveMedia(env.DB, mediaId, member.id);
+/** Verifies the files are in the storage with the registered sizes and marks the media as uploaded. */
+export async function completeUpload(deps: Pick<Deps, "db" | "storage">, member: MemberRow, mediaId: string): Promise<{ id: string; status: "uploaded" }> {
+  const row = await repo.findOwnLiveMedia(deps.db, mediaId, member.id);
   if (!row) throw notFound();
   if (row.status === "uploaded") return { id: row.id, status: "uploaded" };
 
-  const [original, thumb] = await Promise.all([env.MEDIA.head(row.originalKey), env.MEDIA.head(row.thumbKey)]);
+  const [original, thumb] = await Promise.all([deps.storage.head(row.originalKey), deps.storage.head(row.thumbKey)]);
   if (!original || !thumb) {
     throw badRequest("Faltan archivos en el storage; volvé a subirlos");
   }
@@ -126,11 +128,11 @@ export async function completeUpload(env: Env, member: MemberRow, mediaId: strin
     original.size > MAX_SIZE[row.type] ||
     thumb.size > MAX_THUMB_SIZE;
   if (mismatch) {
-    await env.MEDIA.delete([row.originalKey, row.thumbKey]);
+    await deps.storage.delete([row.originalKey, row.thumbKey]);
     throw badRequest("El archivo no coincide con el que registraste; volvé a subirlo");
   }
 
-  await repo.markUploaded(env.DB, row.id, Date.now(), original.size).run();
+  await repo.markUploaded(deps.db, row.id, Date.now(), original.size).run();
   return { id: row.id, status: "uploaded" };
 }
 
@@ -153,20 +155,20 @@ export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: str
  * Deletes a photo or video for everyone: removes its files and marks it deleted. The id cannot be registered again.
  * Returns false if it does not exist or was already deleted.
  */
-export async function deleteTripMedia(env: Env, mediaId: string): Promise<boolean> {
-  const row = await repo.findLiveMediaById(env.DB, mediaId);
+export async function deleteTripMedia(deps: Pick<Deps, "db" | "storage">, mediaId: string): Promise<boolean> {
+  const row = await repo.findLiveMediaById(deps.db, mediaId);
   if (!row) return false;
-  await env.MEDIA.delete([row.originalKey, row.thumbKey]);
-  await repo.markDeleted(env.DB, row.id, Date.now()).run();
+  await deps.storage.delete([row.originalKey, row.thumbKey]);
+  await repo.markDeleted(deps.db, row.id, Date.now()).run();
   return true;
 }
 
 /** Admin delete of a trip's media, before the reveal. */
-export async function deleteMediaFromTrip(env: Env, trip: TripRow, mediaId: string): Promise<void> {
+export async function deleteMediaFromTrip(deps: Pick<Deps, "db" | "storage">, trip: TripRow, mediaId: string): Promise<void> {
   if (isRevealed(trip)) throw conflict("El rollo ya se reveló");
 
-  const inTrip = await repo.mediaExistsInTrip(env.DB, mediaId, trip.id);
-  if (!inTrip || !(await deleteTripMedia(env, mediaId))) throw notFound();
+  const inTrip = await repo.mediaExistsInTrip(deps.db, mediaId, trip.id);
+  if (!inTrip || !(await deleteTripMedia(deps, mediaId))) throw notFound();
 }
 
 /**

@@ -7,7 +7,8 @@ import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
-import type { Env, TripRow, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { TripRow, UserRow } from "../../types";
 import * as repo from "./friends.repository";
 import type { LinkCreatorRow, PublicFriendRow } from "./friends.repository";
 
@@ -85,12 +86,12 @@ export async function claimLink(
 
 /** `notify` is the push to the link creator when a friendship was just created, else null. */
 export async function redeem(
-  env: Env,
+  deps: Pick<Deps, "db" | "push">,
   user: Pick<UserRow, "id" | "name" | "username">,
   rawIp: string | undefined,
   body: { code?: string; claimToken?: string },
 ): Promise<{ friend: PublicFriendRow; notify: AfterResponse }> {
-  const db = env.DB;
+  const db = deps.db;
   const me = user.id;
   const keys = attemptKeys(rawIp, me);
   await assertNotLocked(db, keys);
@@ -118,7 +119,7 @@ export async function redeem(
     const [a, b] = pairKey(me, creatorId);
     const inserted = await repo.insertFriendship(db, a, b, now).run();
     if (inserted.meta.changes > 0) {
-      notify = () => sendPush(env, [creatorId], "newFriend", { body: `${actorName(user)} ahora es tu amigo`, url: `/user/${me}` }, { actorId: me });
+      notify = () => sendPush(deps, [creatorId], "newFriend", { body: `${actorName(user)} ahora es tu amigo`, url: `/user/${me}` }, { actorId: me });
     }
   }
   return { friend: creator, notify };

@@ -1,10 +1,10 @@
 import { deleteAccount } from "../../lib/account";
-import { presignPut } from "../../lib/r2";
 import { getNotificationSettings, type NotificationSettings, updateNotificationSettings } from "../../lib/settings";
 import { assertStorageAvailable } from "../../lib/storage";
 import { USERNAME_TAKEN_MESSAGE } from "../../lib/username";
 import { badRequest, conflict } from "../../shared/errors";
-import type { Env, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { UserRow } from "../../types";
 import { isUsernameTaken } from "../usernames/usernames.service";
 import { AVATAR_MAX_BYTES } from "./me.schemas";
 import * as repo from "./me.repository";
@@ -46,46 +46,46 @@ export async function updateProfile(db: D1Database, user: UserRow, body: Profile
 }
 
 export async function requestAvatarUpload(
-  env: Env,
+  deps: Pick<Deps, "db" | "storage" | "config">,
   origin: string,
   user: UserRow,
   sizeBytes: number,
 ): Promise<{ upload: string; expiresIn: number }> {
-  await assertStorageAvailable(env, sizeBytes);
-  // Don't leave the previous unconfirmed upload orphaned in R2.
-  if (user.pending_avatar_key) await env.MEDIA.delete(user.pending_avatar_key);
+  await assertStorageAvailable(deps, sizeBytes);
+  // Don't leave the previous unconfirmed upload orphaned in the storage.
+  if (user.pending_avatar_key) await deps.storage.delete([user.pending_avatar_key]);
   const key = `avatars/${user.id}/${crypto.randomUUID()}.jpg`;
-  await repo.setPendingAvatarKey(env.DB, user.id, key).run();
-  const upload = await presignPut(env, key, origin, sizeBytes, AVATAR_URL_TTL);
+  await repo.setPendingAvatarKey(deps.db, user.id, key).run();
+  const upload = await deps.storage.presignPut(key, { origin, size: sizeBytes, expiresIn: AVATAR_URL_TTL });
   return { upload, expiresIn: AVATAR_URL_TTL };
 }
 
 /** Validates the uploaded avatar, promotes it and returns the updated user. */
-export async function completeAvatarUpload(env: Env, user: UserRow): Promise<UserRow> {
+export async function completeAvatarUpload(deps: Pick<Deps, "db" | "storage">, user: UserRow): Promise<UserRow> {
   const pending = user.pending_avatar_key;
   if (!pending) throw badRequest("Primero pedí dónde subir la foto");
-  const object = await env.MEDIA.get(pending);
+  const object = await deps.storage.get(pending);
   if (!object) throw badRequest("Falta la foto; volvé a subirla");
 
   // Validate and copy the very same bytes: the presigned PUT stays valid after this call.
   const bytes = object.size > AVATAR_MAX_BYTES ? null : await object.arrayBuffer();
   if (!bytes || bytes.byteLength > AVATAR_MAX_BYTES || !hasJpegMagic(new Uint8Array(bytes))) {
-    await env.MEDIA.delete(pending);
-    await repo.clearPendingAvatarKey(env.DB, user.id).run();
+    await deps.storage.delete([pending]);
+    await repo.clearPendingAvatarKey(deps.db, user.id).run();
     throw badRequest("La foto tiene que ser un JPEG de hasta 2 MB");
   }
 
   // Promote to a key that was never presigned, so nobody can overwrite it afterwards.
   const key = `avatars/${user.id}/${crypto.randomUUID()}.jpg`;
-  await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: "image/jpeg" } });
-  await env.MEDIA.delete(pending);
-  await repo.promoteAvatar(env.DB, user.id, key).run();
-  if (user.avatar_key) await env.MEDIA.delete(user.avatar_key);
+  await deps.storage.put(key, bytes, { contentType: "image/jpeg" });
+  await deps.storage.delete([pending]);
+  await repo.promoteAvatar(deps.db, user.id, key).run();
+  if (user.avatar_key) await deps.storage.delete([user.avatar_key]);
   return { ...user, avatar_key: key };
 }
 
-export function removeAccount(env: Env, user: UserRow): Promise<void> {
-  return deleteAccount(env, user);
+export function removeAccount(deps: Pick<Deps, "db" | "storage">, user: UserRow): Promise<void> {
+  return deleteAccount(deps, user);
 }
 
 export function listMyTrips(db: D1Database, userId: string): Promise<repo.MyTripRow[]> {

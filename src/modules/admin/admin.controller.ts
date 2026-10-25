@@ -20,18 +20,18 @@ function presentReport(r: ReportRow) {
 }
 
 export async function deleteMedia(c: Context<AppEnv>) {
-  await service.deleteMedia(c.env, c.req.param("mediaId")!);
+  await service.deleteMedia(c.get("deps"), c.req.param("mediaId")!);
   return c.body(null, 204);
 }
 
 export async function deleteUser(c: Context<AppEnv>) {
-  await service.deleteUser(c.env, c.req.param("userId")!);
+  await service.deleteUser(c.get("deps"), c.req.param("userId")!);
   return c.body(null, 204);
 }
 
 export async function listReports(c: Context<AppEnv>) {
   const raw = Number(c.req.query("limit") ?? 50);
   const limit = Number.isInteger(raw) && raw > 0 ? Math.min(raw, 200) : 50;
-  const reports = await service.listReports(c.env.DB, limit);
+  const reports = await service.listReports(c.get("deps").db, limit);
   return c.json({ reports: reports.map(presentReport) });
 }

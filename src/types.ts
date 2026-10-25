@@ -1,3 +1,5 @@
+import type { Deps } from "./container";
+
 /** Workers Rate Limiting binding (`ratelimits` in wrangler.jsonc). */
 export type RateLimitBinding = { limit(options: { key: string }): Promise<{ success: boolean }> };
 
@@ -116,6 +118,7 @@ export type MediaRow = {
 export type AppEnv = {
   Bindings: Env;
   Variables: {
+    deps: Deps;
     user: UserRow;
     sessionId: string;
     member: MemberRow;

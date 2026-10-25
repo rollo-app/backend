@@ -51,7 +51,7 @@ export const avatarRoute = createRoute({
     "503 when the storage limit is reached. A previous upload that was never completed is discarded. " +
     "Each call generates a new random file name, so the avatar URL changes when you replace it.",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  middleware: [requireUser, rateLimit("expensive")] as const,
   request: { body: { content: { "application/json": { schema: AvatarUploadRequestSchema } }, required: true } },
   responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(400, 401, 429, 503) },
 });
@@ -65,7 +65,7 @@ export const avatarCompleteRoute = createRoute({
     "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, " +
     "makes it your avatar and deletes the previous one. Otherwise the upload is discarded and the response is a 400.",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  middleware: [requireUser, rateLimit("expensive")] as const,
   responses: { 200: json(UserSchema, "Profile with the new avatar"), ...errors(400, 401, 429) },
 });
 

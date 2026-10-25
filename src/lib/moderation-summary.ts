@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Deps } from "../container";
 import { adminCurlFor, sendSupportNotice } from "./email";
 
 /** The cron has no request to take the origin from. */
@@ -16,20 +16,20 @@ type PendingBlock = { blocker_id: string; blocked_id: string };
  * Does nothing if there are none. The day is claimed first so overlapping cron runs send a single email;
  * a failed send gives the claim back so the next run retries.
  */
-export async function sendModerationSummary(env: Env, now: number): Promise<void> {
+export async function sendModerationSummary(deps: Pick<Deps, "db" | "mailer" | "config">, now: number): Promise<void> {
   const before = now - GRACE;
   const [reports, blocks] = await Promise.all([
-    env.DB.prepare("SELECT id, reporter_id, media_id, target_user_id, reason FROM reports WHERE unemailed = 1 AND created_at < ? ORDER BY created_at LIMIT 500")
+    deps.db.prepare("SELECT id, reporter_id, media_id, target_user_id, reason FROM reports WHERE unemailed = 1 AND created_at < ? ORDER BY created_at LIMIT 500")
       .bind(before)
       .all<PendingReport>(),
-    env.DB.prepare("SELECT blocker_id, blocked_id FROM blocks WHERE unemailed = 1 AND created_at < ? ORDER BY created_at LIMIT 500")
+    deps.db.prepare("SELECT blocker_id, blocked_id FROM blocks WHERE unemailed = 1 AND created_at < ? ORDER BY created_at LIMIT 500")
       .bind(before)
       .all<PendingBlock>(),
   ]);
   if (!reports.results.length && !blocks.results.length) return;
 
   const day = new Date(now).toISOString().slice(0, 10);
-  const claim = await env.DB.prepare("INSERT OR IGNORE INTO email_counters (kind, day, count) VALUES ('summary', ?, 1)").bind(day).run();
+  const claim = await deps.db.prepare("INSERT OR IGNORE INTO email_counters (kind, day, count) VALUES ('summary', ?, 1)").bind(day).run();
   if (claim.meta.changes === 0) return;
 
   const lines: string[] = [];
@@ -53,13 +53,13 @@ export async function sendModerationSummary(env: Env, now: number): Promise<void
   }
 
   try {
-    await sendSupportNotice(env, `Rollo: ${reports.results.length} denuncias y ${blocks.results.length} bloqueos sin mail`, lines.join("\n"));
+    await sendSupportNotice(deps, `Rollo: ${reports.results.length} denuncias y ${blocks.results.length} bloqueos sin mail`, lines.join("\n"));
   } catch (err) {
-    await env.DB.prepare("DELETE FROM email_counters WHERE kind = 'summary' AND day = ?").bind(day).run();
+    await deps.db.prepare("DELETE FROM email_counters WHERE kind = 'summary' AND day = ?").bind(day).run();
     throw err;
   }
-  await env.DB.batch([
-    ...reports.results.map((r) => env.DB.prepare("UPDATE reports SET unemailed = 0 WHERE id = ?").bind(r.id)),
-    ...blocks.results.map((b) => env.DB.prepare("UPDATE blocks SET unemailed = 0 WHERE blocker_id = ? AND blocked_id = ?").bind(b.blocker_id, b.blocked_id)),
+  await deps.db.batch([
+    ...reports.results.map((r) => deps.db.prepare("UPDATE reports SET unemailed = 0 WHERE id = ?").bind(r.id)),
+    ...blocks.results.map((b) => deps.db.prepare("UPDATE blocks SET unemailed = 0 WHERE blocker_id = ? AND blocked_id = ?").bind(b.blocker_id, b.blocked_id)),
   ]);
 }

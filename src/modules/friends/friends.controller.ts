@@ -15,12 +15,12 @@ const publicFriend = (u: PublicFriendRow) => ({
 });
 
 export const link: RouteHandler<typeof linkRoute, AppEnv> = async (c) => {
-  return c.json(await service.generateLink(c.env.DB, c.get("user").id), 200);
+  return c.json(await service.generateLink(c.get("deps").db, c.get("user").id), 200);
 };
 
 export const claim: RouteHandler<typeof claimRoute, AppEnv> = async (c) => {
   const { claimToken, expiresAt, creator } = await service.claimLink(
-    c.env.DB,
+    c.get("deps").db,
     c.req.header("cf-connecting-ip"),
     c.req.valid("json").code,
   );
@@ -32,18 +32,18 @@ export const claim: RouteHandler<typeof claimRoute, AppEnv> = async (c) => {
 
 export const redeem: RouteHandler<typeof redeemRoute, AppEnv> = async (c) => {
   const me = c.get("user");
-  const { friend, notify } = await service.redeem(c.env, me, c.req.header("cf-connecting-ip"), c.req.valid("json"));
+  const { friend, notify } = await service.redeem(c.get("deps"), me, c.req.header("cf-connecting-ip"), c.req.valid("json"));
   if (notify) deferPush(c, notify());
   return c.json({ friend: publicFriend(friend) }, 200);
 };
 
 export const list: RouteHandler<typeof listRoute, AppEnv> = async (c) => {
-  const friends = await service.listFriends(c.env.DB, c.get("user").id);
+  const friends = await service.listFriends(c.get("deps").db, c.get("user").id);
   return c.json({ friends: friends.map(publicFriend) }, 200);
 };
 
 export const profile: RouteHandler<typeof profileRoute, AppEnv> = async (c) => {
-  const { friend, commonTrips } = await service.getFriendProfile(c.env.DB, c.get("user").id, c.req.valid("param").userId);
+  const { friend, commonTrips } = await service.getFriendProfile(c.get("deps").db, c.get("user").id, c.req.valid("param").userId);
   return c.json(
     {
       friend: publicFriend(friend),
@@ -60,6 +60,6 @@ export const profile: RouteHandler<typeof profileRoute, AppEnv> = async (c) => {
 };
 
 export const remove: RouteHandler<typeof removeRoute, AppEnv> = async (c) => {
-  await service.removeFriend(c.env.DB, c.get("user").id, c.req.valid("param").userId);
+  await service.removeFriend(c.get("deps").db, c.get("user").id, c.req.valid("param").userId);
   return c.body(null, 204);
 };

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { buildDeps } from "../src/container";
 import { describe, expect, it } from "vitest";
 import { checkPushReceipts, sendPush } from "../src/lib/push";
 import { MINUTE, api, logIn, mockExpo, registerToken, signUp } from "./helpers";
@@ -19,7 +20,7 @@ describe("sendPush", () => {
     const a2 = await registerToken(a.token);
     const b1 = await registerToken(b.token);
 
-    await sendPush(env, [a.userId, b.userId], "addedToTrip", { ...message, title: "Rollo" });
+    await sendPush(buildDeps(env), [a.userId, b.userId], "addedToTrip", { ...message, title: "Rollo" });
 
     expect(expo.sent.map((m) => m.to).sort()).toEqual([a1, a2, b1].sort());
     expect(expo.sent[0]).toEqual({
@@ -35,7 +36,7 @@ describe("sendPush", () => {
     const expo = mockExpo();
     const a = await signUp();
     await registerToken(a.token);
-    await sendPush(env, [a.userId], "addedToTrip", message);
+    await sendPush(buildDeps(env), [a.userId], "addedToTrip", message);
     expect(expo.sent).toHaveLength(1);
     expect(expo.sent[0]).not.toHaveProperty("title");
   });
@@ -46,7 +47,7 @@ describe("sendPush", () => {
     const other = await signUp();
     await registerToken(actor.token);
     const otherToken = await registerToken(other.token);
-    await sendPush(env, [actor.userId, other.userId], "tripRevealed", message, { actorId: actor.userId });
+    await sendPush(buildDeps(env), [actor.userId, other.userId], "tripRevealed", message, { actorId: actor.userId });
     expect(expo.sent.map((m) => m.to)).toEqual([otherToken]);
   });
 
@@ -58,11 +59,11 @@ describe("sendPush", () => {
     const onToken = await registerToken(on.token);
     expect((await api("PATCH", "/me/settings", { token: off.token, body: { notifications: { tripStarted: false } } })).status).toBe(200);
 
-    await sendPush(env, [off.userId, on.userId], "tripStarted", message);
+    await sendPush(buildDeps(env), [off.userId, on.userId], "tripStarted", message);
     expect(expo.sent.map((m) => m.to)).toEqual([onToken]);
 
     // Another kind still reaches them.
-    await sendPush(env, [off.userId], "tripRevealed", message);
+    await sendPush(buildDeps(env), [off.userId], "tripRevealed", message);
     expect(expo.sent).toHaveLength(2);
   });
 
@@ -79,7 +80,7 @@ describe("sendPush", () => {
       env.DB.prepare("INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, 1)").bind(blockerOfActor.userId, actor.userId),
     ]);
 
-    await sendPush(env, [blockedByActor.userId, blockerOfActor.userId, fine.userId], "photoLiked", message, { actorId: actor.userId });
+    await sendPush(buildDeps(env), [blockedByActor.userId, blockerOfActor.userId, fine.userId], "photoLiked", message, { actorId: actor.userId });
     expect(expo.sent.map((m) => m.to)).toEqual([fineToken]);
   });
 
@@ -93,7 +94,7 @@ describe("sendPush", () => {
       "UPDATE sessions SET expires_at = ? WHERE id = (SELECT session_id FROM push_tokens WHERE token = ?)",
     ).bind(Date.now() - 1, expired).run();
 
-    await sendPush(env, [a.userId], "addedToTrip", message);
+    await sendPush(buildDeps(env), [a.userId], "addedToTrip", message);
 
     expect(expo.sent.map((m) => m.to)).toEqual([valid]);
   });
@@ -105,16 +106,16 @@ describe("sendPush", () => {
     const shared = await registerToken(a.token, "samephone");
     expect(await registerToken(b.token, "samephone")).toBe(shared);
 
-    await sendPush(env, [a.userId], "addedToTrip", message);
+    await sendPush(buildDeps(env), [a.userId], "addedToTrip", message);
     expect(expo.sent).toEqual([]);
-    await sendPush(env, [b.userId], "addedToTrip", message);
+    await sendPush(buildDeps(env), [b.userId], "addedToTrip", message);
     expect(expo.sent.map((m) => m.to)).toEqual([shared]);
   });
 
   it("does not call Expo when nobody has a token", async () => {
     const expo = mockExpo();
     const a = await signUp();
-    await sendPush(env, [a.userId], "addedToTrip", message);
+    await sendPush(buildDeps(env), [a.userId], "addedToTrip", message);
     expect(expo.sendBatches).toEqual([]);
   });
 
@@ -130,7 +131,7 @@ describe("sendPush", () => {
         ),
       ),
     );
-    await sendPush(env, [a.userId], "addedToTrip", message);
+    await sendPush(buildDeps(env), [a.userId], "addedToTrip", message);
     expect(expo.sendBatches).toEqual([100, 50]);
   });
 
@@ -145,7 +146,7 @@ describe("sendPush", () => {
           : { status: "ok", id: "ticket-alive" },
     });
 
-    await sendPush(env, [a.userId], "addedToTrip", message);
+    await sendPush(buildDeps(env), [a.userId], "addedToTrip", message);
 
     expect(await tokenCount(dead)).toBe(0);
     expect(await tokenCount(alive)).toBe(1);
@@ -157,7 +158,7 @@ describe("sendPush", () => {
     mockExpo({ fail: true });
     const a = await signUp();
     const t = await registerToken(a.token);
-    await expect(sendPush(env, [a.userId], "addedToTrip", message)).resolves.toBeUndefined();
+    await expect(sendPush(buildDeps(env), [a.userId], "addedToTrip", message)).resolves.toBeUndefined();
     expect(await tokenCount(t)).toBe(1);
   });
 });
@@ -186,7 +187,7 @@ describe("checkPushReceipts", () => {
       },
     });
 
-    await checkPushReceipts(env, now);
+    await checkPushReceipts(buildDeps(env), now);
 
     expect(expo.receiptRequests).toEqual([["r-dead", "r-alive"].sort()]);
     expect(await tokenCount(dead)).toBe(0);
@@ -203,7 +204,7 @@ describe("checkPushReceipts", () => {
     await addReceipt("r-stale", t, now - 25 * 60 * MINUTE);
     mockExpo({ receipts: {} });
 
-    await checkPushReceipts(env, now);
+    await checkPushReceipts(buildDeps(env), now);
 
     expect(await receiptIds()).toEqual(["r-pending"]);
     expect(await tokenCount(t)).toBe(1);
@@ -211,7 +212,7 @@ describe("checkPushReceipts", () => {
 
   it("does nothing without receipts to check", async () => {
     const expo = mockExpo();
-    await checkPushReceipts(env, Date.now());
+    await checkPushReceipts(buildDeps(env), Date.now());
     expect(expo.receiptRequests).toEqual([]);
   });
 
@@ -220,7 +221,7 @@ describe("checkPushReceipts", () => {
     const t = await registerToken(a.token);
     await addReceipt("r1", t, Date.now() - 20 * MINUTE);
     mockExpo({ fail: true });
-    await expect(checkPushReceipts(env, Date.now())).resolves.toBeUndefined();
+    await expect(checkPushReceipts(buildDeps(env), Date.now())).resolves.toBeUndefined();
     expect(await receiptIds()).toEqual(["r1"]);
   });
 });

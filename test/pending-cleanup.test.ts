@@ -1,8 +1,9 @@
 import { env } from "cloudflare:workers";
+import { buildDeps } from "../src/container";
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
-import { presignPut } from "../src/lib/r2";
+import { S3Presigner } from "../src/infra/r2/s3-presigner";
 import { cleanupStalePending } from "../src/lib/pending-cleanup";
 import { api, DAY, newTrip, photoBody, putFiles, uploadMedia } from "./helpers";
 
@@ -17,23 +18,24 @@ async function pending(tripId: string, token: string, ageMs: number) {
 const exists = async (id: string) => !!(await env.DB.prepare("SELECT 1 FROM media WHERE id = ?").bind(id).first());
 
 describe("presignPut (R2)", () => {
-  const fake = { ...env, DEV_LOCAL_UPLOADS: undefined, R2_ACCESS_KEY_ID: "AK", R2_SECRET_ACCESS_KEY: "SK", R2_ACCOUNT_ID: "acc", R2_BUCKET_NAME: "b" };
+  const presigner = new S3Presigner({ endpoint: "https://acc.r2.cloudflarestorage.com", bucket: "b", region: "auto", accessKeyId: "AK", secretAccessKey: "SK" });
+  const presignPut = (key: string, origin: string, size?: number | null) => presigner.putUrl(key, { origin, size: size ?? null, expiresIn: 900 });
 
   it("signs content-length when given a size", async () => {
-    const url = new URL(await presignPut(fake, "k/a.jpg", "https://x", 1234));
+    const url = new URL(await presignPut("k/a.jpg", "https://x", 1234));
     expect(url.searchParams.get("X-Amz-SignedHeaders")).toBe("content-length;host");
   });
 
   it("does not sign content-length without a size", async () => {
     for (const size of [undefined, null]) {
-      const url = new URL(await presignPut(fake, "k/a.jpg", "https://x", size));
+      const url = new URL(await presignPut("k/a.jpg", "https://x", size));
       expect(url.searchParams.get("X-Amz-SignedHeaders")).toBe("host");
     }
   });
 
   it("different sizes produce different signatures", async () => {
-    const a = new URL(await presignPut(fake, "k/a.jpg", "https://x", 10)).searchParams.get("X-Amz-Signature");
-    const b = new URL(await presignPut(fake, "k/a.jpg", "https://x", 11)).searchParams.get("X-Amz-Signature");
+    const a = new URL(await presignPut("k/a.jpg", "https://x", 10)).searchParams.get("X-Amz-Signature");
+    const b = new URL(await presignPut("k/a.jpg", "https://x", 11)).searchParams.get("X-Amz-Signature");
     expect(a).not.toBe(b);
   });
 });
@@ -46,7 +48,7 @@ describe("cleanupStalePending", () => {
     const uploaded = await uploadMedia(tripId, adminToken);
     await env.DB.prepare("UPDATE media SET created_at = ? WHERE id = ?").bind(Date.now() - 30 * DAY, uploaded).run();
 
-    await cleanupStalePending(env);
+    await cleanupStalePending(buildDeps(env));
 
     expect(await exists(old)).toBe(false);
     expect(await env.MEDIA.head(`trips/${tripId}/${old}/original.jpg`)).toBeNull();
@@ -61,7 +63,7 @@ describe("cleanupStalePending", () => {
     const body = photoBody();
     await api("POST", `/trips/${tripId}/media`, { token: adminToken, body });
     await env.DB.prepare("UPDATE media SET created_at = ? WHERE id = ?").bind(Date.now() - 9 * DAY, body.id).run();
-    await cleanupStalePending(env);
+    await cleanupStalePending(buildDeps(env));
     expect(await exists(body.id)).toBe(false);
   });
 
@@ -69,8 +71,8 @@ describe("cleanupStalePending", () => {
     const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 10 });
     const ids = [] as string[];
     for (let i = 0; i < 3; i++) ids.push(await pending(tripId, adminToken, 8 * DAY));
-    await cleanupStalePending(env);
-    await cleanupStalePending(env);
+    await cleanupStalePending(buildDeps(env));
+    await cleanupStalePending(buildDeps(env));
     for (const id of ids) expect(await exists(id)).toBe(false);
   });
 

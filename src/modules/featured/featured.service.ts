@@ -3,7 +3,8 @@ import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
-import type { Env, UserRow } from "../../types";
+import type { Deps } from "../../container";
+import type { UserRow } from "../../types";
 import { MAX_FEATURED } from "./featured.schemas";
 import * as repo from "./featured.repository";
 
@@ -23,8 +24,8 @@ async function visibleOwner(db: D1Database, viewerId: string, userId: string) {
 }
 
 /** Features a photo. Returns the push to the author when it is a new feature of someone else's photo, else null. */
-export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Promise<AfterResponse> {
-  const db = env.DB;
+export async function featurePhoto(deps: Pick<Deps, "db" | "push">, user: UserRow, mediaId: string): Promise<AfterResponse> {
+  const db = deps.db;
   const now = Date.now();
   const row = await repo.findFeaturableMedia(db, user.id, mediaId);
   if (!row) throw notFound();
@@ -46,7 +47,7 @@ export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Pr
   }
   if (row.author_user_id === user.id) return null;
   const authorId = row.author_user_id;
-  return () => sendPush(env, [authorId], "photoFeatured", { body: `${actorName(user)} destacó una foto tuya`, url: `/user/${user.id}` }, { actorId: user.id });
+  return () => sendPush(deps, [authorId], "photoFeatured", { body: `${actorName(user)} destacó una foto tuya`, url: `/user/${user.id}` }, { actorId: user.id });
 }
 
 export async function unfeaturePhoto(db: D1Database, userId: string, mediaId: string): Promise<void> {

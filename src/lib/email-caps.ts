@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Deps } from "../container";
 import { sendSupportNotice } from "./email";
 
 /** Resend's free plan allows 100 emails a day, shared by login codes and support emails. */
@@ -42,23 +42,23 @@ export async function releaseEmailSlot(db: D1Database, kind: EmailKind): Promise
  * The first time each UTC day a cap is hit, emails support once (it takes a support slot; if those are gone too,
  * the alert is skipped). Never throws: the caller is about to answer 429.
  */
-export async function alertCapReached(env: Env, kind: "login" | "login_new"): Promise<void> {
+export async function alertCapReached(deps: Pick<Deps, "db" | "mailer" | "config">, kind: "login" | "login_new"): Promise<void> {
   try {
-    const first = await env.DB.prepare("INSERT OR IGNORE INTO email_counters (kind, day, count) VALUES (?, ?, 1)").bind(`alert_${kind}`, utcDay()).run();
+    const first = await deps.db.prepare("INSERT OR IGNORE INTO email_counters (kind, day, count) VALUES (?, ?, 1)").bind(`alert_${kind}`, utcDay()).run();
     if (first.meta.changes === 0) return;
-    if (!(await reserveEmailSlot(env.DB, "support", SUPPORT_EMAILS_PER_DAY))) return;
+    if (!(await reserveEmailSlot(deps.db, "support", SUPPORT_EMAILS_PER_DAY))) return;
     const what =
       kind === "login_new"
         ? `el tope diario de mails de login para cuentas nuevas (${LOGIN_NEW_USER_EMAILS_PER_DAY})`
         : `el tope diario de mails de login (${LOGIN_EMAILS_PER_DAY})`;
-    await sendSupportNotice(env, `Rollo: se alcanzó ${what}`, `Se alcanzó ${what}. Hasta mañana (UTC) los pedidos que lo superen reciben 429.`);
+    await sendSupportNotice(deps, `Rollo: se alcanzó ${what}`, `Se alcanzó ${what}. Hasta mañana (UTC) los pedidos que lo superen reciben 429.`);
   } catch (err) {
     console.error("[email-caps] could not send the cap alert", err);
   }
 }
 
 /** Counters only matter for their own UTC day: drops the ones older than 2 days. */
-export async function purgeOldEmailCounters(env: Env, now: number): Promise<void> {
+export async function purgeOldEmailCounters(db: D1Database, now: number): Promise<void> {
   const oldest = new Date(now - 2 * 24 * 60 * 60_000).toISOString().slice(0, 10);
-  await env.DB.prepare("DELETE FROM email_counters WHERE day < ?").bind(oldest).run();
+  await db.prepare("DELETE FROM email_counters WHERE day < ?").bind(oldest).run();
 }

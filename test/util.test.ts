@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { generateToken, hashToken } from "../src/lib/auth";
-import { mediaKeys, presignPut } from "../src/lib/r2";
+import { S3Presigner } from "../src/infra/r2/s3-presigner";
+import { mediaKeys } from "../src/lib/media-files";
 import { generateJoinCode, isRevealed, isValidTimeZone, localDate, publicTrip } from "../src/lib/util";
-import type { Env, TripRow } from "../src/types";
+import type { TripRow } from "../src/types";
 import { TZ } from "./helpers";
 
 const baseTrip: TripRow = {
@@ -111,13 +112,14 @@ describe("R2", () => {
   });
 
   it("signs upload URLs against the R2 S3 endpoint", async () => {
-    const env = {
-      R2_ACCOUNT_ID: "acc",
-      R2_ACCESS_KEY_ID: "key",
-      R2_SECRET_ACCESS_KEY: "secret",
-      R2_BUCKET_NAME: "rollo-media",
-    } as Env;
-    const url = new URL(await presignPut(env, "trips/t1/m1/original.jpg", "https://rollo.test"));
+    const presigner = new S3Presigner({
+      endpoint: "https://acc.r2.cloudflarestorage.com",
+      bucket: "rollo-media",
+      region: "auto",
+      accessKeyId: "key",
+      secretAccessKey: "secret",
+    });
+    const url = new URL(await presigner.putUrl("trips/t1/m1/original.jpg", { origin: "https://rollo.test", size: null, expiresIn: 900 }));
     expect(url.host).toBe("acc.r2.cloudflarestorage.com");
     expect(url.pathname).toBe("/rollo-media/trips/t1/m1/original.jpg");
     expect(url.searchParams.get("X-Amz-Expires")).toBe("900");

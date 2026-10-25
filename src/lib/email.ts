@@ -1,50 +1,25 @@
-import type { Env } from "../types";
+import type { Deps } from "../container";
+import type { OutgoingEmail } from "../ports/mailer";
 import { renderLoginEmail } from "./login-email";
 
-/**
- * Login codes "sent" without a Resend key (local dev and tests), by email.
- * Test-visible: tests read the code from here instead of an inbox.
- */
-export const devSentCodes = new Map<string, string>();
-
-/** Magic-link URLs "sent" without a Resend key (local dev and tests), by email. */
-export const devSentLinks = new Map<string, string>();
-
-export const DEFAULT_LOGIN_LINK_URL = "https://rollo.juanifraga.com/entrar";
+/** What the dev mailer records of a login email (`tag: "login-code"`): the code and the magic link, if any. */
+export type LoginCodeData = { email: string; code: string; url: string | null };
 
 /**
  * The magic-link URL. Token and email go in the fragment, which browsers never send to a server,
  * so mail scanners and link previewers that open it can't see (or burn) the token.
  */
-export function loginLinkUrl(env: Env, email: string, token: string): string {
-  const base = env.LOGIN_LINK_URL || DEFAULT_LOGIN_LINK_URL;
-  return `${base}#t=${token}&e=${encodeURIComponent(email)}`;
+export function loginLinkUrl(config: Deps["config"], email: string, token: string): string {
+  return `${config.loginLinkUrl}#t=${token}&e=${encodeURIComponent(email)}`;
 }
 
 /**
  * Sends the login code and, when there is a link token, the magic link (without one, only the code: old app builds).
- * Without `RESEND_API_KEY` it only logs them (and keeps them in `devSentCodes`/`devSentLinks`).
+ * Delivery is up to the mailer (without a Resend key the dev mailer only logs them). Throws if delivery fails.
  */
-export async function sendLoginCode(env: Env, email: string, code: string, linkToken: string | null): Promise<void> {
-  const url = linkToken ? loginLinkUrl(env, email, linkToken) : null;
-  if (!env.RESEND_API_KEY) {
-    console.log(`[auth] código para ${email}: ${code}${url ? ` · link: ${url}` : ""}`);
-    devSentCodes.set(email, code);
-    if (url) devSentLinks.set(email, url);
-    else devSentLinks.delete(email);
-    return;
-  }
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <rollo@juanifraga.com>",
-      to: [email],
-      ...renderLoginEmail({ code, url }),
-    }),
-  });
-  if (!res.ok) throw new Error(`Resend responded ${res.status}`);
+export async function sendLoginCode(deps: Pick<Deps, "mailer" | "config">, email: string, code: string, linkToken: string | null): Promise<void> {
+  const url = linkToken ? loginLinkUrl(deps.config, email, linkToken) : null;
+  await deps.mailer.send({ to: email, ...renderLoginEmail({ code, url }), tag: "login-code", data: { email, code, url } satisfies LoginCodeData });
 }
 
 export type Person = { id: string; name: string | null; username: string | null; email: string };
@@ -59,9 +34,6 @@ export type ReportEmail = {
   adminBase: string;
 };
 
-/** Reports "sent" without a Resend key (local dev and tests). */
-export const devSentReports: ReportEmail[] = [];
-
 const REASON_LABELS: Record<string, string> = {
   offensive: "Es ofensivo",
   abuse: "Es acoso o abuso",
@@ -71,32 +43,18 @@ const REASON_LABELS: Record<string, string> = {
 const handle = (p: Person) => (p.username ? `@${p.username}` : (p.name ?? p.email));
 const describePerson = (p: Person) => `${p.name ?? "(sin nombre)"} (${p.username ? `@${p.username}` : "sin usuario"}), ${p.email}, id ${p.id}`;
 
-/** Emails sent to support without a Resend key (local dev and tests): reports and blocks. */
-export const devSentBlocks: BlockEmail[] = [];
-
 export type BlockEmail = { blocker: Person; blocked: Person; adminBase: string };
 
-async function deliverToSupport(env: Env, subject: string, text: string): Promise<void> {
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <rollo@juanifraga.com>",
-      to: [env.REPORTS_EMAIL ?? "soporte@juanifraga.com"],
-      subject,
-      text,
-    }),
-  });
-  if (!res.ok) throw new Error(`Resend responded ${res.status}`);
-}
+const deliverToSupport = (deps: Pick<Deps, "mailer" | "config">, email: Omit<OutgoingEmail, "to">) =>
+  deps.mailer.send({ to: deps.config.reportsEmail, ...email });
 
 export const adminCurlFor = (adminBase: string, path: string) => `curl -X DELETE -H "Authorization: Bearer $ROLLO_ADMIN_TOKEN" ${adminBase}${path}`;
 
 /**
- * Emails a report to support. Without `RESEND_API_KEY` it only logs it (and keeps it in `devSentReports`). Throws if Resend fails.
+ * Emails a report to support. Throws if delivery fails.
  * The admin commands come first and user-provided text (names, caption) last and quoted, so it cannot imitate a command.
  */
-export async function sendReportEmail(env: Env, report: ReportEmail): Promise<void> {
+export async function sendReportEmail(deps: Pick<Deps, "mailer" | "config">, report: ReportEmail): Promise<void> {
   const subject = report.media
     ? `Denuncia en Rollo: ${report.media.type === "video" ? "video" : "foto"} de ${handle(report.target)}`
     : `Denuncia en Rollo: ${handle(report.target)}`;
@@ -119,16 +77,11 @@ export async function sendReportEmail(env: Env, report: ReportEmail): Promise<vo
   }
   const text = lines.join("\n");
 
-  if (!env.RESEND_API_KEY) {
-    console.log(`[report] ${subject}\n${text}`);
-    devSentReports.push(report);
-    return;
-  }
-  await deliverToSupport(env, subject, text);
+  await deliverToSupport(deps, { subject, text, tag: "report", data: report });
 }
 
-/** Emails support about a new block (App Store guideline 1.2). Same dev/Resend behavior as `sendReportEmail`. */
-export async function sendBlockEmail(env: Env, block: BlockEmail): Promise<void> {
+/** Emails support about a new block (App Store guideline 1.2). Same delivery as `sendReportEmail`. */
+export async function sendBlockEmail(deps: Pick<Deps, "mailer" | "config">, block: BlockEmail): Promise<void> {
   const subject = `Bloqueo en Rollo: ${handle(block.blocker)} bloqueó a ${handle(block.blocked)}`;
   const text = [
     "Borrar la cuenta del bloqueado:",
@@ -138,23 +91,15 @@ export async function sendBlockEmail(env: Env, block: BlockEmail): Promise<void>
     `Bloqueado: ${describePerson(block.blocked)}`,
   ].join("\n");
 
-  if (!env.RESEND_API_KEY) {
-    console.log(`[block] ${subject}\n${text}`);
-    devSentBlocks.push(block);
-    return;
-  }
-  await deliverToSupport(env, subject, text);
+  await deliverToSupport(deps, { subject, text, tag: "block", data: block });
 }
 
 export type StorageAlert = { usedBytes: number; limitBytes: number; threshold: number };
 
-/** Storage alerts "sent" without a Resend key (local dev and tests). */
-export const devSentStorageAlerts: StorageAlert[] = [];
-
 const formatGB = (bytes: number) => (Math.round(bytes / 1e8) / 10).toString().replace(".", ",");
 
-/** Emails support that the bucket crossed a share of the storage limit. Same dev/Resend behavior as `sendReportEmail`. */
-export async function sendStorageAlert(env: Env, alert: StorageAlert): Promise<void> {
+/** Emails support that the bucket crossed a share of the storage limit. Same delivery as `sendReportEmail`. */
+export async function sendStorageAlert(deps: Pick<Deps, "mailer" | "config">, alert: StorageAlert): Promise<void> {
   const subject = `Rollo: almacenamiento al ${alert.threshold}% (${formatGB(alert.usedBytes)} de ${formatGB(alert.limitBytes)} GB)`;
   const text = [
     `El almacenamiento de Rollo está en ${formatGB(alert.usedBytes)} GB de ${formatGB(alert.limitBytes)} GB (superó el ${alert.threshold}%).`,
@@ -163,23 +108,10 @@ export async function sendStorageAlert(env: Env, alert: StorageAlert): Promise<v
     "Pasado el límite gratis de Cloudflare R2 se empieza a cobrar.",
   ].join("\n");
 
-  if (!env.RESEND_API_KEY) {
-    console.log(`[storage] ${subject}\n${text}`);
-    devSentStorageAlerts.push(alert);
-    return;
-  }
-  await deliverToSupport(env, subject, text);
+  await deliverToSupport(deps, { subject, text, tag: "storage-alert", data: alert });
 }
 
-/** Alerts and daily summaries "sent" to support without a Resend key (local dev and tests). */
-export const devSentNotices: { subject: string; text: string }[] = [];
-
-/** Plain notice to support (cap alerts, the daily summary). Same dev/Resend behavior as the report email. Throws if Resend fails. */
-export async function sendSupportNotice(env: Env, subject: string, text: string): Promise<void> {
-  if (!env.RESEND_API_KEY) {
-    console.log(`[support] ${subject}\n${text}`);
-    devSentNotices.push({ subject, text });
-    return;
-  }
-  await deliverToSupport(env, subject, text);
+/** Plain notice to support (cap alerts, the daily summary). Same delivery as the report email. Throws if delivery fails. */
+export async function sendSupportNotice(deps: Pick<Deps, "mailer" | "config">, subject: string, text: string): Promise<void> {
+  await deliverToSupport(deps, { subject, text, tag: "support-notice" });
 }

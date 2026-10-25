@@ -5,7 +5,7 @@ import * as service from "./avatars.service";
 
 export const getAvatar: RouteHandler<typeof getAvatarRoute, AppEnv> = async (c) => {
   const { userId, file } = c.req.valid("param");
-  const object = await service.getCurrentAvatar(c.env, userId, file);
+  const object = await service.getCurrentAvatar(c.get("deps"), userId, file);
 
   const headers = new Headers();
   headers.set("content-type", "image/jpeg");

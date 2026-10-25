@@ -6,7 +6,7 @@ import * as service from "./users.service";
 
 export const profile: RouteHandler<typeof profileRoute, AppEnv> = async (c) => {
   const { owner, isFriend, blockedByMe, reportedByMe, canSee, friendCount, mutualCount } = await service.getProfile(
-    c.env.DB,
+    c.get("deps").db,
     c.get("user").id,
     c.req.valid("param").userId,
   );
@@ -33,7 +33,7 @@ export const profile: RouteHandler<typeof profileRoute, AppEnv> = async (c) => {
 };
 
 export const friends: RouteHandler<typeof friendsRoute, AppEnv> = async (c) => {
-  const { scope, friends } = await service.listFriends(c.env.DB, c.get("user").id, c.req.valid("param").userId);
+  const { scope, friends } = await service.listFriends(c.get("deps").db, c.get("user").id, c.req.valid("param").userId);
   return c.json(
     {
       scope,

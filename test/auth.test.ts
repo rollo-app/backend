@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { devSentCodes } from "../src/lib/email";
+import { devSentCodes } from "../src/infra/dev/dev-mailer";
 import { api, DAY, HOUR, MINUTE, requestCode, signUp } from "./helpers";
 
 const start = (email: string, extra: Parameters<typeof api>[2] = {}) =>
