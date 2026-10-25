@@ -96,6 +96,8 @@ export type MediaRow = {
   id: string;
   trip_id: string;
   member_id: string;
+  moment_day: string | null;
+  paired_media_id: string | null;
   type: MediaType;
   taken_at: number;
   local_date: string;

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { localDate } from "../src/lib/util";
-import { DAY, MINUTE, TZ, api, newTrip, photoBody, uploadMedia } from "./helpers";
+import { DAY, MINUTE, TZ, api, joinAs, newTrip, photoBody, uploadMedia } from "./helpers";
 
 async function fixture(overrides: Record<string, unknown> = {}) {
   const fx = await newTrip({ momentMode: "photo_selfie", startsAt: Date.now() - 5 * DAY, ...overrides });
@@ -73,5 +73,39 @@ describe("feed with moments", () => {
     expect(detail.body.totalUploaded).toBe(1);
     const mine = await api("GET", "/me/trips", { token: fx.adminToken });
     expect(mine.body.trips.find((t: any) => t.id === fx.tripId).totalUploaded).toBe(1);
+  });
+});
+
+describe("selfie interactions", () => {
+  async function revealed() {
+    const fx = await fixture();
+    const fede = await joinAs(fx.code, "Fede");
+    await api("POST", `/trips/${fx.tripId}/reveal`, { token: fx.adminToken });
+    return { ...fx, fede };
+  }
+
+  it("the selfie takes no likes, comments or featuring (400); the main photo still does", async () => {
+    const fx = await revealed();
+    const t = { token: fx.adminToken };
+    expect((await api("PUT", `/media/${fx.selfieId}/like`, t)).status).toBe(400);
+    expect((await api("DELETE", `/media/${fx.selfieId}/like`, t)).status).toBe(400);
+    expect((await api("POST", `/media/${fx.selfieId}/comments`, { ...t, body: { text: "hola" } })).status).toBe(400);
+    expect((await api("GET", `/media/${fx.selfieId}/comments`, t)).status).toBe(400);
+    expect((await api("PUT", `/me/featured/${fx.selfieId}`, t)).status).toBe(400);
+    expect((await api("DELETE", `/me/featured/${fx.selfieId}`, t)).status).toBe(400);
+    expect((await api("PUT", `/media/${fx.mainId}/like`, t)).status).toBe(204);
+    expect((await api("PUT", `/me/featured/${fx.mainId}`, t)).status).toBe(204);
+  });
+
+  it("a report on the selfie is accepted and hides only the selfie from the reporter", async () => {
+    const fx = await revealed();
+    const fede = fx.fede;
+    const res = await api("POST", "/reports", { token: fede.token, body: { mediaId: fx.selfieId, reason: "offensive" } });
+    expect(res.status).toBe(204);
+    const mine = (await feed(fx.tripId, fede.token)).body.items;
+    expect(mine.map((i: any) => i.id)).toEqual([fx.mainId]);
+    expect(mine[0].selfie ?? null).toBeNull();
+    const others = (await feed(fx.tripId, fx.adminToken)).body.items;
+    expect(others[0].selfie.id).toBe(fx.selfieId);
   });
 });

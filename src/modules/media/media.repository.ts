@@ -3,7 +3,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { featured, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
 // A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
 import { commentCountSql } from "../comments/comments.repository";
-import { notHiddenFor } from "../../lib/moderation";
+import { notHiddenFor, notReportedBy } from "../../lib/moderation";
 import { orm, toStatement } from "../../shared/db";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -154,7 +154,7 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
     .leftJoin(viewerLike, and(eq(viewerLike.mediaId, media.id), eq(viewerLike.userId, viewerId)))
     .leftJoin(likeCounts, eq(likeCounts.mediaId, media.id))
     // The selfie of a moment photo travels inside it (never as an item of its own).
-    .leftJoin(selfie, and(eq(selfie.pairedMediaId, media.id), eq(selfie.status, "uploaded"), isNull(selfie.deletedAt)))
+    .leftJoin(selfie, and(eq(selfie.pairedMediaId, media.id), eq(selfie.status, "uploaded"), isNull(selfie.deletedAt), notReportedBy(viewerId, selfie.id)))
     .where(
       and(
         eq(media.tripId, tripId),

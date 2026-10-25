@@ -1,3 +1,4 @@
+import { rejectSelfie } from "../../lib/moment-selfie";
 import { notifyComment } from "../../lib/comments";
 import { isBlockedEitherWay } from "../../lib/moderation";
 import { avatarUrl, isRevealed } from "../../lib/util";
@@ -25,6 +26,7 @@ async function visiblePhoto(db: D1Database, viewerId: string, mediaId: string, n
   const row = await repo.findCommentableRow(db, viewerId, mediaId);
   if (!row || row.is_member !== 1 || !isRevealed(row, now)) throw notFound();
   if (row.author_user_id !== viewerId && (await isBlockedEitherWay(db, viewerId, row.author_user_id))) throw notFound();
+  rejectSelfie(row.paired_media_id);
   return { id: row.id, tripId: row.trip_id, authorUserId: row.author_user_id, type: row.type };
 }
 

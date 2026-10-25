@@ -45,6 +45,15 @@ export function notHiddenFor(viewerId: string, mediaId: SQLiteColumn, authorUser
   return and(notInArray(mediaId, reportedByViewer), notInArray(authorUserId, blockedByViewer))!;
 }
 
+/** Only the report half of `notHiddenFor`: media the viewer reported (e.g. a moment selfie, whose author's block already applies through its main photo). */
+export function notReportedBy(viewerId: string, mediaId: SQLiteColumn): SQL {
+  const reportedByViewer = new QueryBuilder()
+    .select({ mediaId: reports.mediaId })
+    .from(reports)
+    .where(and(eq(reports.reporterId, viewerId), isNotNull(reports.mediaId)));
+  return notInArray(mediaId, reportedByViewer);
+}
+
 /** Whether the user already made the maximum of reports (or blocks) in the last 24 hours. */
 export async function atModerationActionCap(db: D1Database, table: "reports" | "blocks", userId: string): Promise<boolean> {
   const column = table === "reports" ? "reporter_id" : "blocker_id";

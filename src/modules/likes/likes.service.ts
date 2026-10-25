@@ -1,6 +1,7 @@
 import { isBlockedEitherWay } from "../../lib/moderation";
 import { canSeeProfile } from "../../lib/profile-access";
 import { avatarUrl, isRevealed } from "../../lib/util";
+import { rejectSelfie, rejectSelfieById } from "../../lib/moment-selfie";
 import { notifyLike } from "../../lib/likes";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, notFound } from "../../shared/errors";
@@ -23,6 +24,7 @@ async function likeablePhoto(db: D1Database, viewerId: string, mediaId: string, 
   if (row.author_user_id !== viewerId && (await isBlockedEitherWay(db, viewerId, row.author_user_id))) {
     throw notFound();
   }
+  rejectSelfie(row.paired_media_id);
   const photo = { id: row.id, tripId: row.trip_id, authorUserId: row.author_user_id };
 
   if (row.is_member === 1 && isRevealed(row, now)) {
@@ -49,6 +51,7 @@ export async function likePhoto(env: Env, viewer: Pick<UserRow, "id" | "name" | 
 }
 
 export async function unlikePhoto(db: D1Database, viewerId: string, mediaId: string): Promise<void> {
+  await rejectSelfieById(db, mediaId);
   await repo.deleteLike(db, viewerId, mediaId).run();
 }
 
