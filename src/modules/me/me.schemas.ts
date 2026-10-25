@@ -12,6 +12,7 @@ export const TripSummarySchema = z
     revealed: z.boolean(),
     role: RoleSchema,
     totalUploaded: z.number().int(),
+    momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     coverThumbhash: z.string().nullable().openapi({
       description:
         "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
@@ -62,6 +63,7 @@ export const NotificationSettingsSchema = z
     photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
     photoCommented: z.boolean().openapi({ description: "Someone comments on a photo of yours, or on one you commented on" }),
     friendRequest: z.boolean().openapi({ description: "Someone sends you a friend request" }),
+    dailyMoment: z.boolean().openapi({ description: "It is your moment of the day in a rollo with the daily moment on" }),
   })
   .openapi("NotificationSettings");
 

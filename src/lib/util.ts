@@ -55,6 +55,9 @@ export function publicTrip(trip: TripRow, now = Date.now()) {
     featuringDisabled: trip.featuring_disabled !== 0,
     photoLimitMode: trip.photo_limit_mode,
     totalPhotoLimit: trip.total_photo_limit,
+    momentMode: trip.moment_mode,
+    momentWindowStart: trip.moment_window_start,
+    momentWindowEnd: trip.moment_window_end,
   };
 }
 

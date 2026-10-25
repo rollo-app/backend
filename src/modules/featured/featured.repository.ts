@@ -23,7 +23,7 @@ export const VISIBLE_WHERE = `
   AND (t.revealed_at IS NOT NULL OR t.reveal_at <= ?)
   AND (m.feature_blocked_at IS NULL OR author.user_id = f.user_id)`;
 
-export type FeaturableMedia = Pick<MediaRow, "id" | "type" | "feature_blocked_at"> &
+export type FeaturableMedia = Pick<MediaRow, "id" | "type" | "feature_blocked_at" | "paired_media_id" | "moment_day"> &
   Pick<TripRow, "revealed_at" | "reveal_at" | "featuring_disabled"> & {
     author_user_id: string;
     member_allow_featuring: number;
@@ -41,7 +41,7 @@ export type FeaturedPhotoRow = {
 export function findFeaturableMedia(db: D1Database, userId: string, mediaId: string): Promise<FeaturableMedia | null> {
   return db
     .prepare(
-      `SELECT m.id, m.type, m.feature_blocked_at, author.user_id AS author_user_id,
+      `SELECT m.id, m.type, m.feature_blocked_at, m.paired_media_id, m.moment_day, author.user_id AS author_user_id,
             t.revealed_at, t.reveal_at, t.featuring_disabled,
             author.allow_featuring AS member_allow_featuring,
             COALESCE(author_settings.allow_featuring, 1) AS account_allow_featuring

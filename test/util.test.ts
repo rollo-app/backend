@@ -22,6 +22,9 @@ const baseTrip: TripRow = {
   started_notified_at: null,
   revealed_notified_at: null,
   featuring_disabled: 0,
+  moment_mode: "off",
+  moment_window_start: 540,
+  moment_window_end: 1380,
 };
 
 describe("localDate", () => {
@@ -89,6 +92,9 @@ describe("publicTrip", () => {
       featuringDisabled: false,
       photoLimitMode: "daily",
       totalPhotoLimit: null,
+      momentMode: "off",
+      momentWindowStart: 540,
+      momentWindowEnd: 1380,
     });
   });
 });

@@ -2,10 +2,12 @@ import { conflict, badRequest, forbidden, notFound, rateLimited } from "../../sh
 import { assertStorageAvailable } from "../../lib/storage";
 import { mediaKeys, presignPut } from "../../lib/r2";
 import { isRevealed, localDate } from "../../lib/util";
+import { MOMENT_WINDOW_MS } from "../../lib/moments";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import type { Env, MemberRow, TripRow } from "../../types";
 import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
 import { deleteFeaturedByOthers } from "../featured/featured.repository";
+import { findMoment, findMomentSlots, recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
 
 const UPLOAD_URL_TTL = 15 * 60;
@@ -29,6 +31,43 @@ async function uploadResponse(
     presignPut(env, thumbKey, origin, sizes.thumb),
   ]);
   return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
+}
+
+type MomentTarget = { day: string; notifyAt: number; pairedMediaId: string | null };
+
+/**
+ * Validates the moment fields of a new registration (not a retry). Null when it is an ordinary photo or video.
+ * A main photo needs the member's moment row for `momentDay` with no photo yet (409); a selfie (`pairedMediaId`)
+ * must pair with the member's own main moment photo of this rollo (400) and inherits its day.
+ */
+async function resolveMoment(db: D1Database, trip: TripRow, member: MemberRow, input: RegisterMediaInput): Promise<MomentTarget | null> {
+  if (input.momentDay != null && trip.moment_mode === "off") throw badRequest("Este rollo no tiene momento del día");
+  if (input.pairedMediaId) {
+    if (trip.moment_mode !== "photo_selfie") throw badRequest("Este rollo no admite selfie del momento");
+    const main = await repo.findMediaById(db, input.pairedMediaId);
+    const valid =
+      main !== null &&
+      main.deletedAt === null &&
+      main.memberId === member.id &&
+      main.tripId === trip.id &&
+      main.momentDay !== null &&
+      main.pairedMediaId === null;
+    if (!valid || (input.momentDay != null && input.momentDay !== main.momentDay)) {
+      throw badRequest("La foto del momento no corresponde");
+    }
+    const slots = await findMomentSlots(db, trip.id, member.user_id, main.momentDay!);
+    if (!slots) throw badRequest("La foto del momento no corresponde");
+    if (slots.media_id !== main.id) throw badRequest("La foto del momento no corresponde");
+    if (slots.selfie_media_id !== null) throw conflict("Este momento ya tiene selfie");
+    return { day: main.momentDay!, notifyAt: 0, pairedMediaId: main.id };
+  }
+  if (input.momentDay == null) return null;
+
+  const row = await findMoment(db, trip.id, member.user_id, input.momentDay);
+  if (!row) throw conflict("No tenés un momento ese día");
+  const slots = await findMomentSlots(db, trip.id, member.user_id, input.momentDay);
+  if (slots?.media_id != null) throw conflict("Este momento ya tiene foto");
+  return { day: input.momentDay, notifyAt: row.notify_at, pairedMediaId: null };
 }
 
 /** Registers a photo or video and returns signed upload URLs. Idempotent by `input.id`; `created` tells a new row from a retry. */
@@ -68,12 +107,17 @@ export async function registerMedia(
     throw badRequest("Este rollo ya terminó");
   }
 
+  const moment = await resolveMoment(env.DB, trip, member, input);
+
   await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes);
 
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.
+  // Moment photos and selfies are outside the quota.
   const day = localDate(input.takenAt, trip.timezone);
-  if (input.type === "video") {
+  if (moment) {
+    // No quota.
+  } else if (input.type === "video") {
     if (trip.daily_video_limit === 0) throw badRequest("Este rollo no admite videos");
     if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, "video")) >= trip.daily_video_limit) {
       throw rateLimited(`Ya usaste tus ${trip.daily_video_limit} videos de hoy`);
@@ -88,8 +132,7 @@ export async function registerMedia(
   }
 
   const keys = mediaKeys(trip.id, input.id, input.type);
-  await repo
-    .insertMedia(env.DB, {
+  const insert = repo.insertMedia(env.DB, {
       id: input.id,
       tripId: trip.id,
       memberId: member.id,
@@ -109,8 +152,31 @@ export async function registerMedia(
       originalKey: keys.original,
       thumbKey: keys.thumb,
       createdAt: now,
-    })
-    .run();
+      momentDay: moment?.day ?? null,
+      pairedMediaId: moment?.pairedMediaId ?? null,
+    });
+  if (!moment) {
+    await insert.run();
+  } else {
+    // The slot claim runs first and fails closed: if it didn't take (a concurrent request got there), the row
+    // just inserted would be a photo outside every quota with no moment, so it is removed and the request is a 409.
+    const claim = moment.pairedMediaId
+      ? recordMomentSelfie(env.DB, trip.id, member.user_id, moment.day, input.id, moment.pairedMediaId)
+      : recordMomentPhoto(
+          env.DB,
+          trip.id,
+          member.user_id,
+          moment.day,
+          input.id,
+          input.takenAt,
+          input.takenAt >= moment.notifyAt && input.takenAt <= moment.notifyAt + MOMENT_WINDOW_MS,
+        );
+    const [claimed] = await env.DB.batch([claim, insert]);
+    if (claimed!.meta.changes === 0) {
+      await env.DB.prepare("DELETE FROM media WHERE id = ?").bind(input.id).run();
+      throw conflict(moment.pairedMediaId ? "Este momento ya tiene selfie" : "Este momento ya tiene foto");
+    }
+  }
 
   return {
     created: true,
@@ -164,8 +230,11 @@ export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: str
 export async function deleteTripMedia(env: Env, mediaId: string): Promise<boolean> {
   const row = await repo.findLiveMediaById(env.DB, mediaId);
   if (!row) return false;
-  await env.MEDIA.delete([row.originalKey, row.thumbKey]);
-  await repo.markDeleted(env.DB, row.id, Date.now()).run();
+  // A moment's selfie goes with its main photo.
+  const rows = [row, ...(await repo.findLiveSelfies(env.DB, row.id))];
+  await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey]));
+  const now = Date.now();
+  await env.DB.batch(rows.map((r) => repo.markDeleted(env.DB, r.id, now)));
   return true;
 }
 

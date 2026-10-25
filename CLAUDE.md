@@ -80,6 +80,21 @@ Decisiones de producto que el backend tiene que respetar:
   `POST /reports { commentId }` (`reports.comment_id`, `media_id` queda null para no ocultar la foto; solo miembros activos; el mail a soporte lleva el
   texto). Push `photoCommented` ("Cami comentó tu foto" al autor y "Cami también comentó una foto" a quienes ya comentaron) con la misma ventana de 30 min
   por foto que los "me gusta" (`media.comment_notified_at` / `comments_since_notified`); abre `/photo/<id>?tripId=<trip>&comments=1`. Borrar la cuenta borra sus comentarios.
+- **Momento del día** (`src/modules/moments/`, `src/lib/moments.ts`, migración `0024_daily_moment.sql`): un aviso por día a una hora al azar
+  de cada miembro, con 5 minutos para sacar la foto (`MOMENT_WINDOW_MS`), estilo BeReal. El rollo lo elige al crearse: `trips.moment_mode`
+  (`off` por default, para rollos viejos y el build viejo, `photo` o `photo_selfie`) y la franja `moment_window_start`/`end` (540 y 1380
+  minutos desde medianoche en `trip.timezone`, o sea 9:00 a 23:00). Tabla `trip_moments` (trip, user, day, `notify_at`, `media_id`,
+  `selfie_media_id`, `taken_at`, `in_window`); en `media`, `moment_day` y `paired_media_id`; en `user_settings`, `notify_daily_moment`
+  (`notifications.dailyMoment`). `lib/moments.ts` (`tripDays`/`dayWindow`/`drawNotifyAt`): la ventana de cada día es la franja ∩
+  [`startsAt`, `endsAt` − 5 min] con el offset de **ese** día; si dura menos de 30 min (`MIN_DAY_WINDOW_MS`) ese día no hay momento.
+  `GET /trips/{tripId}/moments` devuelve **solo los del que pregunta** (403 si no es miembro, como `GET /trips/{id}`); sortea de forma
+  perezosa e idempotente (**hoy** nunca se sortea en el pasado: desde `max(inicio, ahora + 1 min)` y si queda menos de 30 min ese día no hay momento; lo ya guardado no se re-sortea) a lo sumo los próximos 31 días locales del rollo (`MOMENT_DRAW_DAYS`) y da `[]` con el modo `off`, con
+  `dailyMoment` apagado o con el rollo terminado o revelado. **Subida:** `RegisterMedia` acepta `momentDay` y `pairedMediaId`; la foto de
+  momento y la selfie **nunca cuentan para el cupo** (ni diario ni total); una principal y una selfie por momento (409 si ya está, el
+  slot se reclama fail-closed); la selfie solo en `photo_selfie` y tiene que ir pareada con la foto de ese slot; se acepta aunque pasen
+  días y queda `in_window` (la app avisa "Se pasó tu momento"). **Feed:** los ítems traen `momentDay` y `selfie`; `GET /me/trips` trae `momentMode` de cada rollo; el admin que borra la foto principal de un momento borra también su selfie; la selfie nunca es un
+  ítem propio (tampoco para clientes viejos), sus archivos son `null` antes del revelado y los totales no la cuentan; me gusta
+  y comentarios rechazan el id de una selfie (400); **el momento no se destaca en el perfil**: `PUT /me/featured` rechaza con 400 ("Las fotos del momento no se pueden agregar a tu perfil.") la principal y la vinculada (`moment_day` o `paired_media_id`), y el feed revelado trae `canFeature: false` en la principal; **la primera foto que se saca es la principal** (trasera o frontal) y la vinculada es la otra cámara (el nombre `selfie` del contrato significa "la imagen vinculada"); denunciar una selfie sí se puede y oculta solo la selfie para quien denunció.
 - **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
   `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
   (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).
@@ -213,14 +228,17 @@ npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
 npm run dev -- --test-scheduled   # + correr el cron a mano: curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"
-npm run seed          # 9 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
+npm run seed          # (levanta solo un server local sin rate limits, ~2 min) 10 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
 npm run seed -- --reset   # borra rollos y usuarios de prueba de D1 local (con amistades, links y descripciones) y los recrea (cambian los códigos)
 npm run email:preview   # escribe login-email-preview.html (git-ignored) con el mail del código, para abrirlo en el navegador
 ```
 
 **Seed** (`scripts/seed.ts`, `scripts/seed/{lib,scenarios,people,avatars,featured,likes}.ts`; lo puro de `people.ts` tiene tests en
-`test/seed-people.test.ts`). Necesita el server local corriendo (`npm run dev:lan` con `DEV_LOCAL_UPLOADS=1`); con
-`SEED_API_URL` y `SEED_PERSIST_TO` corre contra otro server/estado aislado. Al final chequea `GET /friends/{id}` de cada amigo
+`test/seed-people.test.ts`). `npm run seed` (`scripts/seed-with-server.ts`) aplica las migraciones, levanta su propio `wrangler dev`
+en el puerto 8788 con una config de desarrollo generada de `wrangler.jsonc` **sin** `ratelimits`, rutas ni cron (`wrangler.seed.generated.jsonc`,
+git-ignored; sin binding el limitador deja pasar todo, así el seed completo tarda ~2 min y no ~45), corre el seed y lo apaga; la config de producción
+y `npm run deploy` no cambian. Necesita `DEV_LOCAL_UPLOADS=1` en `.dev.vars`. Con `SEED_API_URL` corre contra un server que levantaste vos
+(`npm run seed:only` hace lo mismo sin levantar nada; ahí valen los límites y el seed espera y reintenta ante un 429); `SEED_PERSIST_TO` aísla el estado. Al final chequea `GET /friends/{id}` de cada amigo
 de Juani y falla si los rollos en común no son los esperados, y chequea las destacadas (las de Juani como amiga y como desconocido, las de
 Tomi como desconocido). Cuentas:
 - `juani@rollo.test`: en todos los rollos menos "Escapada sin Juani"; **admin** de "Finde en Tandil" (empieza mañana). Perfil privado

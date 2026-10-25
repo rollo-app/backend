@@ -56,6 +56,9 @@ export async function createTrip(
       // Starting now ("Empezar ahora"): the creator is the only member and just did it, so no "Arrancó" push.
       started_notified_at: body.startsAt <= now ? now : null,
       featuring_disabled: body.featuringDisabled ? 1 : 0,
+      moment_mode: body.momentMode,
+      moment_window_start: body.momentWindowStart,
+      moment_window_end: body.momentWindowEnd,
     }),
     repo.insertAdminMember(db, memberId, tripId, user.id, now),
   ]);

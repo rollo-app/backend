@@ -57,6 +57,11 @@ export type TripRow = {
   revealed_notified_at: number | null;
   /** Private rollo: nobody can feature its photos (0/1). */
   featuring_disabled: number;
+  /** Daily moment: 'off' | 'photo' | 'photo_selfie'. */
+  moment_mode: "off" | "photo" | "photo_selfie";
+  /** Moment window, minutes from midnight in the trip's time zone. */
+  moment_window_start: number;
+  moment_window_end: number;
 };
 
 export type UserRow = {
@@ -91,6 +96,8 @@ export type MediaRow = {
   id: string;
   trip_id: string;
   member_id: string;
+  moment_day: string | null;
+  paired_media_id: string | null;
   type: MediaType;
   taken_at: number;
   local_date: string;

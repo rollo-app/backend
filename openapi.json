@@ -389,6 +389,15 @@
           "totalUploaded": {
             "type": "integer"
           },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "Daily moment: off, a photo, or a photo plus a selfie"
+          },
           "coverThumbhash": {
             "type": [
               "string",
@@ -407,6 +416,7 @@
           "revealed",
           "role",
           "totalUploaded",
+          "momentMode",
           "coverThumbhash"
         ]
       },
@@ -466,6 +476,10 @@
           "friendRequest": {
             "type": "boolean",
             "description": "Someone sends you a friend request"
+          },
+          "dailyMoment": {
+            "type": "boolean",
+            "description": "It is your moment of the day in a rollo with the daily moment on"
           }
         },
         "required": [
@@ -476,7 +490,8 @@
           "photoFeatured",
           "photoLiked",
           "photoCommented",
-          "friendRequest"
+          "friendRequest",
+          "dailyMoment"
         ]
       },
       "PrivacySettings": {
@@ -528,6 +543,10 @@
               "friendRequest": {
                 "type": "boolean",
                 "description": "Someone sends you a friend request"
+              },
+              "dailyMoment": {
+                "type": "boolean",
+                "description": "It is your moment of the day in a rollo with the daily moment on"
               }
             },
             "additionalProperties": false
@@ -959,6 +978,38 @@
           "code"
         ]
       },
+      "MyMoments": {
+        "type": "object",
+        "properties": {
+          "moments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Moment"
+            }
+          }
+        },
+        "required": [
+          "moments"
+        ]
+      },
+      "Moment": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "Local date of the trip (YYYY-MM-DD)",
+            "example": "2027-01-12"
+          },
+          "notifyAt": {
+            "type": "integer",
+            "description": "Epoch ms when the moment starts; the user has 5 minutes from then"
+          }
+        },
+        "required": [
+          "day",
+          "notifyAt"
+        ]
+      },
       "TripCreated": {
         "type": "object",
         "properties": {
@@ -1040,6 +1091,23 @@
               "null"
             ],
             "description": "Photos per person in the whole rollo; null in daily mode"
+          },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "Daily moment: off, a photo, or a photo plus a selfie"
+          },
+          "momentWindowStart": {
+            "type": "integer",
+            "description": "Moment window start, minutes from midnight in the rollo's time zone"
+          },
+          "momentWindowEnd": {
+            "type": "integer",
+            "description": "Moment window end, minutes from midnight in the rollo's time zone"
           }
         },
         "required": [
@@ -1055,7 +1123,10 @@
           "dailyVideoLimit",
           "featuringDisabled",
           "photoLimitMode",
-          "totalPhotoLimit"
+          "totalPhotoLimit",
+          "momentMode",
+          "momentWindowStart",
+          "momentWindowEnd"
         ]
       },
       "Member": {
@@ -1173,6 +1244,30 @@
             "minimum": 1,
             "maximum": 500,
             "description": "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise"
+          },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "default": "off",
+            "description": "Daily moment: off, a photo, or a photo plus a selfie. Cannot be changed after creating the rollo"
+          },
+          "momentWindowStart": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "default": 540,
+            "description": "Start of the daily moment window, in minutes from midnight in the rollo's time zone (default 540 = 9:00)"
+          },
+          "momentWindowEnd": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "default": 1380,
+            "description": "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)"
           }
         },
         "required": [
@@ -1521,6 +1616,23 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "description": "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length"
+          },
+          "momentDay": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Trip-local date (YYYY-MM-DD) of the daily moment this photo answers. The member must have a moment for that day (409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
+            "example": "2027-01-12"
+          },
+          "pairedMediaId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Marks this photo as the selfie of a moment: the id of the member's own moment photo in the same rollo (400 otherwise). The selfie takes its moment day from that photo and doesn't use the photo quota."
           }
         },
         "required": [
@@ -1685,7 +1797,7 @@
           },
           "canFeature": {
             "type": "boolean",
-            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private)"
+            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)"
           },
           "likeCount": {
             "type": "integer",
@@ -1698,6 +1810,70 @@
           "commentCount": {
             "type": "integer",
             "description": "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos"
+          },
+          "momentDay": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Trip-local date (YYYY-MM-DD) when this photo is the answer to a daily moment; absent for ordinary photos"
+          },
+          "selfie": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "width": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "height": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "thumbhash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "files": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "thumb": {
+                    "type": "string"
+                  },
+                  "original": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "thumb",
+                  "original"
+                ],
+                "description": "Download paths; null before the reveal"
+              }
+            },
+            "required": [
+              "id",
+              "width",
+              "height",
+              "thumbhash",
+              "files"
+            ],
+            "description": "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. width/height are null before the reveal"
           }
         },
         "required": [
@@ -3676,6 +3852,62 @@
           },
           "429": {
             "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/moments": {
+      "get": {
+        "tags": [
+          "Moments"
+        ],
+        "summary": "My daily moments",
+        "description": "The moments of the caller for each remaining day of the trip, from today (trip local date) to the end, that can still be taken. The server draws and stores them the first time they are asked for and never re-draws. The app schedules local notifications from them. Empty when the trip has the moment off, is over or revealed, or the user turned `dailyMoment` off. Non-members and ex-members get 403, like `GET /trips/{tripId}`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "My moments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyMoments"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {

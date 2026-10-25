@@ -6,14 +6,14 @@ import { VISIBLE_FROM, VISIBLE_WHERE } from "../featured/featured.repository";
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])`.
 
-export type LikeableRow = Pick<MediaRow, "id" | "type" | "trip_id"> &
+export type LikeableRow = Pick<MediaRow, "id" | "type" | "trip_id" | "paired_media_id"> &
   Pick<TripRow, "revealed_at" | "reveal_at"> & { author_user_id: string; is_member: number };
 
 /** The live uploaded media the viewer hasn't hidden (reported or blocked author), with whether they are an active member of its rollo. */
 export function findLikeableRow(db: D1Database, viewerId: string, mediaId: string): Promise<LikeableRow | null> {
   return db
     .prepare(
-      `SELECT m.id, m.type, m.trip_id, author.user_id AS author_user_id, t.revealed_at, t.reveal_at,
+      `SELECT m.id, m.type, m.trip_id, m.paired_media_id, author.user_id AS author_user_id, t.revealed_at, t.reveal_at,
               EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
                         AND me.removed_at IS NULL AND me.left_at IS NULL) AS is_member
        FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
