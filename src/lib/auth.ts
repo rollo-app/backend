@@ -72,6 +72,12 @@ export const requireTripMember = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
+/** Like requireTripMember, but non-members (and ex-members) get a 404, as if the trip did not exist for them. */
+export const requireTripMemberOrNotFound = createMiddleware<AppEnv>(async (c, next) => {
+  await loadTripAndMember(c, c.req.param("tripId")!, () => new HTTPException(404, { message: "Rollo no encontrado" }));
+  await next();
+});
+
 /**
  * Use after requireUser on routes with `{mediaId}` and no trip: the trip is resolved from the media row
  * and the user must be an active member of it. Anything else looks like "not found".

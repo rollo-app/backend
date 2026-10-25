@@ -968,6 +968,38 @@
           "code"
         ]
       },
+      "MyMoments": {
+        "type": "object",
+        "properties": {
+          "moments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Moment"
+            }
+          }
+        },
+        "required": [
+          "moments"
+        ]
+      },
+      "Moment": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "Local date of the trip (YYYY-MM-DD)",
+            "example": "2027-01-12"
+          },
+          "notifyAt": {
+            "type": "integer",
+            "description": "Epoch ms when the moment starts; the user has 5 minutes from then"
+          }
+        },
+        "required": [
+          "day",
+          "notifyAt"
+        ]
+      },
       "TripCreated": {
         "type": "object",
         "properties": {
@@ -3729,6 +3761,62 @@
           },
           "429": {
             "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/moments": {
+      "get": {
+        "tags": [
+          "Moments"
+        ],
+        "summary": "My daily moments",
+        "description": "The moments of the caller for each remaining day of the trip, from today (trip local date) to the end, that can still be taken. The server draws and stores them the first time they are asked for and never re-draws. The app schedules local notifications from them. Empty when the trip has the moment off, is over or revealed, or the user turned `dailyMoment` off. Non-members and ex-members get 404.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "My moments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyMoments"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
