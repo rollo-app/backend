@@ -131,6 +131,7 @@ export const media = sqliteTable(
     thumbSizeBytes: integer("thumb_size_bytes"),
     momentDay: text("moment_day"),
     pairedMediaId: text("paired_media_id"),
+    archivedAt: integer("archived_at"),
   },
   (t) => [
     index("idx_media_trip_time").on(t.tripId, t.takenAt),

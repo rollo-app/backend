@@ -586,9 +586,10 @@ describe("DELETE /media/:id (admin only)", () => {
     expect((await api("DELETE", `/media/${id}`, { token: b.adminToken })).status).toBe(404);
   });
 
-  it("can't delete after the reveal", async () => {
-    const { tripId, adminToken } = await newTrip();
-    const id = await uploadMedia(tripId, adminToken);
+  it("can't delete someone else's photo after the reveal", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    const id = await uploadMedia(tripId, fede.token);
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(409);
   });

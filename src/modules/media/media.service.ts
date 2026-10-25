@@ -8,7 +8,10 @@ import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import type { Env, MemberRow, TripRow, UserRow } from "../../types";
 import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
-import { deleteFeaturedByOthers } from "../featured/featured.repository";
+import { deleteFeaturedByOthers, deleteFeaturedOfMedia } from "../featured/featured.repository";
+import { deleteLikesOfMedia } from "../likes/likes.repository";
+import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
+import { rejectSelfie } from "../../lib/moment-selfie";
 import { findMoment, findMomentSlots, recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
 
@@ -246,9 +249,15 @@ export async function getFeed(db: D1Database, trip: TripRow, viewerId: string): 
  * R2 key of the requested variant. Only after the reveal, except for the two images of a daily moment, which any
  * active member (the route already requires it) can fetch as soon as they are uploaded.
  */
-export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: string, variant: "thumb" | "original"): Promise<string> {
+export async function getDownloadKey(
+  db: D1Database,
+  trip: TripRow,
+  viewerId: string,
+  mediaId: string,
+  variant: "thumb" | "original",
+): Promise<string> {
   const revealed = isRevealed(trip);
-  const row = await repo.findDownloadKeys(db, mediaId, trip.id);
+  const row = await repo.findDownloadKeys(db, mediaId, trip.id, viewerId);
   if (!revealed && !row?.isMoment) throw forbidden("Todavía no se reveló el rollo");
   if (!row) throw notFound();
   return variant === "thumb" ? row.thumbKey : row.originalKey;
@@ -256,16 +265,24 @@ export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: str
 
 /**
  * Deletes a photo or video for everyone: removes its files and marks it deleted. The id cannot be registered again.
- * Returns false if it does not exist or was already deleted.
+ * Returns false if it does not exist or was already deleted. With `purge` (the author deleting it after the reveal)
+ * its likes, comments and featured rows go too, in the same batch.
  */
-export async function deleteTripMedia(env: Env, mediaId: string): Promise<boolean> {
+export async function deleteTripMedia(env: Env, mediaId: string, opts: { purge?: boolean } = {}): Promise<boolean> {
   const row = await repo.findLiveMediaById(env.DB, mediaId);
   if (!row) return false;
   // A moment's selfie goes with its main photo.
   const rows = [row, ...(await repo.findLiveSelfies(env.DB, row.id))];
   await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey]));
   const now = Date.now();
-  await env.DB.batch(rows.map((r) => repo.markDeleted(env.DB, r.id, now)));
+  await env.DB.batch(
+    rows.flatMap((r) => [
+      repo.markDeleted(env.DB, r.id, now),
+      ...(opts.purge
+        ? [deleteFeaturedOfMedia(env.DB, r.id), deleteLikesOfMedia(env.DB, r.id), softDeleteCommentsOfMedia(env.DB, r.id, now)]
+        : []),
+    ]),
+  );
   return true;
 }
 
@@ -275,6 +292,61 @@ export async function deleteMediaFromTrip(env: Env, trip: TripRow, mediaId: stri
 
   const inTrip = await repo.mediaExistsInTrip(env.DB, mediaId, trip.id);
   if (!inTrip || !(await deleteTripMedia(env, mediaId))) throw notFound();
+}
+
+/**
+ * `DELETE /media/{id}`: before the reveal it is the admin's moderation delete (anyone else 403); after it, only the
+ * author deletes their own photo for good. The admin keeps getting 409 on other people's photos once revealed.
+ */
+export async function deleteMedia(env: Env, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
+  if (!isRevealed(trip)) {
+    if (member.role !== "admin") throw forbidden("Solo el admin del rollo puede hacer esto");
+    return deleteMediaFromTrip(env, trip, mediaId);
+  }
+  const row = await repo.findLiveMediaById(env.DB, mediaId);
+  if (row && row.tripId === trip.id && row.memberId !== member.id) {
+    if (member.role === "admin") throw conflict("El rollo ya se reveló");
+    throw forbidden(NOT_AUTHOR);
+  }
+  const own = await ownRevealedPhoto(env.DB, trip, member, mediaId);
+  if (!(await deleteTripMedia(env, own.id, { purge: true }))) throw notFound();
+}
+
+const NOT_AUTHOR = "Solo quien sacó la foto puede hacer esto";
+
+/**
+ * The member's own uploaded photo of a revealed rollo: what archive, unarchive and the author's delete act on.
+ * 404 if it doesn't exist (or is deleted, or of another rollo), 403 if someone else took it, 400 for a moment's linked
+ * image (it follows its main photo) or a video, 409 before the reveal.
+ */
+async function ownRevealedPhoto(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string) {
+  const row = await repo.findLiveMediaById(db, mediaId);
+  if (!row || row.tripId !== trip.id || row.status !== "uploaded") throw notFound();
+  if (row.memberId !== member.id) throw forbidden(NOT_AUTHOR);
+  rejectSelfie(row.pairedMediaId);
+  if (!isRevealed(trip)) throw conflict("Todavía no se reveló el rollo");
+  if (row.type !== "photo") throw badRequest("Solo se pueden archivar o eliminar fotos");
+  return row;
+}
+
+/** Ids a change to `main` applies to: the photo and, for a daily moment, its linked image. */
+async function withLinked(db: D1Database, mainId: string): Promise<string[]> {
+  return [mainId, ...(await repo.findLiveSelfies(db, mainId)).map((r) => r.id)];
+}
+
+/**
+ * The author hides their photo from everyone else, right away and without confirmation (it is reversible). It leaves
+ * every profile where it was featured, the author's own included; unarchiving does not put it back. Idempotent.
+ */
+export async function archiveMedia(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
+  const row = await ownRevealedPhoto(db, trip, member, mediaId);
+  const ids = await withLinked(db, row.id);
+  await db.batch([repo.markArchived(db, ids, Date.now()), ...ids.map((id) => deleteFeaturedOfMedia(db, id))]);
+}
+
+export async function unarchiveMedia(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
+  const row = await ownRevealedPhoto(db, trip, member, mediaId);
+  await repo.markUnarchived(db, await withLinked(db, row.id)).run();
 }
 
 /**

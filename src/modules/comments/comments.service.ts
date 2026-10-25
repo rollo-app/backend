@@ -15,7 +15,7 @@ import * as repo from "./comments.repository";
 /** The most comments one photo returns. A rollo is a group of friends: this is a safety net, not a page size. */
 const LIST_LIMIT = 500;
 
-type Photo = { id: string; tripId: string; authorUserId: string; type: "photo" | "video" };
+type Photo = { id: string; tripId: string; authorUserId: string; type: "photo" | "video"; archived: boolean };
 
 /**
  * The photo if the viewer can comment on it: an active member of its rollo once revealed, the photo not hidden for them
@@ -27,7 +27,7 @@ async function visiblePhoto(db: D1Database, viewerId: string, mediaId: string, n
   if (!row || row.is_member !== 1 || !isRevealed(row, now)) throw notFound();
   if (row.author_user_id !== viewerId && (await isBlockedEitherWay(db, viewerId, row.author_user_id))) throw notFound();
   rejectSelfie(row.paired_media_id);
-  return { id: row.id, tripId: row.trip_id, authorUserId: row.author_user_id, type: row.type };
+  return { id: row.id, tripId: row.trip_id, authorUserId: row.author_user_id, type: row.type, archived: row.archived_at !== null };
 }
 
 function present(row: repo.CommentRow, viewerId: string, photoAuthorId: string) {
@@ -61,7 +61,8 @@ export async function createComment(env: Env, viewer: UserRow, mediaId: string, 
     viewer.id,
     photo.authorUserId,
   );
-  return { comment, notify: () => notifyComment(env, viewer, photo, now) };
+  // An archived photo only reaches its author (the only one who can comment on it now): nobody else is told.
+  return { comment, notify: photo.archived ? null : () => notifyComment(env, viewer, photo, now) };
 }
 
 /** The author of the comment or the author of its photo deletes it (soft). Another member → 403; anyone who can't see it → 404. */

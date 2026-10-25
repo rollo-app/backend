@@ -1,4 +1,4 @@
-import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { featured, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
 // A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
@@ -40,6 +40,7 @@ export type FeedRow = {
   selfieWidth: number | null;
   selfieHeight: number | null;
   selfieThumbhash: string | null;
+  archived: boolean;
 };
 
 export type AuthoredMedia = { id: string; tripId: string; authorUserId: string };
@@ -110,6 +111,15 @@ export async function listActiveMemberUserIds(db: D1Database, tripId: string): P
   return rows.map((r) => r.userId);
 }
 
+/** Archives the rows (keeps the first archive time when already archived). */
+export function markArchived(db: D1Database, ids: string[], now: number): D1PreparedStatement {
+  return toStatement(db, orm(db).update(media).set({ archivedAt: sql`COALESCE(${media.archivedAt}, ${now})` }).where(inArray(media.id, ids)));
+}
+
+export function markUnarchived(db: D1Database, ids: string[]): D1PreparedStatement {
+  return toStatement(db, orm(db).update(media).set({ archivedAt: null }).where(inArray(media.id, ids)));
+}
+
 export function markDeleted(db: D1Database, id: string, now: number): D1PreparedStatement {
   return toStatement(db, orm(db).update(media).set({ deletedAt: now }).where(eq(media.id, id)));
 }
@@ -164,6 +174,7 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
       selfieWidth: selfie.width,
       selfieHeight: selfie.height,
       selfieThumbhash: selfie.thumbhash,
+      archived: sql<boolean>`${media.archivedAt} IS NOT NULL`.mapWith(Boolean),
     })
     .from(media)
     .innerJoin(members, eq(members.id, media.memberId))
@@ -173,7 +184,16 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
     .leftJoin(viewerLike, and(eq(viewerLike.mediaId, media.id), eq(viewerLike.userId, viewerId)))
     .leftJoin(likeCounts, eq(likeCounts.mediaId, media.id))
     // The selfie of a moment photo travels inside it (never as an item of its own).
-    .leftJoin(selfie, and(eq(selfie.pairedMediaId, media.id), eq(selfie.status, "uploaded"), isNull(selfie.deletedAt), notReportedBy(viewerId, selfie.id)))
+    .leftJoin(
+      selfie,
+      and(
+        eq(selfie.pairedMediaId, media.id),
+        eq(selfie.status, "uploaded"),
+        isNull(selfie.deletedAt),
+        notReportedBy(viewerId, selfie.id),
+        or(isNull(selfie.archivedAt), eq(members.userId, viewerId)),
+      ),
+    )
     .where(
       and(
         eq(media.tripId, tripId),
@@ -181,16 +201,19 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
         isNull(media.deletedAt),
         isNull(media.pairedMediaId),
         notHiddenFor(viewerId, media.id, members.userId),
+        // Archived: only its author still sees it.
+        or(isNull(media.archivedAt), eq(members.userId, viewerId)),
       ),
     )
     .orderBy(asc(media.takenAt));
 }
 
-/** Keys of an uploaded, not deleted file of the trip. */
+/** Keys of an uploaded, not deleted file of the trip; an archived one only for its author (`viewerId`). */
 export async function findDownloadKeys(
   db: D1Database,
   id: string,
   tripId: string,
+  viewerId: string,
 ): Promise<(Pick<Media, "originalKey" | "thumbKey"> & { isMoment: boolean }) | null> {
   const row = await orm(db)
     .select({
@@ -200,7 +223,16 @@ export async function findDownloadKeys(
       isMoment: sql<boolean>`${media.momentDay} IS NOT NULL OR ${media.pairedMediaId} IS NOT NULL`.mapWith(Boolean),
     })
     .from(media)
-    .where(and(eq(media.id, id), eq(media.tripId, tripId), eq(media.status, "uploaded"), isNull(media.deletedAt)))
+    .innerJoin(members, eq(members.id, media.memberId))
+    .where(
+      and(
+        eq(media.id, id),
+        eq(media.tripId, tripId),
+        eq(media.status, "uploaded"),
+        isNull(media.deletedAt),
+        or(isNull(media.archivedAt), eq(members.userId, viewerId)),
+      ),
+    )
     .get();
   return row ?? null;
 }

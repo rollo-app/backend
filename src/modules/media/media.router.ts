@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { requireAdmin, requireMediaMember, requireTripMember, requireUser } from "../../lib/auth";
+import { requireMediaMember, requireTripMember, requireUser } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { rateLimit } from "../../lib/rate-limit";
 import { MediaParams, TripParams } from "../../schemas";
@@ -101,15 +101,52 @@ export const deleteRoute = createRoute({
   method: "delete",
   path: "/media/{mediaId}",
   tags,
-  summary: "Delete a photo or video from the trip (admin, before the reveal)",
+  summary: "Delete a photo or video: the admin before the reveal, the author after it",
   description:
-    "Once sent, a photo can be neither deleted nor retaken. The exception is the admin, in case someone " +
-    "sends something inappropriate: they can delete any photo of the trip before the reveal. " +
-    "The files are deleted but the quota is **not given back** to anyone, and the id cannot be registered again.",
+    "**Before the reveal** only the admin can delete (in case someone sends something inappropriate): any photo or video of the trip; " +
+    "anyone else gets 403. The files are deleted but the quota is **not given back** to anyone, and the id cannot be registered again. " +
+    "**After the reveal** only the author can delete their own photo, for good: it disappears for everyone, with its files, " +
+    "likes, comments and every profile that featured it. Another member gets 403 (the admin 409, as before). " +
+    "A video is 400. Deleting a daily moment's main photo deletes its linked image too; the linked image's own id is 400.",
   security: bearerAuth,
-  middleware: [requireUser, requireMediaMember, requireAdmin] as const,
+  middleware: [requireUser, requireMediaMember] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Deleted" }, ...errors(401, 403, 404, 409) },
+  responses: { 204: { description: "Deleted" }, ...errors(400, 401, 403, 404, 409) },
+});
+
+// ---------- Archive (author, after the reveal) ----------
+
+const archiveDescription =
+  "Author only, photos only, once the rollo is revealed, and while you are an active member (else 404). " +
+  "Another member gets 403; before the reveal 409; a video 400. A daily moment's main photo takes its linked image along; " +
+  "the linked image's own id is 400. Idempotent.";
+
+export const archiveRoute = createRoute({
+  method: "post",
+  path: "/media/{mediaId}/archive",
+  tags,
+  summary: "Archive your photo: only you keep seeing it",
+  description:
+    "It disappears for everyone else everywhere (feed, downloads, likes, comments, \"Tu actividad\", profiles), right away. " +
+    "It leaves every profile where it was featured, yours included, and unarchiving does not put it back. " +
+    "In your own feed it comes with `archived: true`. " +
+    archiveDescription,
+  security: bearerAuth,
+  middleware: [requireUser, requireMediaMember] as const,
+  request: { params: MediaParams },
+  responses: { 204: { description: "Archived" }, ...errors(400, 401, 403, 404, 409) },
+});
+
+export const unarchiveRoute = createRoute({
+  method: "post",
+  path: "/media/{mediaId}/unarchive",
+  tags,
+  summary: "Unarchive your photo: everyone sees it again",
+  description: "It is not featured again anywhere (it can be featured again). " + archiveDescription,
+  security: bearerAuth,
+  middleware: [requireUser, requireMediaMember] as const,
+  request: { params: MediaParams },
+  responses: { 204: { description: "Unarchived" }, ...errors(400, 401, 403, 404, 409) },
 });
 
 // ---------- Feature block (author) ----------
@@ -150,6 +187,8 @@ media.openapi(completeRoute, controller.complete);
 media.openapi(feedRoute, controller.feed);
 media.openapi(downloadRoute, controller.download);
 media.openapi(deleteRoute, controller.remove);
+media.openapi(archiveRoute, controller.archive);
+media.openapi(unarchiveRoute, controller.unarchive);
 media.openapi(blockFeatureRoute, controller.blockFeature);
 media.openapi(unblockFeatureRoute, controller.unblockFeature);
 

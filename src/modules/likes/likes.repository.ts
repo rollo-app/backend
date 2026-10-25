@@ -17,9 +17,10 @@ export function findLikeableRow(db: D1Database, viewerId: string, mediaId: strin
               EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
                         AND me.removed_at IS NULL AND me.left_at IS NULL) AS is_member
        FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
-       WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "author")}`,
+       WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "author")}
+         AND (m.archived_at IS NULL OR author.user_id = ?)`,
     )
-    .bind(viewerId, mediaId, viewerId, viewerId)
+    .bind(viewerId, mediaId, viewerId, viewerId, viewerId)
     .first<LikeableRow>();
 }
 
@@ -37,6 +38,11 @@ export async function listFeaturedOwners(db: D1Database, mediaId: string, now: n
 
 export function insertLike(db: D1Database, userId: string, mediaId: string, now: number): D1PreparedStatement {
   return db.prepare("INSERT OR IGNORE INTO likes (user_id, media_id, created_at) VALUES (?, ?, ?)").bind(userId, mediaId, now);
+}
+
+/** Every like of a photo (its author deleted it). */
+export function deleteLikesOfMedia(db: D1Database, mediaId: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM likes WHERE media_id = ?").bind(mediaId);
 }
 
 export function deleteLike(db: D1Database, userId: string, mediaId: string): D1PreparedStatement {
@@ -93,6 +99,7 @@ const VISIBLE_LIKES = `
   ${VIEWER}
   WHERE l.user_id = v.viewer_id
     AND m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL
+    AND (m.archived_at IS NULL OR author.user_id = v.viewer_id)
     AND m.id NOT IN (SELECT media_id FROM reports WHERE reporter_id = v.viewer_id AND media_id IS NOT NULL)
     AND author.user_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = v.viewer_id)
     AND NOT EXISTS (SELECT 1 FROM blocks ab WHERE ab.blocker_id = author.user_id AND ab.blocked_id = v.viewer_id)

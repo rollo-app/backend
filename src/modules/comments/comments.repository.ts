@@ -5,7 +5,7 @@ import type { MediaRow, TripRow, UserRow } from "../../types";
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])`.
 
-export type CommentableRow = Pick<MediaRow, "id" | "type" | "trip_id" | "paired_media_id"> &
+export type CommentableRow = Pick<MediaRow, "id" | "type" | "trip_id" | "paired_media_id" | "archived_at"> &
   Pick<TripRow, "revealed_at" | "reveal_at"> & { author_user_id: string; is_member: number };
 
 export type CommentRow = { id: string; text: string; created_at: number; user_id: string } & Pick<UserRow, "name" | "username" | "avatar_key">;
@@ -14,13 +14,14 @@ export type CommentRow = { id: string; text: string; created_at: number; user_id
 export function findCommentableRow(db: D1Database, viewerId: string, mediaId: string): Promise<CommentableRow | null> {
   return db
     .prepare(
-      `SELECT m.id, m.type, m.trip_id, m.paired_media_id, author.user_id AS author_user_id, t.revealed_at, t.reveal_at,
+      `SELECT m.id, m.type, m.trip_id, m.paired_media_id, m.archived_at, author.user_id AS author_user_id, t.revealed_at, t.reveal_at,
               EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
                         AND me.removed_at IS NULL AND me.left_at IS NULL) AS is_member
        FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
-       WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "author")}`,
+       WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "author")}
+         AND (m.archived_at IS NULL OR author.user_id = ?)`,
     )
-    .bind(viewerId, mediaId, viewerId, viewerId)
+    .bind(viewerId, mediaId, viewerId, viewerId, viewerId)
     .first<CommentableRow>();
 }
 
@@ -66,6 +67,11 @@ export function findComment(db: D1Database, commentId: string): Promise<{ id: st
 
 export function insertComment(db: D1Database, c: { id: string; mediaId: string; userId: string; text: string; createdAt: number }): D1PreparedStatement {
   return db.prepare("INSERT INTO comments (id, media_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)").bind(c.id, c.mediaId, c.userId, c.text, c.createdAt);
+}
+
+/** Soft-deletes every live comment of a photo (its author deleted it); reports of them keep their text. */
+export function softDeleteCommentsOfMedia(db: D1Database, mediaId: string, now: number): D1PreparedStatement {
+  return db.prepare("UPDATE comments SET deleted_at = ? WHERE media_id = ? AND deleted_at IS NULL").bind(now, mediaId);
 }
 
 export function softDeleteComment(db: D1Database, commentId: string, now: number): D1PreparedStatement {

@@ -6,12 +6,14 @@ import { avatarUrl } from "../../lib/util";
 import type { AppEnv } from "../../types";
 import type { FeedRow } from "./media.repository";
 import type {
+  archiveRoute,
   blockFeatureRoute,
   completeRoute,
   deleteRoute,
   downloadRoute,
   feedRoute,
   registerRoute,
+  unarchiveRoute,
   unblockFeatureRoute,
 } from "./media.router";
 import * as service from "./media.service";
@@ -94,6 +96,7 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
       likeCount: r.likeCount,
       likedByMe: r.likedByMe,
       commentCount: r.commentCount,
+      archived: r.archived,
     }),
   };
 }
@@ -107,13 +110,23 @@ export const feed: RouteHandler<typeof feedRoute, AppEnv> = async (c) => {
 
 export const download: RouteHandler<typeof downloadRoute, AppEnv> = async (c) => {
   const { mediaId, variant } = c.req.valid("param");
-  const key = await service.getDownloadKey(c.env.DB, c.get("trip"), mediaId, variant);
+  const key = await service.getDownloadKey(c.env.DB, c.get("trip"), c.get("user").id, mediaId, variant);
   return serveMediaFile(c.env.MEDIA, key);
 };
 
 export const remove: RouteHandler<typeof deleteRoute, AppEnv> = async (c) => {
   const { mediaId } = c.req.valid("param");
-  await service.deleteMediaFromTrip(c.env, c.get("trip"), mediaId);
+  await service.deleteMedia(c.env, c.get("trip"), c.get("member"), mediaId);
+  return c.body(null, 204);
+};
+
+export const archive: RouteHandler<typeof archiveRoute, AppEnv> = async (c) => {
+  await service.archiveMedia(c.env.DB, c.get("trip"), c.get("member"), c.req.valid("param").mediaId);
+  return c.body(null, 204);
+};
+
+export const unarchive: RouteHandler<typeof unarchiveRoute, AppEnv> = async (c) => {
+  await service.unarchiveMedia(c.env.DB, c.get("trip"), c.get("member"), c.req.valid("param").mediaId);
   return c.body(null, 204);
 };
 

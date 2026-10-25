@@ -8,7 +8,7 @@ import { VISIBLE_FROM, VISIBLE_WHERE } from "../featured/featured.repository";
 export type ReportTargetRow = Pick<UserRow, "id" | "email" | "name" | "username">;
 
 export function findUploadedMedia(db: D1Database, mediaId: string): Promise<MediaRow | null> {
-  return db.prepare("SELECT * FROM media WHERE id = ? AND status = 'uploaded' AND deleted_at IS NULL").bind(mediaId).first<MediaRow>();
+  return db.prepare("SELECT * FROM media WHERE id = ? AND status = 'uploaded' AND deleted_at IS NULL AND archived_at IS NULL").bind(mediaId).first<MediaRow>();
 }
 
 export async function isActiveTripMember(db: D1Database, tripId: string, userId: string): Promise<boolean> {

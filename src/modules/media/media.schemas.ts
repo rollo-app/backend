@@ -127,6 +127,10 @@ export const FeedItemSchema = z
       description: "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos",
     }),
     likedByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you like it" }),
+    archived: z.boolean().optional().openapi({
+      description:
+        "Only after the reveal: its author archived it. Archived items only reach their author (everyone else never gets them), so it is only ever true in your own feed",
+    }),
     commentCount: z.number().int().optional().openapi({
       description: "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos",
     }),

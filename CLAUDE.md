@@ -80,6 +80,16 @@ Decisiones de producto que el backend tiene que respetar:
   `POST /reports { commentId }` (`reports.comment_id`, `media_id` queda null para no ocultar la foto; solo miembros activos; el mail a soporte lleva el
   texto). Push `photoCommented` ("Cami comentó tu foto" al autor y "Cami también comentó una foto" a quienes ya comentaron) con la misma ventana de 30 min
   por foto que los "me gusta" (`media.comment_notified_at` / `comments_since_notified`); abre `/photo/<id>?tripId=<trip>&comments=1`. Borrar la cuenta borra sus comentarios.
+- **Archivar y eliminar tus fotos** (`media.service.ts`: `archiveMedia`, `unarchiveMedia`, `deleteMedia`; migración `0026_media_archived.sql`, `media.archived_at`):
+  solo el **autor**, solo **fotos** (un video da 400), solo con el rollo **revelado** (antes 409) y siendo miembro activo (si no, 404; otro miembro 403).
+  `POST /media/{id}/archive` y `/unarchive` (204, idempotentes): archivada, **solo la ve su autor** (en su feed con `archived: true`; el campo va en todo
+  ítem revelado); para el resto no existe en ningún camino: feed/galería/mapa/historias, descarga por id (404), "me gusta" (404), `GET /me/likes`,
+  comentarios (404), denuncias (404), destacadas y su mapa (`VISIBLE_WHERE` pide `m.archived_at IS NULL`), y `totalUploaded` / tapa de `GET /me/trips` y del
+  detalle (cuenta solo para el autor). Archivar **borra todas las filas de `featured`** de la foto (también la del autor) y desarchivar no las devuelve (se
+  puede volver a destacar); destacar una archivada da 404 a otros y 409 al autor. Si el autor comenta su foto archivada no se avisa a nadie.
+  `DELETE /media/{id}`: **antes del revelado** es el borrado del admin de siempre (cualquier otro 403); **después**, el autor la elimina para siempre
+  (archivos de R2, `deleted_at`, sus `likes` y `featured` se borran y sus comentarios quedan con `deleted_at`); otro miembro 403 y el admin con fotos
+  ajenas 409, como antes. En un momento, archivar/desarchivar/eliminar la principal arrastra la vinculada y el id de la vinculada da 400.
 - **Momento del día** (`src/modules/moments/`, `src/lib/moments.ts`, migración `0024_daily_moment.sql`): un aviso por día a una hora al azar
   de cada miembro, con 5 minutos para sacar la foto (`MOMENT_WINDOW_MS`), estilo BeReal. El rollo lo elige al crearse: `trips.moment_mode`
   (`off` por default, para rollos viejos y el build viejo, `photo` o `photo_selfie`) y la franja `moment_window_start`/`end` (540 y 1380
@@ -223,7 +233,7 @@ Reglas:
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 620 tests
+npm test              # 822 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
@@ -268,7 +278,7 @@ URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
 ## Estado (octubre 2026)
 
 Hecho: cuentas por email (código y link mágico), perfil y username, amigos, viajes (crear, unirse, detalle,
-editar, revelar, sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar),
+editar, revelar, sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar, archivar),
 destacadas, "me gusta", notificaciones push con cron, moderación, contrato OpenAPI, CI.
 
 **Producción** (deployado el 22/10/2026), todo en la cuenta de Cloudflare de Juani:

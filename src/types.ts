@@ -128,6 +128,8 @@ export type MediaRow = {
   comment_notified_at: number | null;
   /** Comments since comment_notified_at that did not send a push. */
   comments_since_notified: number;
+  /** The author archived it (after the reveal): only they still see it. */
+  archived_at: number | null;
 };
 
 export type AppEnv = {

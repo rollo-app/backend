@@ -19,11 +19,11 @@ export const VISIBLE_FROM = `
   JOIN members owner ON owner.trip_id = m.trip_id AND owner.user_id = f.user_id
                     AND owner.removed_at IS NULL AND owner.left_at IS NULL`;
 export const VISIBLE_WHERE = `
-  m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL
+  m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL AND m.archived_at IS NULL
   AND (t.revealed_at IS NOT NULL OR t.reveal_at <= ?)
   AND (m.feature_blocked_at IS NULL OR author.user_id = f.user_id)`;
 
-export type FeaturableMedia = Pick<MediaRow, "id" | "type" | "feature_blocked_at" | "paired_media_id" | "moment_day"> &
+export type FeaturableMedia = Pick<MediaRow, "id" | "type" | "feature_blocked_at" | "paired_media_id" | "moment_day" | "archived_at"> &
   Pick<TripRow, "revealed_at" | "reveal_at" | "featuring_disabled"> & {
     author_user_id: string;
     member_allow_featuring: number;
@@ -41,7 +41,7 @@ export type FeaturedPhotoRow = {
 export function findFeaturableMedia(db: D1Database, userId: string, mediaId: string): Promise<FeaturableMedia | null> {
   return db
     .prepare(
-      `SELECT m.id, m.type, m.feature_blocked_at, m.paired_media_id, m.moment_day, author.user_id AS author_user_id,
+      `SELECT m.id, m.type, m.feature_blocked_at, m.paired_media_id, m.moment_day, m.archived_at, author.user_id AS author_user_id,
             t.revealed_at, t.reveal_at, t.featuring_disabled,
             author.allow_featuring AS member_allow_featuring,
             COALESCE(author_settings.allow_featuring, 1) AS account_allow_featuring
@@ -72,13 +72,18 @@ export function insertFeaturedUnderCap(db: D1Database, userId: string, mediaId: 
       `INSERT OR IGNORE INTO featured (user_id, media_id, created_at)
      SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM ${VISIBLE_FROM} WHERE ${VISIBLE_WHERE} AND f.user_id = ?) < ?
        AND EXISTS (SELECT 1 FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
-                   WHERE m.id = ? AND ${FEATURING_ALLOWED_SQL})`,
+                   WHERE m.id = ? AND m.archived_at IS NULL AND ${FEATURING_ALLOWED_SQL})`,
     )
     .bind(userId, mediaId, now, now, userId, max, mediaId, userId);
 }
 
 export function deleteFeatured(db: D1Database, userId: string, mediaId: string): D1PreparedStatement {
   return db.prepare("DELETE FROM featured WHERE user_id = ? AND media_id = ?").bind(userId, mediaId);
+}
+
+/** Removes the photo from every profile, the author's included (archiving or deleting it). */
+export function deleteFeaturedOfMedia(db: D1Database, mediaId: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM featured WHERE media_id = ?").bind(mediaId);
 }
 
 /** Removes the photo from everyone else's profile (the author keeps theirs). */

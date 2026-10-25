@@ -46,6 +46,11 @@ export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Pr
   const now = Date.now();
   const row = await repo.findFeaturableMedia(db, user.id, mediaId);
   if (!row) throw notFound();
+  // An archived photo only exists for its author, who has to unarchive it first.
+  if (row.archived_at !== null) {
+    if (row.author_user_id !== user.id) throw notFound();
+    throw conflict("Desarchivá esta foto para agregarla a tu perfil");
+  }
   if (!isRevealed(row, now)) {
     throw conflict("Este rollo todavía no se reveló");
   }
