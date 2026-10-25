@@ -10,10 +10,14 @@ src/
     trips/ media/                             rollos, subidas, feed y descargas
     friends/ featured/ likes/                 amigos, destacadas y "me gusta"
     blocks/ reports/ admin/                   moderación (admin queda fuera del contrato)
-  shared/           errores de dominio (→ 400/403/404/409/429/503) y el tipo de los push diferidos
+  shared/           errores de dominio (→ 400/403/404/409/429/503), helpers de Drizzle y el tipo de los push diferidos
+  db/schema.ts      esquema de la base para Drizzle ORM (se chequea contra las migraciones)
+  ports/            interfaces de servicios externos: storage, mail, push, rate limit
+  infra/            implementaciones: R2, Resend, Expo, Cloudflare, y las de dev/test
+  container.ts      inyección de dependencias: el único lugar que elige qué implementación se usa
   schemas.ts        contrato compartido (zod → validación, tipos y OpenAPI)
   types.ts          tipos de Env y filas de la base
-  lib/              transversal: sesiones y middlewares, r2, push, mail, storage, rate limit y helpers
+  lib/              transversal: sesiones y middlewares, plantillas de mail, lógica de push, storage, rate limit y helpers
 migrations/         SQL de D1, incremental (se aplican solas en los tests)
 scripts/            export-openapi, seed, email-preview
 openapi.json        contrato versionado (lo consume la app mobile)

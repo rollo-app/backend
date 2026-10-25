@@ -104,8 +104,11 @@ src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de e
 src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): admin, auth, avatars, blocks, featured, friends, likes, me, media, reports, trips, users, usernames
 src/db/schema.ts       esquema Drizzle de toda la DB (camelCase en TS, columnas snake_case); las migraciones SQL siguen siendo la fuente de verdad y `npm run db:check-schema` falla si se desalinean
 src/shared/           db.ts (`orm`, `toStatement`), errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
+src/ports/            interfaces de servicios externos: ObjectStorage, Mailer, PushGateway, RateLimiter
+src/infra/            implementaciones: r2/ (R2Storage + presigners S3 y dev), resend/, dev/ (DevMailer y los devSent* de los tests), expo/, cloudflare/ (rate limiter)
+src/container.ts      inyección de dependencias: `buildDeps(env)` elige las implementaciones y arma `AppConfig`
 src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
-src/lib/              auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta"), account (borrar cuenta), storage, rate-limit, email...
+src/lib/              auth (sesiones y middlewares), openapi helpers, media-files (claves de R2 y servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta"), account (borrar cuenta), storage, rate-limit, email...
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -147,13 +150,24 @@ Reglas:
   controller de otro módulo.
 - **Middlewares** (sesión, membresía, admin, rate limit) van en el `middleware` de cada `createRoute`; su código
   vive en `src/lib/auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
-- **`src/lib/`** queda para lo transversal (sesiones, R2, mail, push, storage, rate limit, helpers puros). Parte
+- **`src/lib/`** queda para lo transversal (sesiones, plantillas de mail, lógica de push, storage, rate limit, helpers puros). Parte
   todavía tiene SQL (`account`, `profile-access`, `settings`, `trip-notices`...): pasarlo a módulos es un paso
   pendiente.
 - **PRs:** un refactor de estructura que toca varios módulos puede ir en un solo PR, con un commit por módulo o
   grupo, para no encadenar conflictos en `src/index.ts` y `src/schemas.ts`.
-- **Sin interfaces por capa:** services y repos son módulos de funciones tipadas; el contrato es la firma exportada.
-  Interfaces explícitas solo donde hay más de una implementación (storage, mail, push).
+- **Servicios externos detrás de interfaces:** storage, mail, push y rate limit se usan solo a través de los puertos
+  de `src/ports/` (`deps.storage.head(key)`, `deps.mailer.send(...)`), nunca el binding ni el SDK del proveedor.
+  Las implementaciones viven en `src/infra/` y **`buildDeps` en `src/container.ts` es el único lugar que elige cuál
+  se usa** (ej. `RESEND_API_KEY` → `ResendMailer`, si no `DevMailer`; `DEV_LOCAL_UPLOADS` → presigner de dev). Pasar
+  de R2 a S3 = escribir una clase que implemente `ObjectStorage` y cambiar esa línea. Un middleware global pone
+  `deps` en el contexto (`c.get("deps")`) y el cron arma los suyos con `buildDeps(env)`. Guardas: fuera de `infra/`
+  y `container.ts` no aparecen `env.MEDIA`, `R2Bucket`, `aws4fetch`, `api.resend.com`, `exp.host` ni los `RL_*`.
+- **Los services reciben dependencias, no `env`:** la firma pide lo justo con `Pick<Deps, "db" | "storage">`; lo que
+  solo usa la base recibe `db`. La configuración (remitente, link mágico, tope de almacenamiento, cuenta de review,
+  token de admin) sale de `deps.config` (`AppConfig`, con los defaults resueltos en `container.ts`).
+- **Sin interfaces para lo propio:** services y repos son módulos de funciones tipadas; el contrato es la firma
+  exportada. Interfaces solo para lo externo, que es lo que puede cambiar de proveedor. La base no tiene puerto: la
+  abstracción es Drizzle.
 - **Comentarios explicativos** (por qué una regla es así) van junto a la lógica, o sea, en el service.
 
 ## Cómo trabajamos
@@ -212,7 +226,8 @@ Tomi como desconocido). Cuentas:
 
 **Subidas en local:** con `DEV_LOCAL_UPLOADS=1` en `.dev.vars` (está en `.dev.vars.example`), las URLs
 de subida apuntan al propio worker (`PUT /dev/upload/<key>`, firmado con HMAC, fuera del contrato) y
-terminan en el R2 local; así `complete` funciona en `wrangler dev`. Apagado, la ruta no existe.
+terminan en el R2 local; así `complete` funciona en `wrangler dev`. Apagado, la ruta no existe. (Lo decide
+`buildDeps`: con la variable usa el `DevUploadPresigner` de `src/infra/r2/`.)
 Ojo: por el `routes` de `wrangler.jsonc`, `wrangler dev` reescribe el host del request al dominio de
 producción. `dev:lan` lo evita con `--local-upstream <ip>:8787`; con `npm run dev -- --ip 0.0.0.0` las
 URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
