@@ -49,7 +49,7 @@ export async function listComments(db: D1Database, viewerId: string, mediaId: st
       `SELECT c.id, c.text, c.created_at, c.user_id, u.name, u.username, u.avatar_key
        FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.media_id = ? AND ${VISIBLE_COMMENT_WHERE}
-       ORDER BY c.created_at, c.id LIMIT ?`,
+       ORDER BY c.created_at, c.rowid LIMIT ?`,
     )
     .bind(mediaId, viewerId, viewerId, viewerId, limit)
     .all<CommentRow>();

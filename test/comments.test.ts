@@ -117,6 +117,15 @@ describe("GET /media/{mediaId}/comments", () => {
     expect(asFede.body.comments[1].author).toMatchObject({ userId: t.fede.userId, name: "Fede" });
   });
 
+  it("keeps creation order for comments created in the same millisecond", async () => {
+    const t = await revealedTrip();
+    vi.spyOn(Date, "now").mockReturnValue(Date.now());
+    const texts = Array.from({ length: 12 }, (_, i) => `c${i}`);
+    for (const text of texts) await comment(t.juani.token, t.fedePhoto, text);
+    const res = await list(t.juani.token, t.fedePhoto);
+    expect(res.body.comments.map((c: { text: string }) => c.text)).toEqual(texts);
+  });
+
   it("hides comments of users blocked in either direction and the ones you reported", async () => {
     const t = await revealedTrip();
     const cami = await joinMember(t.tripId, "Cami");
