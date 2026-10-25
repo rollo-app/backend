@@ -27,6 +27,11 @@ export const UserProfileSchema = z
     }),
     friendCount: z.number().int().openapi({ description: "How many friends this user has (always public)" }),
     mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends (0 for yourself)" }),
+    friendRequest: z.enum(["none", "sent", "received"]).openapi({
+      description:
+        "Pending friend request between you and this user: sent (you sent one, also after they rejected it: they never tell), " +
+        "received (they sent you one you have not answered), none (also for friends, yourself and blocks)",
+    }),
   })
   .openapi("UserProfile");
 

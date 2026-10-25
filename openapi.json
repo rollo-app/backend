@@ -192,6 +192,93 @@
           "token"
         ]
       },
+      "ReceivedFriendRequests": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceivedFriendRequest"
+            },
+            "description": "Pending requests to you, most recent first"
+          }
+        },
+        "required": [
+          "requests"
+        ]
+      },
+      "ReceivedFriendRequest": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/Friend"
+          },
+          "createdAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "When the request was sent",
+            "example": 1767225600000
+          }
+        },
+        "required": [
+          "user",
+          "createdAt"
+        ]
+      },
+      "Friend": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description (up to 3 lines); null if none"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl",
+          "bio"
+        ]
+      },
+      "FriendResponse": {
+        "type": "object",
+        "properties": {
+          "friend": {
+            "$ref": "#/components/schemas/Friend"
+          }
+        },
+        "required": [
+          "friend"
+        ]
+      },
       "UpdateProfileRequest": {
         "type": "object",
         "properties": {
@@ -368,9 +455,9 @@
             "type": "boolean",
             "description": "Someone likes a photo of yours"
           },
-          "photoCommented": {
+          "friendRequest": {
             "type": "boolean",
-            "description": "Someone comments on a photo of yours, or on one you commented on"
+            "description": "Someone sends you a friend request"
           }
         },
         "required": [
@@ -380,7 +467,7 @@
           "tripRevealed",
           "photoFeatured",
           "photoLiked",
-          "photoCommented"
+          "friendRequest"
         ]
       },
       "UpdateUserSettingsRequest": {
@@ -413,9 +500,9 @@
                 "type": "boolean",
                 "description": "Someone likes a photo of yours"
               },
-              "photoCommented": {
+              "friendRequest": {
                 "type": "boolean",
-                "description": "Someone comments on a photo of yours, or on one you commented on"
+                "description": "Someone sends you a friend request"
               }
             },
             "additionalProperties": false
@@ -438,6 +525,22 @@
         "required": [
           "available",
           "username"
+        ]
+      },
+      "SendFriendRequestResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "friends"
+            ],
+            "description": "sent: the request is pending (or was rejected, which the sender never sees); friends: you are friends now (they had asked you too, or you already were)"
+          }
+        },
+        "required": [
+          "status"
         ]
       },
       "UserProfile": {
@@ -472,6 +575,15 @@
           "mutualCount": {
             "type": "integer",
             "description": "How many of your friends are also this user's friends (0 for yourself)"
+          },
+          "friendRequest": {
+            "type": "string",
+            "enum": [
+              "none",
+              "sent",
+              "received"
+            ],
+            "description": "Pending friend request between you and this user: sent (you sent one, also after they rejected it: they never tell), received (they sent you one you have not answered), none (also for friends, yourself and blocks)"
           }
         },
         "required": [
@@ -482,7 +594,8 @@
           "profileVisibility",
           "canSee",
           "friendCount",
-          "mutualCount"
+          "mutualCount",
+          "friendRequest"
         ]
       },
       "PublicUser": {
@@ -619,60 +732,6 @@
           "expiresAt"
         ]
       },
-      "FriendResponse": {
-        "type": "object",
-        "properties": {
-          "friend": {
-            "$ref": "#/components/schemas/Friend"
-          }
-        },
-        "required": [
-          "friend"
-        ]
-      },
-      "Friend": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "User id"
-          },
-          "name": {
-            "type": "string",
-            "example": "Cami"
-          },
-          "username": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "cami",
-            "description": "Unique handle without the @"
-          },
-          "avatarUrl": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "bio": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "Viajando por el sur",
-            "description": "Profile description (up to 3 lines); null if none"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "username",
-          "avatarUrl",
-          "bio"
-        ]
-      },
       "RedeemFriendRequest": {
         "type": "object",
         "properties": {
@@ -786,12 +845,6 @@
             "minLength": 1,
             "maxLength": 64,
             "description": "Person to report"
-          },
-          "commentId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64,
-            "description": "Comment to report (on a photo of a rollo you are in)"
           }
         },
         "required": [
@@ -1516,10 +1569,6 @@
           "likedByMe": {
             "type": "boolean",
             "description": "Only after the reveal: you like it"
-          },
-          "commentCount": {
-            "type": "integer",
-            "description": "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos"
           }
         },
         "required": [
@@ -1670,91 +1719,6 @@
           "lat": -41.075,
           "lng": -71.475
         }
-      },
-      "CommentList": {
-        "type": "object",
-        "properties": {
-          "comments": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Comment"
-            }
-          }
-        },
-        "required": [
-          "comments"
-        ]
-      },
-      "Comment": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "text": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "integer",
-            "description": "Epoch milliseconds"
-          },
-          "author": {
-            "type": "object",
-            "properties": {
-              "userId": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "name": {
-                "type": "string"
-              },
-              "username": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "avatarUrl": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "userId",
-              "name",
-              "username",
-              "avatarUrl"
-            ]
-          },
-          "canDelete": {
-            "type": "boolean",
-            "description": "You wrote it, or the photo is yours"
-          }
-        },
-        "required": [
-          "id",
-          "text",
-          "createdAt",
-          "author",
-          "canDelete"
-        ]
-      },
-      "CreateCommentRequest": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500,
-            "description": "Plain text, trimmed, 1 to 500 characters"
-          }
-        },
-        "required": [
-          "text"
-        ]
       }
     },
     "parameters": {}
@@ -1910,6 +1874,137 @@
         "responses": {
           "204": {
             "description": "Signed out"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/friend-requests": {
+      "get": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Friend requests you received",
+        "description": "Pending ones only (the ones you rejected are gone), most recent first.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Received requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedFriendRequests"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/friend-requests/{userId}/accept": {
+      "post": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Accept a friend request",
+        "description": "Makes you friends and notifies whoever sent it (`newFriend`). 404 if there is no pending request from that user.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new friend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/friend-requests/{userId}/reject": {
+      "post": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Reject a friend request",
+        "description": "Silent: the sender is not notified and keeps seeing it as sent. Also 204 if there was none.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Request rejected"
           },
           "401": {
             "description": "Missing or invalid session token",
@@ -2518,6 +2613,119 @@
         }
       }
     },
+    "/users/{userId}/friend-request": {
+      "post": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Send a friend request",
+        "description": "Asks to become friends with someone whose profile you can open. They are friends only once the receiver accepts. If they already sent you one, you become friends at once (`friends`). Sending again while it is pending, or to a friend, is not an error. A request the receiver rejected is silent: you still get `sent`, nothing reaches them until 30 days after the rejection. Notifies the receiver (`friendRequest`). 400 to yourself, 404 if the user does not exist or there is a block in either direction, 429 past 30 sent requests in 24 hours.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendFriendRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Cancel a friend request you sent",
+        "description": "Also 204 if there was none.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Request cancelled"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/users/{userId}": {
       "get": {
         "tags": [
@@ -3008,8 +3216,8 @@
         "tags": [
           "Reports"
         ],
-        "summary": "Report a photo, a comment or a person",
-        "description": "Send exactly one of `mediaId`, `commentId` or `userId`. Idempotent: reporting the same photo, comment or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos); a reported comment, from their comment lists and counts. At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo or comment is not one the reporter can see (a comment: only active members of its rollo); 400 if it is theirs.",
+        "summary": "Report a photo or a person",
+        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
         "security": [
           {
             "bearerAuth": []
@@ -3906,7 +4114,7 @@
           "Media"
         ],
         "summary": "Trip feed",
-        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`). Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, and its likes (`likeCount`, `likedByMe`). Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
         "security": [
           {
             "bearerAuth": []
@@ -4618,205 +4826,6 @@
           },
           "401": {
             "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/media/{mediaId}/comments": {
-      "get": {
-        "tags": [
-          "Comments"
-        ],
-        "summary": "List the comments of a photo",
-        "description": "Oldest first. Only active members of the photo's rollo, once it is revealed: otherwise 404 (also with a block with the photo's author). Leaves out deleted comments, comments of users blocked in either direction and the ones you reported. A video has none (empty list).",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "mediaId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Comments",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommentList"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "Comments"
-        ],
-        "summary": "Comment on a photo",
-        "description": "Plain text, up to 500 characters. Same permissions as listing; 400 for a video. Notifies the photo's author and whoever commented before (`photoCommented`), at most once every 30 minutes per photo: the comments in between are counted and added to the next push.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "mediaId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateCommentRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The new comment",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Comment"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Daily limit or rate limit reached",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/comments/{commentId}": {
-      "delete": {
-        "tags": [
-          "Comments"
-        ],
-        "summary": "Delete a comment",
-        "description": "The author of the comment or the author of its photo. Another member of the rollo gets 403. 404 if the comment does not exist, is already deleted, or you can't see its photo.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "commentId",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Deleted"
-          },
-          "401": {
-            "description": "Missing or invalid session token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

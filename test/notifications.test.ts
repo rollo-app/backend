@@ -141,6 +141,7 @@ const ALL_ON = {
   photoFeatured: true,
   photoLiked: true,
   photoCommented: true,
+  friendRequest: true,
 };
 
 describe("GET /me/settings", () => {

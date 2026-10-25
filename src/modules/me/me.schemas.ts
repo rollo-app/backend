@@ -61,6 +61,7 @@ export const NotificationSettingsSchema = z
     photoFeatured: z.boolean().openapi({ description: "Someone features a photo of yours on their profile" }),
     photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
     photoCommented: z.boolean().openapi({ description: "Someone comments on a photo of yours, or on one you commented on" }),
+    friendRequest: z.boolean().openapi({ description: "Someone sends you a friend request" }),
   })
   .openapi("NotificationSettings");
 

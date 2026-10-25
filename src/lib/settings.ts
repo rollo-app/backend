@@ -7,6 +7,7 @@ export const NOTIFICATION_COLUMNS = {
   photoFeatured: "notify_photo_featured",
   photoLiked: "notify_photo_liked",
   photoCommented: "notify_photo_commented",
+  friendRequest: "notify_friend_request",
 } as const;
 
 export type NotificationKind = keyof typeof NOTIFICATION_COLUMNS;

@@ -20,7 +20,9 @@ Decisiones de producto que el backend tiene que respetar:
   (24 h) para canjear después de registrarse; `POST /friends/redeem` canjea con `code` o `claimToken`. Cualquier falla es el mismo 400
   genérico; 10 fallas por usuario o IP en una hora → 429 (`friend_attempts`). Cualquier miembro suma **a sus amigos** a un rollo
   (`POST /trips/{id}/members`, respuesta por amigo, no si ya se reveló). `members.left_at` (se salió: `DELETE /trips/{id}/members/me`,
-  puede volver por código o por amigos, sus fotos quedan) es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
+  puede volver por código o por amigos, sus fotos quedan)
+  **Solicitudes de amistad** (`src/modules/friend-requests/`, tabla `friend_requests`): desde el perfil de otra persona, `POST/DELETE /users/{id}/friend-request`, `GET /me/friend-requests` y `POST /me/friend-requests/{id}/accept|reject`; `GET /users/{id}` suma `friendRequest` (`none|sent|received`). Solicitud cruzada o a quien ya te pidió → amigos al toque; rechazar es silencioso (el que la mandó sigue viendo `sent`, y recién a los 30 días puede reenviar); 30 por día; bloquear las borra; push `friendRequest` (abre `/friends`) y `newFriend` al aceptar.
+  es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
 - **Destacadas** (`src/modules/featured/`, `src/lib/zone.ts`): cada uno elige hasta **60 fotos** (no videos) de rollos **revelados**
   donde es miembro activo, suyas o de otros, para su perfil (`PUT/DELETE /me/featured/{mediaId}`, tabla `featured`). El autor puede
   no dejar que otros la destaquen (`PUT/DELETE /media/{id}/feature-block`, `media.feature_blocked_at`): borra las de otros y las nuevas dan
@@ -42,7 +44,7 @@ Decisiones de producto que el backend tiene que respetar:
   `flushPendingPushes()` espera las push diferidas.
   **Tokens:** `PUT /me/push-tokens/{token}` (idempotente; si el token era de otra cuenta pasa a esta: mismo celular, otra
   sesión) y `DELETE` al cerrar sesión; borrar la cuenta los borra todos (tabla `push_tokens`). **Preferencias:**
-  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked, photoCommented } }`
+  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked, photoCommented, friendRequest } }`
   (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/lib/settings.ts`).
   `profileVisibility` sigue en `users`.
 - **"Me gusta"** (`src/modules/likes/`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e

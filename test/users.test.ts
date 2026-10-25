@@ -71,6 +71,7 @@ describe("GET /users/{userId}", () => {
       canSee: true,
       friendCount: 0,
       mutualCount: 0,
+      friendRequest: "none",
     });
   });
 
@@ -98,6 +99,7 @@ describe("GET /users/{userId}", () => {
       canSee: false,
       friendCount: 0,
       mutualCount: 0,
+      friendRequest: "none",
     });
   });
 
