@@ -46,14 +46,14 @@ export async function registerMedia(
 
   const existing = await repo.findMediaById(env.DB, input.id);
   if (existing) {
-    if (existing.member_id !== member.id) throw conflict("Ese id ya existe");
-    if (existing.deleted_at !== null) throw conflict("El admin borró esta foto");
+    if (existing.memberId !== member.id) throw conflict("Ese id ya existe");
+    if (existing.deletedAt !== null) throw conflict("El admin borró esta foto");
     if (existing.status === "uploaded") return { created: false, body: { id: existing.id, status: "uploaded" as const } };
     return {
       created: false,
-      body: await uploadResponse(env, origin, existing.id, existing.original_key, existing.thumb_key, {
-        original: existing.size_bytes,
-        thumb: existing.thumb_size_bytes,
+      body: await uploadResponse(env, origin, existing.id, existing.originalKey, existing.thumbKey, {
+        original: existing.sizeBytes,
+        thumb: existing.thumbSizeBytes,
       }),
     };
   }
@@ -83,24 +83,24 @@ export async function registerMedia(
   await repo
     .insertMedia(env.DB, {
       id: input.id,
-      trip_id: trip.id,
-      member_id: member.id,
+      tripId: trip.id,
+      memberId: member.id,
       type: input.type,
-      taken_at: input.takenAt,
-      local_date: day,
+      takenAt: input.takenAt,
+      localDate: day,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
-      accuracy_m: input.accuracyM ?? null,
+      accuracyM: input.accuracyM ?? null,
       caption: input.caption || null,
       thumbhash: input.thumbhash ?? null,
-      duration_s: input.durationS ?? null,
+      durationS: input.durationS ?? null,
       width: input.width ?? null,
       height: input.height ?? null,
-      size_bytes: input.sizeBytes,
-      thumb_size_bytes: input.thumbSizeBytes,
-      original_key: keys.original,
-      thumb_key: keys.thumb,
-      created_at: now,
+      sizeBytes: input.sizeBytes,
+      thumbSizeBytes: input.thumbSizeBytes,
+      originalKey: keys.original,
+      thumbKey: keys.thumb,
+      createdAt: now,
     })
     .run();
 
@@ -116,17 +116,17 @@ export async function completeUpload(env: Env, member: MemberRow, mediaId: strin
   if (!row) throw notFound();
   if (row.status === "uploaded") return { id: row.id, status: "uploaded" };
 
-  const [original, thumb] = await Promise.all([env.MEDIA.head(row.original_key), env.MEDIA.head(row.thumb_key)]);
+  const [original, thumb] = await Promise.all([env.MEDIA.head(row.originalKey), env.MEDIA.head(row.thumbKey)]);
   if (!original || !thumb) {
     throw badRequest("Faltan archivos en el storage; volvé a subirlos");
   }
   const mismatch =
-    original.size !== row.size_bytes ||
-    (row.thumb_size_bytes !== null && thumb.size !== row.thumb_size_bytes) ||
+    original.size !== row.sizeBytes ||
+    (row.thumbSizeBytes !== null && thumb.size !== row.thumbSizeBytes) ||
     original.size > MAX_SIZE[row.type] ||
     thumb.size > MAX_THUMB_SIZE;
   if (mismatch) {
-    await env.MEDIA.delete([row.original_key, row.thumb_key]);
+    await env.MEDIA.delete([row.originalKey, row.thumbKey]);
     throw badRequest("El archivo no coincide con el que registraste; volvé a subirlo");
   }
 
@@ -146,7 +146,7 @@ export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: str
 
   const row = await repo.findDownloadKeys(db, mediaId, trip.id);
   if (!row) throw notFound();
-  return variant === "thumb" ? row.thumb_key : row.original_key;
+  return variant === "thumb" ? row.thumbKey : row.originalKey;
 }
 
 /**
@@ -156,7 +156,7 @@ export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: str
 export async function deleteTripMedia(env: Env, mediaId: string): Promise<boolean> {
   const row = await repo.findLiveMediaById(env.DB, mediaId);
   if (!row) return false;
-  await env.MEDIA.delete([row.original_key, row.thumb_key]);
+  await env.MEDIA.delete([row.originalKey, row.thumbKey]);
   await repo.markDeleted(env.DB, row.id, Date.now()).run();
   return true;
 }
@@ -177,9 +177,9 @@ export async function deleteMediaFromTrip(env: Env, trip: TripRow, mediaId: stri
 export async function assertOwnMedia(db: D1Database, userId: string, mediaId: string): Promise<string> {
   const row = await repo.findAuthoredMedia(db, mediaId);
   if (!row) throw notFound();
-  if (row.author_user_id === userId) return row.id;
+  if (row.authorUserId === userId) return row.id;
 
-  if (!(await repo.isActiveTripMember(db, row.trip_id, userId))) throw notFound();
+  if (!(await repo.isActiveTripMember(db, row.tripId, userId))) throw notFound();
   throw forbidden("Solo quien sacó la foto puede cambiar esto");
 }
 

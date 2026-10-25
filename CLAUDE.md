@@ -102,7 +102,8 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 ```
 src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de errores, cron (scheduled)
 src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): admin, auth, avatars, blocks, featured, friends, likes, me, media, reports, trips, users, usernames
-src/shared/           errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
+src/db/schema.ts       esquema Drizzle de toda la DB (camelCase en TS, columnas snake_case); las migraciones SQL siguen siendo la fuente de verdad y `npm run db:check-schema` falla si se desalinean
+src/shared/           db.ts (`orm`, `toStatement`), errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
 src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
 src/lib/              auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta"), account (borrar cuenta), storage, rate-limit, email...
 migrations/           D1 (se aplican solas en los tests)
