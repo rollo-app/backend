@@ -60,6 +60,8 @@ type Scenario = {
   /** Juani's place: "member" (default, added last), "admin" (creates the trip; index 0) or "absent" (not in the trip). */
   juani?: "member" | "admin" | "absent";
   trip: () => { startsAt: number; endsAt: number; revealAt: number; dailyPhotoLimit?: number; dailyVideoLimit?: number };
+  /** Daily moment mode sent when creating the trip (default band 9:00-23:00). */
+  momentMode?: "off" | "photo" | "photo_selfie";
   shots?: () => Shot[];
   /** Extra steps after uploading (`ids` is aligned with `shots`). */
   after?: (ctx: Ctx, shots: Shot[], ids: string[]) => Promise<void>;
@@ -225,6 +227,13 @@ export const SCENARIOS: Scenario[] = [
     },
   },
   {
+    name: "Momento del día",
+    tests: "In progress, momentMode photo_selfie, default band 9:00-23:00: GET /trips/{id}/moments draws today's and the next days' moments for Juani; moment photo + selfie don't use the quota",
+    members: ["Lu", "Nacho"],
+    momentMode: "photo_selfie",
+    trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 6 * DAY, revealAt: Date.now() + 6 * DAY }),
+  },
+  {
     name: "Escapada sin Juani",
     tests: "Juani is NOT a member: must not show up as common with Cami or Bruno (privacy)",
     juani: "absent",
@@ -297,6 +306,7 @@ export async function runScenario(s: Scenario): Promise<Row> {
     revealAt: now + 3 * HOUR,
     dailyPhotoLimit: dates.dailyPhotoLimit,
     dailyVideoLimit: dates.dailyVideoLimit,
+    ...(s.momentMode ? { momentMode: s.momentMode } : {}),
   };
   const juani = s.juani ?? "member";
   const names = juani === "admin" ? [JUANI, ...s.members] : juani === "absent" ? s.members : [...s.members, JUANI];
