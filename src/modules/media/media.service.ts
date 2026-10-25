@@ -41,7 +41,9 @@ type MomentTarget = { day: string; notifyAt: number; pairedMediaId: string | nul
  * must pair with the member's own main moment photo of this rollo (400) and inherits its day.
  */
 async function resolveMoment(db: D1Database, trip: TripRow, member: MemberRow, input: RegisterMediaInput): Promise<MomentTarget | null> {
+  if (input.momentDay != null && trip.moment_mode === "off") throw badRequest("Este rollo no tiene momento del día");
   if (input.pairedMediaId) {
+    if (trip.moment_mode !== "photo_selfie") throw badRequest("Este rollo no admite selfie del momento");
     const main = await repo.findMediaById(db, input.pairedMediaId);
     const valid =
       main !== null &&
@@ -55,6 +57,7 @@ async function resolveMoment(db: D1Database, trip: TripRow, member: MemberRow, i
     }
     const slots = await findMomentSlots(db, trip.id, member.user_id, main.momentDay!);
     if (!slots) throw badRequest("La foto del momento no corresponde");
+    if (slots.media_id !== main.id) throw badRequest("La foto del momento no corresponde");
     if (slots.selfie_media_id !== null) throw conflict("Este momento ya tiene selfie");
     return { day: main.momentDay!, notifyAt: 0, pairedMediaId: main.id };
   }
@@ -154,11 +157,25 @@ export async function registerMedia(
     });
   if (!moment) {
     await insert.run();
-  } else if (moment.pairedMediaId) {
-    await env.DB.batch([insert, recordMomentSelfie(env.DB, trip.id, member.user_id, moment.day, input.id)]);
   } else {
-    const inWindow = input.takenAt >= moment.notifyAt && input.takenAt <= moment.notifyAt + MOMENT_WINDOW_MS;
-    await env.DB.batch([insert, recordMomentPhoto(env.DB, trip.id, member.user_id, moment.day, input.id, input.takenAt, inWindow)]);
+    // The slot claim runs first and fails closed: if it didn't take (a concurrent request got there), the row
+    // just inserted would be a photo outside every quota with no moment, so it is removed and the request is a 409.
+    const claim = moment.pairedMediaId
+      ? recordMomentSelfie(env.DB, trip.id, member.user_id, moment.day, input.id, moment.pairedMediaId)
+      : recordMomentPhoto(
+          env.DB,
+          trip.id,
+          member.user_id,
+          moment.day,
+          input.id,
+          input.takenAt,
+          input.takenAt >= moment.notifyAt && input.takenAt <= moment.notifyAt + MOMENT_WINDOW_MS,
+        );
+    const [claimed] = await env.DB.batch([claim, insert]);
+    if (claimed!.meta.changes === 0) {
+      await env.DB.prepare("DELETE FROM media WHERE id = ?").bind(input.id).run();
+      throw conflict(moment.pairedMediaId ? "Este momento ya tiene selfie" : "Este momento ya tiene foto");
+    }
   }
 
   return {

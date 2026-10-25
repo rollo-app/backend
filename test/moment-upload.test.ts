@@ -2,6 +2,8 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { MOMENT_WINDOW_MS } from "../src/lib/moments";
 import { localDate } from "../src/lib/util";
+import { registerMedia } from "../src/modules/media/media.service";
+import type { MemberRow, TripRow } from "../src/types";
 import { DAY, HOUR, MINUTE, TZ, api, joinAs, newTrip, photoBody } from "./helpers";
 
 async function fixture(overrides: Record<string, unknown> = {}) {
@@ -175,3 +177,105 @@ describe("requests without moment fields", () => {
   });
 });
 void HOUR;
+
+/** Env whose DB runs `beforeBatch` once, right before the first batch: the window between the pre-check and the write. */
+function racingEnv(beforeBatch: () => Promise<void>) {
+  let fired = false;
+  const DB = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "batch") {
+        return async (stmts: D1PreparedStatement[]) => {
+          if (!fired) {
+            fired = true;
+            await beforeBatch();
+          }
+          return target.batch(stmts);
+        };
+      }
+      const v = (target as any)[prop];
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+  return { ...env, DB } as typeof env;
+}
+
+async function rows(tripId: string) {
+  const t = (await env.DB.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>())!;
+  const m = (await env.DB.prepare("SELECT * FROM members WHERE trip_id = ? AND role = 'admin'").bind(tripId).first<MemberRow>())!;
+  return { t, m };
+}
+const count = async (id: string) => (await env.DB.prepare("SELECT COUNT(*) AS n FROM media WHERE id = ?").bind(id).first<any>()).n;
+
+describe("concurrent moment uploads", () => {
+  it("a main photo that loses the slot race is rejected and leaves no quota-free row", async () => {
+    const fx = await fixture();
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(fx.tripId, fx.adminUserId, notifyAt);
+    const { t, m } = await rows(fx.tripId);
+    const winner = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    const loser = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    const raced = racingEnv(async () => {
+      await env.DB.prepare("UPDATE trip_moments SET media_id = ? WHERE trip_id = ? AND day = ?").bind(winner.id, fx.tripId, day).run();
+    });
+    await expect(registerMedia(raced, "http://x", t, m, loser as any)).rejects.toMatchObject({ kind: "conflict" });
+    expect(await count(loser.id)).toBe(0);
+    expect((await momentRow(fx.tripId, fx.adminUserId, day)).media_id).toBe(winner.id);
+  });
+
+  it("a selfie that loses the slot race is rejected and leaves no row", async () => {
+    const fx = await fixture();
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(fx.tripId, fx.adminUserId, notifyAt);
+    const main = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    await post(fx.tripId, fx.adminToken, main);
+    const { t, m } = await rows(fx.tripId);
+    const winner = crypto.randomUUID();
+    const loser = photoBody({ pairedMediaId: main.id });
+    const raced = racingEnv(async () => {
+      await env.DB.prepare("UPDATE trip_moments SET selfie_media_id = ? WHERE trip_id = ? AND day = ?").bind(winner, fx.tripId, day).run();
+    });
+    await expect(registerMedia(raced, "http://x", t, m, loser as any)).rejects.toMatchObject({ kind: "conflict" });
+    expect(await count(loser.id)).toBe(0);
+  });
+
+  it("a second selfie for the same main is 409 and a selfie with another momentDay is 400", async () => {
+    const fx = await fixture();
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(fx.tripId, fx.adminUserId, notifyAt);
+    const main = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    await post(fx.tripId, fx.adminToken, main);
+    expect((await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: main.id, momentDay: "2020-01-01" }))).status).toBe(400);
+    expect((await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: main.id }))).status).toBe(201);
+    expect((await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: main.id }))).status).toBe(409);
+  });
+});
+
+describe("moment mode and pairing guards", () => {
+  it("400s momentDay on a trip with momentMode off, and a selfie unless the mode is photo_selfie", async () => {
+    const off = await fixture({ momentMode: "off" });
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(off.tripId, off.adminUserId, notifyAt);
+    expect((await post(off.tripId, off.adminToken, photoBody({ momentDay: day, takenAt: notifyAt + MINUTE }))).status).toBe(400);
+    expect((await post(off.tripId, off.adminToken, photoBody({ pairedMediaId: crypto.randomUUID() }))).status).toBe(400);
+
+    const only = await fixture({ momentMode: "photo" });
+    const d2 = await seedMoment(only.tripId, only.adminUserId, notifyAt);
+    const main = photoBody({ momentDay: d2, takenAt: notifyAt + MINUTE });
+    expect((await post(only.tripId, only.adminToken, main)).status).toBe(201);
+    expect((await post(only.tripId, only.adminToken, photoBody({ pairedMediaId: main.id }))).status).toBe(400);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM media WHERE paired_media_id IS NOT NULL").first<any>()).toEqual({ n: 0 });
+  });
+
+  it("400s a selfie paired to a moment_day media that is not the moment's photo", async () => {
+    const fx = await fixture();
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(fx.tripId, fx.adminUserId, notifyAt);
+    const main = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    await post(fx.tripId, fx.adminToken, main);
+    // A stray media with moment_day set that the moment does not point to.
+    const stray = photoBody();
+    await post(fx.tripId, fx.adminToken, stray);
+    await env.DB.prepare("UPDATE media SET moment_day = ? WHERE id = ?").bind(day, stray.id).run();
+    expect((await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: stray.id }))).status).toBe(400);
+  });
+});

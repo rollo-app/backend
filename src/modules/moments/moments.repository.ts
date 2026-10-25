@@ -28,7 +28,7 @@ export function findMoment(db: D1Database, tripId: string, userId: string, day: 
 }
 
 /**
- * Stores the moment's photo. Only fills an empty slot, so a concurrent second photo never overwrites the first.
+ * Stores the moment's photo. Only fills an empty slot, so a concurrent second photo never overwrites the first (check `meta.changes`).
  * `inWindow` tells whether it was taken within the moment window.
  */
 export function recordMomentPhoto(
@@ -47,11 +47,20 @@ export function recordMomentPhoto(
     .bind(mediaId, takenAt, inWindow ? 1 : 0, tripId, userId, day);
 }
 
-/** Stores the moment's selfie in its empty slot. */
-export function recordMomentSelfie(db: D1Database, tripId: string, userId: string, day: string, selfieId: string): D1PreparedStatement {
+/** Stores the moment's selfie in its empty slot, only if `mainId` is the moment's photo. Check `meta.changes`. */
+export function recordMomentSelfie(
+  db: D1Database,
+  tripId: string,
+  userId: string,
+  day: string,
+  selfieId: string,
+  mainId: string,
+): D1PreparedStatement {
   return db
-    .prepare("UPDATE trip_moments SET selfie_media_id = ? WHERE trip_id = ? AND user_id = ? AND day = ? AND selfie_media_id IS NULL")
-    .bind(selfieId, tripId, userId, day);
+    .prepare(
+      "UPDATE trip_moments SET selfie_media_id = ? WHERE trip_id = ? AND user_id = ? AND day = ? AND selfie_media_id IS NULL AND media_id = ?",
+    )
+    .bind(selfieId, tripId, userId, day, mainId);
 }
 
 /** Which media already fill the moment (null when the moment doesn't exist). */
