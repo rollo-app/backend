@@ -28,12 +28,12 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
   if (commentId !== undefined) {
     // A comment is only visible to the active members of its photo's rollo (never through a profile).
     comment = await repo.findLiveComment(db, commentId);
-    const commented = comment && (await repo.findUploadedMedia(db, comment.media_id));
+    const commented = comment && (await repo.findUploadedMedia(db, comment.media_id, viewer.id));
     if (!comment || !commented || !(await repo.isActiveTripMember(db, commented.trip_id, viewer.id))) throw notFound();
     commentTripId = commented.trip_id;
     targetId = comment.user_id;
   } else if (mediaId !== undefined) {
-    media = await repo.findUploadedMedia(db, mediaId);
+    media = await repo.findUploadedMedia(db, mediaId, viewer.id);
     if (!media || !(await canSeeMedia(db, viewer.id, media))) throw notFound();
     const author = await repo.findMemberUserId(db, media.member_id);
     if (!author) throw notFound();

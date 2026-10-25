@@ -114,6 +114,23 @@ describe("POST /media/:id/archive", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("the author's own archived photo comes with canFeature false (old builds would offer to feature it)", async () => {
+    const t = await revealedTrip();
+    await archive(t.fede.token, t.other);
+    const own = (await feed(t.tripId, t.fede.token)).body.items.find((i: any) => i.id === t.other);
+    expect(own).toMatchObject({ archived: true, canFeature: false });
+  });
+
+  it("the author can still report someone else's comment on their archived photo; others can't", async () => {
+    const t = await revealedTrip();
+    const comments = await api("GET", `/media/${t.photo}/comments`, { token: t.fede.token });
+    const commentId = comments.body.comments?.[0]?.id ?? comments.body[0]?.id ?? comments.body.items?.[0]?.id;
+    expect(commentId).toBeTruthy();
+    await archive(t.fede.token, t.photo);
+    expect((await api("POST", "/reports", { token: t.fede.token, body: { commentId, reason: "offensive" } })).status).toBe(204);
+    expect((await api("POST", "/reports", { token: t.cami.token, body: { commentId, reason: "offensive" } })).status).toBe(404);
+  });
+
   it("others can't report it", async () => {
     const t = await revealedTrip();
     await archive(t.fede.token, t.photo);

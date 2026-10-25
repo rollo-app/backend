@@ -7,8 +7,15 @@ import { VISIBLE_FROM, VISIBLE_WHERE } from "../featured/featured.repository";
 
 export type ReportTargetRow = Pick<UserRow, "id" | "email" | "name" | "username">;
 
-export function findUploadedMedia(db: D1Database, mediaId: string): Promise<MediaRow | null> {
-  return db.prepare("SELECT * FROM media WHERE id = ? AND status = 'uploaded' AND deleted_at IS NULL AND archived_at IS NULL").bind(mediaId).first<MediaRow>();
+/** Uploaded, not deleted media the viewer can see: an archived one only for its author. */
+export function findUploadedMedia(db: D1Database, mediaId: string, viewerId: string): Promise<MediaRow | null> {
+  return db
+    .prepare(
+      `SELECT m.* FROM media m JOIN members author ON author.id = m.member_id
+       WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND (m.archived_at IS NULL OR author.user_id = ?)`,
+    )
+    .bind(mediaId, viewerId)
+    .first<MediaRow>();
 }
 
 export async function isActiveTripMember(db: D1Database, tripId: string, userId: string): Promise<boolean> {

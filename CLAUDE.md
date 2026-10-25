@@ -86,7 +86,7 @@ Decisiones de producto que el backend tiene que respetar:
   ítem revelado); para el resto no existe en ningún camino: feed/galería/mapa/historias, descarga por id (404), "me gusta" (404), `GET /me/likes`,
   comentarios (404), denuncias (404), destacadas y su mapa (`VISIBLE_WHERE` pide `m.archived_at IS NULL`), y `totalUploaded` / tapa de `GET /me/trips` y del
   detalle (cuenta solo para el autor). Archivar **borra todas las filas de `featured`** de la foto (también la del autor) y desarchivar no las devuelve (se
-  puede volver a destacar); destacar una archivada da 404 a otros y 409 al autor. Si el autor comenta su foto archivada no se avisa a nadie.
+  puede volver a destacar); destacar una archivada da 404 a otros y 409 al autor, y en el feed del autor trae `canFeature: false`. El autor sí puede denunciar comentarios ajenos en su foto archivada. Si el autor comenta su foto archivada no se avisa a nadie.
   `DELETE /media/{id}`: **antes del revelado** es el borrado del admin de siempre (cualquier otro 403); **después**, el autor la elimina para siempre
   (archivos de R2, `deleted_at`, sus `likes` y `featured` se borran y sus comentarios quedan con `deleted_at`); otro miembro 403 y el admin con fotos
   ajenas 409, como antes. En un momento, archivar/desarchivar/eliminar la principal arrastra la vinculada y el id de la vinculada da 400.
@@ -233,7 +233,7 @@ Reglas:
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 822 tests
+npm test              # 824 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
