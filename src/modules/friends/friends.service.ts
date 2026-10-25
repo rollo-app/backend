@@ -116,8 +116,8 @@ export async function redeem(
   let notify: AfterResponse = null;
   if (creatorId !== me) {
     const [a, b] = pairKey(me, creatorId);
-    const inserted = await repo.insertFriendship(db, a, b, now).run();
-    if (inserted.meta.changes > 0) {
+    const [inserted] = await db.batch([repo.insertFriendship(db, a, b, now), repo.deleteFriendRequests(db, a, b)]);
+    if (inserted!.meta.changes > 0) {
       notify = () => sendPush(env, [creatorId], "newFriend", { body: `${actorName(user)} ahora es tu amigo`, url: `/user/${me}` }, { actorId: me });
     }
   }
@@ -151,5 +151,5 @@ export async function getFriendProfile(
 
 export async function removeFriend(db: D1Database, me: string, otherId: string): Promise<void> {
   const [a, b] = pairKey(me, otherId);
-  await repo.deleteFriendship(db, a, b).run();
+  await db.batch([repo.deleteFriendship(db, a, b), repo.deleteFriendRequests(db, a, b)]);
 }

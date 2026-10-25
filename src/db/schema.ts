@@ -241,6 +241,7 @@ export const friendRequests = sqliteTable(
     toUserId: text("to_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     createdAt: integer("created_at").notNull(),
     rejectedAt: integer("rejected_at"),
+    cancelledAt: integer("cancelled_at"),
   },
   (t) => [
     primaryKey({ columns: [t.fromUserId, t.toUserId] }),

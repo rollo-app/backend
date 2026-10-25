@@ -38,16 +38,25 @@ export async function sendRequest(env: Env, me: Actor, targetId: string): Promis
   if (await areFriends(db, me.id, targetId)) return { status: "friends", notify: null };
 
   const now = Date.now();
-  // The other one asked first (even if their request was rejected: you want it now), so you are friends.
-  if (await repo.find(db, targetId, me.id)) {
+  // The other one asked first and has not been answered: you are friends. A rejected, cancelled or stale
+  // request (friendship ended since) is not consent.
+  const incoming = await repo.find(db, targetId, me.id);
+  if (incoming && incoming.rejected_at === null && incoming.cancelled_at === null) {
     await db.batch(makeFriends(db, me.id, targetId, now));
     return { status: "friends", notify: newFriendPush(env, me, targetId) };
   }
 
   const existing = await repo.find(db, me.id, targetId);
   if (existing) {
-    const waiting = existing.rejected_at === null || now - existing.rejected_at < RESEND_AFTER_REJECTION;
-    if (waiting) return { status: "sent", notify: null };
+    if (existing.cancelled_at !== null) {
+      // Cancel and resend within a day: same request, no second notification and no second slot of the daily cap.
+      if (now - existing.created_at < DAY) {
+        await repo.revive(db, me.id, targetId).run();
+        return { status: "sent", notify: null };
+      }
+    } else if (existing.rejected_at === null || now - existing.rejected_at < RESEND_AFTER_REJECTION) {
+      return { status: "sent", notify: null };
+    }
   }
   if ((await repo.countSentSince(db, me.id, now - DAY)) >= REQUESTS_PER_DAY) {
     throw rateLimited("Mandaste muchas solicitudes hoy. Probá de nuevo mañana");
@@ -61,7 +70,7 @@ export async function sendRequest(env: Env, me: Actor, targetId: string): Promis
 }
 
 export async function cancelRequest(db: D1Database, me: string, targetId: string): Promise<void> {
-  await repo.remove(db, me, targetId).run();
+  await repo.markCancelled(db, me, targetId, Date.now()).run();
 }
 
 export function listReceived(db: D1Database, me: string): Promise<ReceivedRequestRow[]> {
@@ -71,7 +80,7 @@ export function listReceived(db: D1Database, me: string): Promise<ReceivedReques
 export async function acceptRequest(env: Env, me: Actor, fromId: string): Promise<{ friend: PublicFriendRow; notify: AfterResponse }> {
   const db = env.DB;
   const request = await repo.find(db, fromId, me.id);
-  if (!request || request.rejected_at !== null) throw notFound("No hay una solicitud de esa persona");
+  if (!request || request.rejected_at !== null || request.cancelled_at !== null) throw notFound("No hay una solicitud de esa persona");
   const friend = await repo.findUser(db, fromId);
   if (!friend) throw notFound("No hay una solicitud de esa persona");
   await db.batch(makeFriends(db, me.id, fromId, Date.now()));

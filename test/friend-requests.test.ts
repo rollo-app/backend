@@ -201,13 +201,96 @@ describe("received requests", () => {
     expect(await stateOf(beto.token, ana.userId)).toBe("received");
   });
 
-  it("sending to someone whose request you rejected makes you friends", async () => {
+  it("sending to someone whose request you rejected is a new request, not instant friendship", async () => {
     const ana = await signUp(undefined, "Ana");
     const beto = await signUp(undefined, "Beto");
     await send(ana.token, beto.userId);
     await reject(beto.token, ana.userId);
-    expect((await send(beto.token, ana.userId)).body).toEqual({ status: "friends" });
-    expect((await friendsOf(ana.token)).map((f) => f.id)).toEqual([beto.userId]);
+    expect((await send(beto.token, ana.userId)).body).toEqual({ status: "sent" });
+    expect(await friendsOf(ana.token)).toEqual([]);
+    expect((await received(ana.token)).map((r) => r.user.id)).toEqual([beto.userId]);
+  });
+
+  it("a rejected request shows as sent for 30 days and then the sender can ask again", async () => {
+    const ana = await signUp(undefined, "Ana");
+    const beto = await signUp(undefined, "Beto");
+    await send(ana.token, beto.userId);
+    await reject(beto.token, ana.userId);
+    expect(await stateOf(ana.token, beto.userId)).toBe("sent");
+    await env.DB.prepare("UPDATE friend_requests SET rejected_at = rejected_at - ?").bind(30 * DAY + 1000).run();
+    expect(await stateOf(ana.token, beto.userId)).toBe("none");
+  });
+});
+
+describe("cancel tombstones and stale requests", () => {
+  it("cancelling a rejected request does not skip the 30 days", async () => {
+    const ana = await signUp(undefined, "Ana");
+    const beto = await signUp(undefined, "Beto");
+    await send(ana.token, beto.userId);
+    await reject(beto.token, ana.userId);
+    await cancel(ana.token, beto.userId);
+    expect(await stateOf(ana.token, beto.userId)).toBe("sent");
+    await send(ana.token, beto.userId);
+    expect(await received(beto.token)).toEqual([]);
+  });
+
+  it("cancel and resend within a day is silent and does not use another slot of the daily cap", async () => {
+    const expo = mockExpo();
+    const ana = await signUp(undefined, "Ana");
+    const beto = await signUp(undefined, "Beto");
+    await registerToken(beto.token);
+    await send(ana.token, beto.userId);
+    await flushPendingPushes();
+    expo.sent.length = 0;
+    await cancel(ana.token, beto.userId);
+    expect(await received(beto.token)).toEqual([]);
+    expect((await send(ana.token, beto.userId)).body).toEqual({ status: "sent" });
+    await flushPendingPushes();
+    expect(expo.sent).toEqual([]);
+    expect((await received(beto.token)).map((r) => r.user.id)).toEqual([ana.userId]);
+    const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM friend_requests").first<{ n: number }>();
+    expect(row!.n).toBe(1);
+  });
+
+  it("cancel and resend after a day notifies again", async () => {
+    const expo = mockExpo();
+    const ana = await signUp(undefined, "Ana");
+    const beto = await signUp(undefined, "Beto");
+    await registerToken(beto.token);
+    await send(ana.token, beto.userId);
+    await cancel(ana.token, beto.userId);
+    await env.DB.prepare("UPDATE friend_requests SET created_at = created_at - ?").bind(DAY + 1000).run();
+    await flushPendingPushes();
+    expo.sent.length = 0;
+    await send(ana.token, beto.userId);
+    await flushPendingPushes();
+    expect(expo.sent).toHaveLength(1);
+  });
+
+  it("a cancelled request is not consent for a crossed send", async () => {
+    const ana = await signUp(undefined, "Ana");
+    const beto = await signUp(undefined, "Beto");
+    await send(ana.token, beto.userId);
+    await cancel(ana.token, beto.userId);
+    expect((await send(beto.token, ana.userId)).body).toEqual({ status: "sent" });
+    expect(await friendsOf(ana.token)).toEqual([]);
+  });
+
+  it("redeeming a friend link clears a pending request, and so does removing the friend", async () => {
+    const ana = await signUp(undefined, "Ana");
+    const beto = await signUp(undefined, "Beto");
+    await send(ana.token, beto.userId);
+    await befriend(beto.token, ana.token);
+    const count = () => env.DB.prepare("SELECT COUNT(*) AS n FROM friend_requests").first<{ n: number }>().then((r) => r!.n);
+    expect(await count()).toBe(0);
+
+    await send(ana.token, beto.userId);
+    await api("DELETE", `/friends/${beto.userId}`, { token: ana.token });
+    expect(await stateOf(beto.token, ana.userId)).toBe("none");
+    // The old request cannot be used as consent after the friendship ended.
+    await env.DB.prepare("INSERT INTO friend_requests (from_user_id, to_user_id, created_at) VALUES (?, ?, ?)").bind(ana.userId, beto.userId, Date.now()).run();
+    await api("DELETE", `/friends/${ana.userId}`, { token: beto.token });
+    expect(await count()).toBe(0);
   });
 });
 

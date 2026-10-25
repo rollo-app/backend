@@ -63,12 +63,15 @@ export async function listFriendsOf(db: D1Database, ownerId: string, mutualWith?
 export async function friendRequestState(db: D1Database, viewerId: string, ownerId: string): Promise<"none" | "sent" | "received"> {
   const row = await db
     .prepare(
-      `SELECT from_user_id, rejected_at FROM friend_requests
+      `SELECT from_user_id, rejected_at, cancelled_at FROM friend_requests
        WHERE (from_user_id = ?1 AND to_user_id = ?2) OR (from_user_id = ?2 AND to_user_id = ?1)`,
     )
     .bind(viewerId, ownerId)
-    .all<{ from_user_id: string; rejected_at: number | null }>();
-  if (row.results.some((r) => r.from_user_id === viewerId)) return "sent";
-  if (row.results.some((r) => r.from_user_id === ownerId && r.rejected_at === null)) return "received";
+    .all<{ from_user_id: string; rejected_at: number | null; cancelled_at: number | null }>();
+  // After 30 days a rejected request no longer shows as sent: the sender may ask again.
+  const resendable = Date.now() - 30 * 86_400_000;
+  const live = (r: { rejected_at: number | null; cancelled_at: number | null }) => r.cancelled_at === null && (r.rejected_at === null || r.rejected_at > resendable);
+  if (row.results.some((r) => r.from_user_id === viewerId && live(r))) return "sent";
+  if (row.results.some((r) => r.from_user_id === ownerId && r.rejected_at === null && r.cancelled_at === null)) return "received";
   return "none";
 }
