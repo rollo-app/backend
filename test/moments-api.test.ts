@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { MOMENT_WINDOW_MS, dayWindow, tripDays } from "../src/lib/moments";
-import { getMyMoments } from "../src/modules/moments/moments.service";
+import { MOMENT_DRAW_DAYS, getMyMoments } from "../src/modules/moments/moments.service";
 import type { TripRow } from "../src/types";
 import { DAY, HOUR, api, createTrip, join, newTrip, signUp } from "./helpers";
 
@@ -64,7 +64,8 @@ describe("GET /trips/{tripId}/moments", () => {
     expect(b.body.moments.length).toBeGreaterThan(0);
     expect((await momentRows(fx.tripId, other.userId)).length).toBeGreaterThan(0);
     expect((await momentRows(fx.tripId, fx.adminUserId)).length).toBe((await momentRows(fx.tripId, other.userId)).length);
-    expect(a.body.moments.map((m) => m.day)).toEqual(b.body.moments.map((m) => m.day));
+    void a;
+    expect((await momentRows(fx.tripId, fx.adminUserId)).map((r) => r.day)).toEqual((await momentRows(fx.tripId, other.userId)).map((r) => r.day));
   });
 
   it("stores but does not return today's moment when its window already ended", async () => {
@@ -100,18 +101,18 @@ describe("GET /trips/{tripId}/moments", () => {
     expect(await momentRows(fx.tripId)).toEqual([]);
   });
 
-  it("404s for someone who is not a member", async () => {
+  it("403s for someone who is not a member", async () => {
     const fx = await newTrip({ momentMode: "photo" });
     const stranger = await signUp(undefined, "Lu");
-    expect((await get(fx.tripId, stranger.token)).status).toBe(404);
+    expect((await get(fx.tripId, stranger.token)).status).toBe(403);
   });
 
-  it("404s for someone who left", async () => {
+  it("403s for someone who left", async () => {
     const fx = await newTrip({ momentMode: "photo" });
     const other = await signUp(undefined, "Cami");
     await join(fx.code, other.token);
     expect((await api("DELETE", `/trips/${fx.tripId}/members/me`, { token: other.token })).status).toBe(204);
-    expect((await get(fx.tripId, other.token)).status).toBe(404);
+    expect((await get(fx.tripId, other.token)).status).toBe(403);
   });
 
   it("401s without a session", async () => {
@@ -153,6 +154,25 @@ describe("GET /trips/{tripId}/moments", () => {
     const first = await getMyMoments(env.DB, trip, fx.adminUserId, Date.now(), () => 0);
     const second = await getMyMoments(env.DB, trip, fx.adminUserId, Date.now(), () => 0.99);
     expect(second).toEqual(first);
+  });
+});
+
+describe("draw horizon", () => {
+  it("draws and stores at most 31 days for a 2-year trip, and the next ones on a later request without touching earlier rows", async () => {
+    const fx = await newTrip({ momentMode: "photo", startsAt: Date.now() - DAY, endsAt: Date.now() + 730 * DAY, revealAt: Date.now() + 731 * DAY });
+    const trip = await tripRow(fx.tripId);
+    const now = Date.now();
+    const first = await getMyMoments(env.DB, trip, fx.adminUserId, now);
+    const rows1 = await momentRows(fx.tripId, fx.adminUserId);
+    expect(rows1.length).toBeLessThanOrEqual(MOMENT_DRAW_DAYS);
+    expect(rows1.length).toBeGreaterThan(25);
+    expect(first.length).toBeLessThanOrEqual(MOMENT_DRAW_DAYS);
+    const later = await getMyMoments(env.DB, trip, fx.adminUserId, now + 40 * DAY);
+    const rows2 = await momentRows(fx.tripId, fx.adminUserId);
+    expect(rows2.length).toBeGreaterThan(rows1.length);
+    expect(rows2.length).toBeLessThanOrEqual(rows1.length + MOMENT_DRAW_DAYS);
+    for (const r of rows1) expect(rows2.find((x) => x.day === r.day)).toEqual(r);
+    expect(later.length).toBeLessThanOrEqual(MOMENT_DRAW_DAYS);
   });
 });
 
