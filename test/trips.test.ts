@@ -56,6 +56,42 @@ describe("POST /trips", () => {
     expect(res.body.trip).toMatchObject({ photoLimitMode: "daily", totalPhotoLimit: null });
   });
 
+  it("defaults the daily moment to off with the 9:00-23:00 window", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: tripBody() });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ momentMode: "off", momentWindowStart: 540, momentWindowEnd: 1380 });
+  });
+
+  it("creates a trip with a daily moment and returns it on GET", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const body = { ...tripBody(), momentMode: "photo_selfie", momentWindowStart: 600, momentWindowEnd: 1320 };
+    const res = await api("POST", "/trips", { token, body });
+    expect(res.status).toBe(201);
+    const got = await api("GET", `/trips/${res.body.trip.id}`, { token });
+    expect(got.body.trip).toMatchObject({ momentMode: "photo_selfie", momentWindowStart: 600, momentWindowEnd: 1320 });
+  });
+
+  it("rejects a moment window shorter than 30 minutes or out of range", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const post = (extra: object) => api("POST", "/trips", { token, body: { ...tripBody(), ...extra } });
+    const short = await post({ momentMode: "photo", momentWindowStart: 600, momentWindowEnd: 620 });
+    expect(short.status).toBe(400);
+    expect(JSON.stringify(short.body)).toContain("La franja del momento tiene que durar al menos 30 minutos");
+    expect((await post({ momentWindowStart: -1 })).status).toBe(400);
+    expect((await post({ momentWindowEnd: 1441 })).status).toBe(400);
+    expect((await post({ momentMode: "video" })).status).toBe(400);
+  });
+
+  it("does not let PATCH change the moment", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const created = await api("POST", "/trips", { token, body: { ...tripBody(), momentMode: "photo" } });
+    const id = created.body.trip.id;
+    await api("PATCH", `/trips/${id}`, { token, body: { momentMode: "off", momentWindowStart: 0 } });
+    const got = await api("GET", `/trips/${id}`, { token });
+    expect(got.body.trip).toMatchObject({ momentMode: "photo", momentWindowStart: 540, momentWindowEnd: 1380 });
+  });
+
   it("requires a session", async () => {
     expect((await api("POST", "/trips", { body: tripBody() })).status).toBe(401);
   });

@@ -36,6 +36,9 @@ export const TripSchema = z
       description: "daily: dailyPhotoLimit per person per local day; total: totalPhotoLimit per person for the whole rollo",
     }),
     totalPhotoLimit: z.number().int().nullable().openapi({ description: "Photos per person in the whole rollo; null in daily mode" }),
+    momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
+    momentWindowStart: z.number().int().openapi({ description: "Moment window start, minutes from midnight in the rollo's time zone" }),
+    momentWindowEnd: z.number().int().openapi({ description: "Moment window end, minutes from midnight in the rollo's time zone" }),
   })
   .openapi("Trip");
 

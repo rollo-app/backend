@@ -19,6 +19,19 @@ export const CreateTripSchema = z
     totalPhotoLimit: z.number().int().min(1).max(500).optional().openapi({
       description: "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise",
     }),
+    momentMode: z.enum(["off", "photo", "photo_selfie"]).default("off").openapi({
+      description: "Daily moment: off, a photo, or a photo plus a selfie. Cannot be changed after creating the rollo",
+    }),
+    momentWindowStart: z.number().int().min(0).max(1440).default(540).openapi({
+      description: "Start of the daily moment window, in minutes from midnight in the rollo's time zone (default 540 = 9:00)",
+    }),
+    momentWindowEnd: z.number().int().min(0).max(1440).default(1380).openapi({
+      description: "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)",
+    }),
+  })
+  .refine((d) => d.momentWindowEnd - d.momentWindowStart >= 30, {
+    message: "La franja del momento tiene que durar al menos 30 minutos",
+    path: ["momentWindowEnd"],
   })
   .refine((d) => d.photoLimitMode !== "total" || d.totalPhotoLimit !== undefined, {
     message: "Elegí cuántas fotos por persona tiene el rollo",

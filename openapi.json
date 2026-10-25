@@ -1040,6 +1040,23 @@
               "null"
             ],
             "description": "Photos per person in the whole rollo; null in daily mode"
+          },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "Daily moment: off, a photo, or a photo plus a selfie"
+          },
+          "momentWindowStart": {
+            "type": "integer",
+            "description": "Moment window start, minutes from midnight in the rollo's time zone"
+          },
+          "momentWindowEnd": {
+            "type": "integer",
+            "description": "Moment window end, minutes from midnight in the rollo's time zone"
           }
         },
         "required": [
@@ -1055,7 +1072,10 @@
           "dailyVideoLimit",
           "featuringDisabled",
           "photoLimitMode",
-          "totalPhotoLimit"
+          "totalPhotoLimit",
+          "momentMode",
+          "momentWindowStart",
+          "momentWindowEnd"
         ]
       },
       "Member": {
@@ -1173,6 +1193,30 @@
             "minimum": 1,
             "maximum": 500,
             "description": "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise"
+          },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "default": "off",
+            "description": "Daily moment: off, a photo, or a photo plus a selfie. Cannot be changed after creating the rollo"
+          },
+          "momentWindowStart": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "default": 540,
+            "description": "Start of the daily moment window, in minutes from midnight in the rollo's time zone (default 540 = 9:00)"
+          },
+          "momentWindowEnd": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "default": 1380,
+            "description": "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)"
           }
         },
         "required": [
