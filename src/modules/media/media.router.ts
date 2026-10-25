@@ -64,7 +64,7 @@ export const feedRoute = createRoute({
   description:
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
     "After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, " +
-    "and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`). " +
+    "and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`; before the reveal only a daily moment's photo has `commentCount`). " +
     "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,

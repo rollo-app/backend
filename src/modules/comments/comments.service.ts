@@ -8,7 +8,7 @@ import type { Env, UserRow } from "../../types";
 import * as repo from "./comments.repository";
 
 /**
- * Comments on revealed photos. Only active members of the photo's rollo can read or write them: unlike likes there is no
+ * Comments on revealed photos and on daily moments (before the reveal too). Only active members of the photo's rollo can read or write them: unlike likes there is no
  * path through a profile, because a comment shows names and conversations of the rollo to people who are not in it.
  */
 
@@ -18,13 +18,15 @@ const LIST_LIMIT = 500;
 type Photo = { id: string; tripId: string; authorUserId: string; type: "photo" | "video"; archived: boolean };
 
 /**
- * The photo if the viewer can comment on it: an active member of its rollo once revealed, the photo not hidden for them
+ * The photo if the viewer can comment on it: an active member of its rollo once revealed (a daily moment, from the moment
+ * it is uploaded: the only photo anyone sees before the reveal), the photo not hidden for them
  * (reported, or its author blocked) and no block with its author in either direction. Anything else → 404, without
  * telling whether it exists.
  */
 async function visiblePhoto(db: D1Database, viewerId: string, mediaId: string, now: number): Promise<Photo> {
   const row = await repo.findCommentableRow(db, viewerId, mediaId);
-  if (!row || row.is_member !== 1 || !isRevealed(row, now)) throw notFound();
+  const isMoment = row?.moment_day != null || row?.paired_media_id != null; // the linked image gets its 400 below
+  if (!row || row.is_member !== 1 || !(isMoment || isRevealed(row, now))) throw notFound();
   if (row.author_user_id !== viewerId && (await isBlockedEitherWay(db, viewerId, row.author_user_id))) throw notFound();
   rejectSelfie(row.paired_media_id);
   return { id: row.id, tripId: row.trip_id, authorUserId: row.author_user_id, type: row.type, archived: row.archived_at !== null };

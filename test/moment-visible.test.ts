@@ -37,7 +37,10 @@ describe("moment files before the reveal", () => {
     expect(plain).not.toHaveProperty("files");
     expect(plain).not.toHaveProperty("width");
     // The reveal-only fields stay out until the reveal.
-    for (const k of ["likeCount", "likedByMe", "commentCount", "featuredByMe", "canFeature"]) expect(main).not.toHaveProperty(k);
+    for (const k of ["likeCount", "likedByMe", "featuredByMe", "canFeature"]) expect(main).not.toHaveProperty(k);
+    // Comments are open from the upload, so the moment carries its count (a normal photo does not).
+    expect(main.commentCount).toBe(0);
+    expect(plain).not.toHaveProperty("commentCount");
   });
 
   it("the files can be downloaded by id before the reveal; a normal photo cannot", async () => {
@@ -116,14 +119,16 @@ async function exportsFetch(tripId: string, id: string, variant: string, token: 
   return exports.default.fetch(new Request(`http://localhost/trips/${tripId}/media/${id}/${variant}`, { headers: { authorization: `Bearer ${token}` } }));
 }
 
-describe("likes, comments and featuring on a moment before the reveal", () => {
-  it("are rejected, for the main photo and the linked image", async () => {
+describe("likes and featuring on a moment before the reveal", () => {
+  it("are rejected, for the main photo and the linked image (comments are allowed on the main one)", async () => {
     const fx = await fixture();
     const t = { token: fx.fede.token };
     for (const id of [fx.mainId, fx.selfieId]) {
       expect((await api("PUT", `/media/${id}/like`, t)).status).toBeGreaterThanOrEqual(400);
-      expect((await api("POST", `/media/${id}/comments`, { ...t, body: { text: "hola" } })).status).toBeGreaterThanOrEqual(400);
-      expect((await api("GET", `/media/${id}/comments`, t)).status).toBeGreaterThanOrEqual(400);
+      if (id === fx.selfieId) {
+        expect((await api("POST", `/media/${id}/comments`, { ...t, body: { text: "hola" } })).status).toBe(400);
+        expect((await api("GET", `/media/${id}/comments`, t)).status).toBe(400);
+      }
       expect((await api("PUT", `/me/featured/${id}`, t)).status).toBeGreaterThanOrEqual(400);
     }
     const author = { token: fx.adminToken };

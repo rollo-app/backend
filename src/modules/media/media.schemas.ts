@@ -132,7 +132,7 @@ export const FeedItemSchema = z
         "Only after the reveal: its author archived it. Archived items only reach their author (everyone else never gets them), so it is only ever true in your own feed",
     }),
     commentCount: z.number().int().optional().openapi({
-      description: "Only after the reveal: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos",
+      description: "After the reveal, and before it on a daily moment's photo: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos",
     }),
     momentDay: z.string().nullable().optional().openapi({
       description: "Trip-local date (YYYY-MM-DD) when this photo is the answer to a daily moment; absent for ordinary photos",

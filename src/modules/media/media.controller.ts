@@ -62,6 +62,8 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
     }),
     ...(r.momentDay !== null && {
       momentDay: r.momentDay,
+      // Comments open as soon as the moment is uploaded; likes and featuring wait for the reveal.
+      commentCount: r.commentCount,
       selfie:
         r.selfieId === null
           ? null
