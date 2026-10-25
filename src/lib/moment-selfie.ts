@@ -10,3 +10,8 @@ export async function rejectSelfieById(db: D1Database, mediaId: string): Promise
   const row = await db.prepare("SELECT paired_media_id FROM media WHERE id = ?").bind(mediaId).first<{ paired_media_id: string | null }>();
   rejectSelfie(row?.paired_media_id ?? null);
 }
+
+/** Neither image of a moment (main or linked one) goes to a profile. */
+export function rejectMomentFeaturing(row: { moment_day: string | null; paired_media_id: string | null }): void {
+  if (row.moment_day !== null || row.paired_media_id !== null) throw badRequest("Las fotos del momento no se pueden agregar a tu perfil.");
+}

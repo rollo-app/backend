@@ -93,8 +93,8 @@ Decisiones de producto que el backend tiene que respetar:
   momento y la selfie **nunca cuentan para el cupo** (ni diario ni total); una principal y una selfie por momento (409 si ya está, el
   slot se reclama fail-closed); la selfie solo en `photo_selfie` y tiene que ir pareada con la foto de ese slot; se acepta aunque pasen
   días y queda `in_window` (la app avisa "Se pasó tu momento"). **Feed:** los ítems traen `momentDay` y `selfie`; `GET /me/trips` trae `momentMode` de cada rollo; el admin que borra la foto principal de un momento borra también su selfie; la selfie nunca es un
-  ítem propio (tampoco para clientes viejos), sus archivos son `null` antes del revelado y los totales no la cuentan; me gusta,
-  comentarios y destacar rechazan el id de una selfie (400); denunciar una selfie sí se puede y oculta solo la selfie para quien denunció.
+  ítem propio (tampoco para clientes viejos), sus archivos son `null` antes del revelado y los totales no la cuentan; me gusta
+  y comentarios rechazan el id de una selfie (400); **el momento no se destaca en el perfil**: `PUT /me/featured` rechaza con 400 ("Las fotos del momento no se pueden agregar a tu perfil.") la principal y la vinculada (`moment_day` o `paired_media_id`), y el feed revelado trae `canFeature: false` en la principal; **la primera foto que se saca es la principal** (trasera o frontal) y la vinculada es la otra cámara (el nombre `selfie` del contrato significa "la imagen vinculada"); denunciar una selfie sí se puede y oculta solo la selfie para quien denunció.
 - **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
   `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
   (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).

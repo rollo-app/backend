@@ -94,7 +94,29 @@ describe("selfie interactions", () => {
     expect((await api("PUT", `/me/featured/${fx.selfieId}`, t)).status).toBe(400);
     expect((await api("DELETE", `/me/featured/${fx.selfieId}`, t)).status).toBe(400);
     expect((await api("PUT", `/media/${fx.mainId}/like`, t)).status).toBe(204);
-    expect((await api("PUT", `/me/featured/${fx.mainId}`, t)).status).toBe(204);
+  });
+
+  it("neither image of a moment can be featured (400); an ordinary photo still can", async () => {
+    const fx = await revealed();
+    const t = { token: fx.adminToken };
+    for (const id of [fx.mainId, fx.selfieId]) {
+      const res = await api("PUT", `/me/featured/${id}`, t);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Las fotos del momento no se pueden agregar a tu perfil.");
+    }
+    const other = await newTrip({ startsAt: Date.now() - 5 * DAY });
+    const ordinary = await uploadMedia(other.tripId, other.adminToken);
+    await api("POST", `/trips/${other.tripId}/reveal`, { token: other.adminToken });
+    expect((await api("PUT", `/me/featured/${ordinary}`, { token: other.adminToken })).status).toBe(204);
+  });
+
+  it("the revealed feed says a moment photo cannot be featured, and an ordinary one can", async () => {
+    const fx = await fixture();
+    const ordinary = await uploadMedia(fx.tripId, fx.adminToken);
+    await api("POST", `/trips/${fx.tripId}/reveal`, { token: fx.adminToken });
+    const items = (await feed(fx.tripId, fx.adminToken)).body.items;
+    expect(items.find((i: any) => i.id === fx.mainId).canFeature).toBe(false);
+    expect(items.find((i: any) => i.id === ordinary).canFeature).toBe(true);
   });
 
   it("a report on the selfie is accepted and hides only the selfie from the reporter", async () => {

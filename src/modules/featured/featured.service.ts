@@ -1,4 +1,4 @@
-import { rejectSelfie, rejectSelfieById } from "../../lib/moment-selfie";
+import { rejectMomentFeaturing, rejectSelfieById } from "../../lib/moment-selfie";
 import { featuringDenial } from "../../lib/featuring";
 import { canSeeProfile } from "../../lib/profile-access";
 import { isRevealed } from "../../lib/util";
@@ -49,7 +49,7 @@ export async function featurePhoto(env: Env, user: UserRow, mediaId: string): Pr
   if (!isRevealed(row, now)) {
     throw conflict("Este rollo todavía no se reveló");
   }
-  rejectSelfie(row.paired_media_id);
+  rejectMomentFeaturing(row);
   if (row.type !== "photo") throw badRequest("Solo se pueden destacar fotos");
 
   if (await repo.isFeatured(db, user.id, row.id)) return null;

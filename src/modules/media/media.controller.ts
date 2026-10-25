@@ -72,7 +72,8 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
       },
       featuredByMe: r.featuredByMe,
       featureBlocked: r.featureBlockedAt !== null,
-      canFeature: canFeature({
+      // The two images of a daily moment never go to a profile.
+      canFeature: r.momentDay === null && canFeature({
         viewerIsAuthor: r.authorUserId === viewerId,
         rolloPrivate,
         photoBlocked: r.featureBlockedAt !== null,
