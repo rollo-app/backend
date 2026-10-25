@@ -1651,6 +1651,116 @@
           "lat": -41.075,
           "lng": -71.475
         }
+      },
+      "MyLikes": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LikedPhoto"
+            },
+            "description": "Most recent like first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many liked photos you can see today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "LikedPhoto": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "likedAt": {
+            "type": "integer",
+            "description": "When you liked it (epoch ms)"
+          },
+          "authorUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/trips/<tripId>/media/<mediaId>/thumb"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/LikedPhotoSource"
+          }
+        },
+        "required": [
+          "mediaId",
+          "likedAt",
+          "authorUserId",
+          "thumbPath",
+          "thumbHash",
+          "source"
+        ]
+      },
+      "LikedPhotoSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "trip"
+                ]
+              },
+              "tripId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "kind",
+              "tripId"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "featured"
+                ]
+              },
+              "userId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Owner of the profile where it is featured"
+              }
+            },
+            "required": [
+              "kind",
+              "userId"
+            ]
+          }
+        ],
+        "description": "Where you can open the photo today. `trip`: you are an active member of its revealed rollo. `featured`: you see it on that profile (the rollo is never revealed). If both work, it is `trip`."
       }
     },
     "parameters": {}
@@ -4511,6 +4621,76 @@
         "responses": {
           "204": {
             "description": "Not liked anymore"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/likes": {
+      "get": {
+        "tags": [
+          "Likes"
+        ],
+        "summary": "Photos you liked",
+        "description": "Only yours. The photos you liked and can open today, most recent like first, paginated with `cursor`. Filtered by the server: a photo drops out if its rollo is not revealed or you left it and no profile you can see still features it, the profile became private, you are not friends anymore, the photo was un-featured, there is a block with its author or you reported it (the like is kept and the photo comes back if you regain access). `source` says where to open it: the rollo wins over a profile.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of liked photos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyLikes"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid session token",
