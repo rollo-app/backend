@@ -63,22 +63,22 @@ export async function mediaExistsInTrip(db: D1Database, id: string, tripId: stri
   return row !== undefined;
 }
 
-/** Pending ones count too, and so do the ones deleted by the admin. */
+/** Pending ones count too, and so do the ones deleted by the admin. Moment photos and selfies (`moment_day`) never count. */
 export async function countMemberMediaOnDay(db: D1Database, memberId: string, day: string, type: Media["type"]): Promise<number> {
   const row = await orm(db)
     .select({ n: count() })
     .from(media)
-    .where(and(eq(media.memberId, memberId), eq(media.localDate, day), eq(media.type, type)))
+    .where(and(eq(media.memberId, memberId), eq(media.localDate, day), eq(media.type, type), isNull(media.momentDay)))
     .get();
   return row?.n ?? 0;
 }
 
-/** All the media of a given type a member has in the rollo (pending and admin-deleted ones count). */
+/** All the media of a given type a member has in the rollo (pending and admin-deleted ones count; moment media never do). */
 export async function countMemberMedia(db: D1Database, memberId: string, type: Media["type"]): Promise<number> {
   const row = await orm(db)
     .select({ n: count() })
     .from(media)
-    .where(and(eq(media.memberId, memberId), eq(media.type, type)))
+    .where(and(eq(media.memberId, memberId), eq(media.type, type), isNull(media.momentDay)))
     .get();
   return row?.n ?? 0;
 }

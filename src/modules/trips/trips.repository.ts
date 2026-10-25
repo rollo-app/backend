@@ -82,12 +82,12 @@ export function listActiveMembers(db: D1Database, tripId: string): Promise<{ res
     .all<ActiveMemberRow>();
 }
 
-/** How many media of each type the member registered on a local date (pending ones count). */
+/** How many media of each type the member registered on a local date (pending ones count; moment photos never do). */
 export function countMediaByType(db: D1Database, memberId: string, localDate: string): Promise<{ results: { type: string; n: number }[] }> {
   return db
     .prepare(
       `SELECT type, COUNT(*) AS n FROM media
-       WHERE member_id = ? AND local_date = ? GROUP BY type`,
+       WHERE member_id = ? AND local_date = ? AND moment_day IS NULL GROUP BY type`,
     )
     .bind(memberId, localDate)
     .all<{ type: string; n: number }>();
@@ -96,7 +96,7 @@ export function countMediaByType(db: D1Database, memberId: string, localDate: st
 /** All the media of a member in the whole rollo (pending and admin-deleted ones count, like the daily quota). */
 export function countMediaByTypeTotal(db: D1Database, memberId: string): Promise<{ results: { type: string; n: number }[] }> {
   return db
-    .prepare("SELECT type, COUNT(*) AS n FROM media WHERE member_id = ? GROUP BY type")
+    .prepare("SELECT type, COUNT(*) AS n FROM media WHERE member_id = ? AND moment_day IS NULL GROUP BY type")
     .bind(memberId)
     .all<{ type: string; n: number }>();
 }

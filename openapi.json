@@ -1606,6 +1606,23 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "description": "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length"
+          },
+          "momentDay": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Trip-local date (YYYY-MM-DD) of the daily moment this photo answers. The member must have a moment for that day (409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
+            "example": "2027-01-12"
+          },
+          "pairedMediaId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Marks this photo as the selfie of a moment: the id of the member's own moment photo in the same rollo (400 otherwise). The selfie takes its moment day from that photo and doesn't use the photo quota."
           }
         },
         "required": [

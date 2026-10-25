@@ -36,10 +36,29 @@ export const RegisterMediaSchema = z
     thumbSizeBytes: z.number().int().positive().openapi({
       description: "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length",
     }),
+    momentDay: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullish()
+      .openapi({
+        description:
+          "Trip-local date (YYYY-MM-DD) of the daily moment this photo answers. The member must have a moment for that day " +
+          "(409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
+        example: "2027-01-12",
+      }),
+    pairedMediaId: z.string().uuid().nullish().openapi({
+      description:
+        "Marks this photo as the selfie of a moment: the id of the member's own moment photo in the same rollo (400 otherwise). " +
+        "The selfie takes its moment day from that photo and doesn't use the photo quota.",
+    }),
   })
   .refine((d) => d.type !== "video" || (d.durationS != null && d.durationS <= MAX_VIDEO_SECONDS), {
     message: "Los videos tienen que durar 15 segundos o menos",
     path: ["durationS"],
+  })
+  .refine((d) => d.type === "photo" || (d.momentDay == null && d.pairedMediaId == null), {
+    message: "Solo las fotos pueden ser del momento del día",
+    path: ["momentDay"],
   })
   .refine((d) => d.sizeBytes <= MAX_SIZE[d.type], { message: "El archivo es demasiado grande", path: ["sizeBytes"] })
   .refine((d) => d.thumbSizeBytes <= MAX_THUMB_SIZE, {
