@@ -24,6 +24,9 @@ export const trips = sqliteTable("trips", {
   startedNotifiedAt: integer("started_notified_at"),
   revealedNotifiedAt: integer("revealed_notified_at"),
   featuringDisabled: integer("featuring_disabled").notNull().default(0),
+  momentMode: text("moment_mode").notNull().default("off"),
+  momentWindowStart: integer("moment_window_start").notNull().default(540),
+  momentWindowEnd: integer("moment_window_end").notNull().default(1380),
 });
 
 export const users = sqliteTable(
@@ -126,6 +129,8 @@ export const media = sqliteTable(
     commentNotifiedAt: integer("comment_notified_at"),
     commentsSinceNotified: integer("comments_since_notified").notNull().default(0),
     thumbSizeBytes: integer("thumb_size_bytes"),
+    momentDay: text("moment_day"),
+    pairedMediaId: text("paired_media_id"),
   },
   (t) => [
     index("idx_media_trip_time").on(t.tripId, t.takenAt),
@@ -269,8 +274,25 @@ export const userSettings = sqliteTable("user_settings", {
   notifyPhotoCommented: integer("notify_photo_commented").notNull().default(1),
   notifyFriendRequest: integer("notify_friend_request").notNull().default(1),
   allowFeaturing: integer("allow_featuring").notNull().default(1),
+  notifyDailyMoment: integer("notify_daily_moment").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const tripMoments = sqliteTable(
+  "trip_moments",
+  {
+    tripId: text("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    notifyAt: integer("notify_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    mediaId: text("media_id"),
+    selfieMediaId: text("selfie_media_id"),
+    takenAt: integer("taken_at"),
+    inWindow: integer("in_window"),
+  },
+  (t) => [primaryKey({ columns: [t.tripId, t.userId, t.day] })],
+);
 
 export const likes = sqliteTable(
   "likes",
