@@ -29,11 +29,22 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   };
-  // The synchronous wrangler calls can leave a keep-alive socket stale: retry once on a network error.
-  const res = await fetch(`${API}${path}`, init).catch(() => fetch(`${API}${path}`, init));
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${JSON.stringify(data)}`);
-  return data as T;
+  // The local rate limits (src/lib/rate-limit.ts) are real: on a 429 wait (Retry-After, else ~12 s) and retry, a bounded number of times.
+  const MAX_ATTEMPTS = 8;
+  for (let attempt = 1; ; attempt++) {
+    // The synchronous wrangler calls can leave a keep-alive socket stale: retry once on a network error.
+    const res = await fetch(`${API}${path}`, init).catch(() => fetch(`${API}${path}`, init));
+    const data = await res.json().catch(() => null);
+    if (res.status === 429 && attempt < MAX_ATTEMPTS) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 12_000;
+      console.log(`  429 on ${method} ${path}: waiting ${Math.round(waitMs / 1000)} s (attempt ${attempt}/${MAX_ATTEMPTS})`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+    if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${JSON.stringify(data)}`);
+    return data as T;
+  }
 }
 
 // ---------- Local D1 (via wrangler) ----------

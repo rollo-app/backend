@@ -107,7 +107,7 @@ export const SCENARIOS: Scenario[] = [
     name: "Grupo grande",
     tests: "10 members, 6 days, videos, long captions (~140) and ~20% of photos without GPS",
     members: ["Cami", "Tomi", "Fede", "María Florencia", "Juan Cruz", "Sofi", "Nacho", "Agus", "Valentina", "Mateo"],
-    trip: () => ({ startsAt: localMidnight(5), endsAt: Date.now() + 6 * DAY, revealAt: Date.now() + 6 * DAY }),
+    trip: () => ({ startsAt: localMidnight(5), endsAt: Date.now() + 6 * DAY, revealAt: Date.now() + 6 * DAY, dailyVideoLimit: 3 }),
     shots() {
       const p = new Planner(lastDays(6));
       const spot = (): Spot => (Math.random() < 0.2 ? null : near(pick(PLACES)!, 0.005));
