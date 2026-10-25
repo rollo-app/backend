@@ -29,4 +29,13 @@ export function featuringDenial(f: FeaturingFacts): FeaturingDenial {
   return null;
 }
 
+/**
+ * The same rule as `featuringDenial`, for SQL: use inside a query that has `media m`, `trips t` and the author's
+ * membership `members author`, with one bind (the viewer's user id). Lets a write re-check the rule in the very
+ * statement that inserts, so a level turned off in between can't be slipped past.
+ */
+export const FEATURING_ALLOWED_SQL = `(t.featuring_disabled = 0 AND (author.user_id = ?
+    OR (m.feature_blocked_at IS NULL AND author.allow_featuring != 0
+        AND COALESCE((SELECT us.allow_featuring FROM user_settings us WHERE us.user_id = author.user_id), 1) != 0)))`;
+
 export const canFeature = (f: FeaturingFacts): boolean => featuringDenial(f) === null;

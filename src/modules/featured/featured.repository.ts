@@ -1,3 +1,4 @@
+import { FEATURING_ALLOWED_SQL } from "../../lib/featuring";
 import { hiddenMediaSql } from "../../lib/moderation";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 
@@ -65,12 +66,15 @@ export async function isFeatured(db: D1Database, userId: string, mediaId: string
  * Only photos that still show on the profile count: stale rows can't be removed from the app.
  */
 export function insertFeaturedUnderCap(db: D1Database, userId: string, mediaId: string, now: number, max: number): D1PreparedStatement {
+  // The featuring levels are checked again here (same statement): a level turned off after the service read it blocks the insert.
   return db
     .prepare(
       `INSERT OR IGNORE INTO featured (user_id, media_id, created_at)
-     SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM ${VISIBLE_FROM} WHERE ${VISIBLE_WHERE} AND f.user_id = ?) < ?`,
+     SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM ${VISIBLE_FROM} WHERE ${VISIBLE_WHERE} AND f.user_id = ?) < ?
+       AND EXISTS (SELECT 1 FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
+                   WHERE m.id = ? AND ${FEATURING_ALLOWED_SQL})`,
     )
-    .bind(userId, mediaId, now, now, userId, max);
+    .bind(userId, mediaId, now, now, userId, max, mediaId, userId);
 }
 
 export function deleteFeatured(db: D1Database, userId: string, mediaId: string): D1PreparedStatement {

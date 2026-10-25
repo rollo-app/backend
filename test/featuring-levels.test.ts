@@ -1,4 +1,6 @@
+import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { insertFeaturedUnderCap } from "../src/modules/featured/featured.repository";
 import { api, joinAs, newTrip, uploadMedia } from "./helpers";
 
 /** Revealed trip: Juani (admin), Fede and Cami, one photo each. */
@@ -179,5 +181,22 @@ describe("the most restrictive level wins", () => {
     expect((await feature(t.juani.token, t.fedePhoto)).status).toBe(409);
     await api("DELETE", `/media/${t.fedePhoto}/feature-block`, { token: t.fede.token });
     expect((await feature(t.juani.token, t.fedePhoto)).status).toBe(204);
+  });
+});
+
+describe("the insert re-checks the levels (a level turned off after the service read it)", () => {
+  it("inserts nothing when the account, the membership, the rollo or the photo now blocks it", async () => {
+    const t = await revealedTrip();
+    const insert = async () => (await insertFeaturedUnderCap(env.DB, t.juani.userId, t.fedePhoto, Date.now(), 60).run()).meta.changes;
+    await env.DB.prepare("UPDATE members SET allow_featuring = 0 WHERE id = ?").bind(t.fede.memberId).run();
+    expect(await insert()).toBe(0);
+    await env.DB.prepare("UPDATE members SET allow_featuring = 1 WHERE id = ?").bind(t.fede.memberId).run();
+    await env.DB.prepare("UPDATE trips SET featuring_disabled = 1 WHERE id = ?").bind(t.tripId).run();
+    expect(await insert()).toBe(0);
+    await env.DB.prepare("UPDATE trips SET featuring_disabled = 0 WHERE id = ?").bind(t.tripId).run();
+    await setAccount(t.fede.token, false);
+    expect(await insert()).toBe(0);
+    await setAccount(t.fede.token, true);
+    expect(await insert()).toBe(1);
   });
 });
