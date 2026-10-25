@@ -12,6 +12,7 @@ export const TripSummarySchema = z
     revealed: z.boolean(),
     role: RoleSchema,
     totalUploaded: z.number().int(),
+    momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     coverThumbhash: z.string().nullable().openapi({
       description:
         "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",

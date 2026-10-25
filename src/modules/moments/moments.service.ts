@@ -1,4 +1,4 @@
-import { MOMENT_WINDOW_MS, dayWindow, drawNotifyAt } from "../../lib/moments";
+import { MIN_DAY_WINDOW_MS, MOMENT_WINDOW_MS, dayWindow, drawNotifyAt } from "../../lib/moments";
 import { getNotificationSettings } from "../../lib/settings";
 import { isRevealed, localDate } from "../../lib/util";
 import type { TripRow } from "../../types";
@@ -34,7 +34,10 @@ export async function getMyMoments(
     (day) => day <= lastDay,
   );
   const fresh = days.flatMap((day) => {
-    const window = dayWindow(trip, day);
+    const full = dayWindow(trip, day);
+    // Today is never drawn in the past: it starts a minute from now, and a window under the minimum is dropped.
+    const window = full && day === today ? { from: Math.max(full.from, now + 60_000), to: full.to } : full;
+    if (window && window.to - window.from < MIN_DAY_WINDOW_MS) return [];
     return window ? [{ tripId: trip.id, userId, day, notifyAt: drawNotifyAt(window, random), createdAt: now }] : [];
   });
   await insertMomentsIgnoringExisting(db, fresh);

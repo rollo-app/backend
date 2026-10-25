@@ -230,8 +230,11 @@ export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: str
 export async function deleteTripMedia(env: Env, mediaId: string): Promise<boolean> {
   const row = await repo.findLiveMediaById(env.DB, mediaId);
   if (!row) return false;
-  await env.MEDIA.delete([row.originalKey, row.thumbKey]);
-  await repo.markDeleted(env.DB, row.id, Date.now()).run();
+  // A moment's selfie goes with its main photo.
+  const rows = [row, ...(await repo.findLiveSelfies(env.DB, row.id))];
+  await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey]));
+  const now = Date.now();
+  await env.DB.batch(rows.map((r) => repo.markDeleted(env.DB, r.id, now)));
   return true;
 }
 

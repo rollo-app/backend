@@ -289,6 +289,17 @@ describe("authentication and access", () => {
 });
 
 describe("GET /me/trips", () => {
+  it("includes each rollo's momentMode", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    await createTrip(token, { name: "Con selfie", momentMode: "photo_selfie", startsAt: Date.now() - 2 * DAY });
+    await createTrip(token, { name: "Sin momento", startsAt: Date.now() - 5 * DAY });
+    const res = await api("GET", "/me/trips", { token });
+    expect(res.body.trips.map((t: { name: string; momentMode: string }) => [t.name, t.momentMode])).toEqual([
+      ["Con selfie", "photo_selfie"],
+      ["Sin momento", "off"],
+    ]);
+  });
+
   it("lists the user's rollos, most recent start first, with role and uploads", async () => {
     const { token } = await signUp(undefined, "Juani");
     const older = await createTrip(token, { name: "Viejo", startsAt: Date.now() - 5 * DAY });

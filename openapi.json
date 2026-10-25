@@ -389,6 +389,15 @@
           "totalUploaded": {
             "type": "integer"
           },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "Daily moment: off, a photo, or a photo plus a selfie"
+          },
           "coverThumbhash": {
             "type": [
               "string",
@@ -407,6 +416,7 @@
           "revealed",
           "role",
           "totalUploaded",
+          "momentMode",
           "coverThumbhash"
         ]
       },

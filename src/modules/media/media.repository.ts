@@ -100,6 +100,11 @@ export function markDeleted(db: D1Database, id: string, now: number): D1Prepared
   return toStatement(db, orm(db).update(media).set({ deletedAt: now }).where(eq(media.id, id)));
 }
 
+/** Ids of the not-deleted selfies paired with a moment's main photo. */
+export async function findLiveSelfies(db: D1Database, mainId: string): Promise<Media[]> {
+  return orm(db).select().from(media).where(and(eq(media.pairedMediaId, mainId), isNull(media.deletedAt))).all();
+}
+
 export async function listFeed(db: D1Database, tripId: string, viewerId: string): Promise<FeedRow[]> {
   const viewerLike = alias(likes, "viewer_like");
   const countedLike = alias(likes, "counted_like");

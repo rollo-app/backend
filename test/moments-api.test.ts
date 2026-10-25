@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MOMENT_WINDOW_MS, dayWindow, tripDays } from "../src/lib/moments";
 import { MOMENT_DRAW_DAYS, getMyMoments } from "../src/modules/moments/moments.service";
 import type { TripRow } from "../src/types";
+import { localDate } from "../src/lib/util";
 import { DAY, HOUR, api, createTrip, join, newTrip, signUp } from "./helpers";
 
 type Moment = { day: string; notifyAt: number };
@@ -75,9 +76,10 @@ describe("GET /trips/{tripId}/moments", () => {
     const now = Date.now();
     const today = localDate(now, trip.timezone);
     const user = { id: fx.adminUserId };
-    // Force the draw to the start of every window, then ask after today's moment is over.
-    const w = dayWindow(trip, today);
-    const later = (w ? w.from : now) + MOMENT_WINDOW_MS + 60_000;
+    // Draw early (the draw never lands in the past), then ask after today's moment is over.
+    const w = dayWindow(trip, today)!;
+    await getMyMoments(env.DB, trip, user.id, w.from - 60_000, () => 0);
+    const later = w.from + MOMENT_WINDOW_MS + 2 * 60_000;
     const res = await getMyMoments(env.DB, trip, user.id, later, () => 0);
     expect(res.find((m) => m.day === today)).toBeUndefined();
     const rows = await momentRows(fx.tripId, fx.adminUserId);
@@ -173,6 +175,34 @@ describe("draw horizon", () => {
     expect(rows2.length).toBeLessThanOrEqual(rows1.length + MOMENT_DRAW_DAYS);
     for (const r of rows1) expect(rows2.find((x) => x.day === r.day)).toEqual(r);
     expect(later.length).toBeLessThanOrEqual(MOMENT_DRAW_DAYS);
+  });
+});
+
+describe("today's moment is never drawn in the past", () => {
+  // 15:00 and 22:40 local (UTC-3) on a 9-23 band.
+  const at = (h: number, m: number) => Date.UTC(2030, 0, 10, h + 3, m);
+  const dayOf = (n: number) => localDate(n, "America/Argentina/Buenos_Aires");
+  const fixedTrip = () =>
+    newTrip({ momentMode: "photo", startsAt: Date.UTC(2030, 0, 9, 12), endsAt: Date.UTC(2030, 0, 14, 12), revealAt: Date.UTC(2030, 0, 15) });
+
+  it("draws today from now + 1 minute when the first request comes at 15:00", async () => {
+    const fx = await fixedTrip();
+    const trip = await tripRow(fx.tripId);
+    const now = at(15, 0);
+    const res = await getMyMoments(env.DB, trip, fx.adminUserId, now, () => 0);
+    const today = res.find((m) => m.day === dayOf(now));
+    expect(today).toBeDefined();
+    expect(today!.notifyAt).toBeGreaterThanOrEqual(now + 60_000);
+  });
+
+  it("has no moment today when the first request comes at 22:40 (under 30 minutes left)", async () => {
+    const fx = await fixedTrip();
+    const trip = await tripRow(fx.tripId);
+    const now = at(22, 40);
+    const res = await getMyMoments(env.DB, trip, fx.adminUserId, now, () => 0);
+    expect(res.find((m) => m.day === dayOf(now))).toBeUndefined();
+    expect((await momentRows(fx.tripId, fx.adminUserId)).find((r) => r.day === dayOf(now))).toBeUndefined();
+    expect(res.length).toBeGreaterThan(0);
   });
 });
 
