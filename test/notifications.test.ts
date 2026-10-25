@@ -142,6 +142,7 @@ const ALL_ON = {
   photoLiked: true,
   photoCommented: true,
   friendRequest: true,
+  dailyMoment: true,
 };
 
 describe("GET /me/settings", () => {
@@ -158,6 +159,14 @@ describe("GET /me/settings", () => {
 });
 
 describe("PATCH /me/settings", () => {
+  it("toggles dailyMoment and persists it", async () => {
+    const u = await signUp();
+    const off = await api("PATCH", "/me/settings", { token: u.token, body: { notifications: { dailyMoment: false } } });
+    expect(off.status).toBe(200);
+    expect(off.body.notifications.dailyMoment).toBe(false);
+    expect((await api("GET", "/me/settings", { token: u.token })).body.notifications.dailyMoment).toBe(false);
+  });
+
   it("changes only the keys sent and returns the full settings", async () => {
     const u = await signUp();
     const res = await api("PATCH", "/me/settings", { token: u.token, body: { notifications: { photoLiked: false } } });

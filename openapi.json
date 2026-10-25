@@ -466,6 +466,10 @@
           "friendRequest": {
             "type": "boolean",
             "description": "Someone sends you a friend request"
+          },
+          "dailyMoment": {
+            "type": "boolean",
+            "description": "It is your moment of the day in a rollo with the daily moment on"
           }
         },
         "required": [
@@ -476,7 +480,8 @@
           "photoFeatured",
           "photoLiked",
           "photoCommented",
-          "friendRequest"
+          "friendRequest",
+          "dailyMoment"
         ]
       },
       "PrivacySettings": {
@@ -528,6 +533,10 @@
               "friendRequest": {
                 "type": "boolean",
                 "description": "Someone sends you a friend request"
+              },
+              "dailyMoment": {
+                "type": "boolean",
+                "description": "It is your moment of the day in a rollo with the daily moment on"
               }
             },
             "additionalProperties": false
