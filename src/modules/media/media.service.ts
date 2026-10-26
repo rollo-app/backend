@@ -2,10 +2,17 @@ import { conflict, badRequest, forbidden, notFound, rateLimited } from "../../sh
 import { assertStorageAvailable } from "../../lib/storage";
 import { mediaKeys, presignPut } from "../../lib/r2";
 import { isRevealed, localDate } from "../../lib/util";
+import { MOMENT_WINDOW_MS } from "../../lib/moments";
 import { PAST_TOLERANCE_MS } from "../../schemas";
-import type { Env, MemberRow, TripRow } from "../../types";
+import { actorName, sendPush } from "../../lib/push";
+import type { AfterResponse } from "../../shared/after-response";
+import type { Env, MemberRow, TripRow, UserRow } from "../../types";
 import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
-import { deleteFeaturedByOthers } from "../featured/featured.repository";
+import { deleteFeaturedByOthers, deleteFeaturedOfMedia } from "../featured/featured.repository";
+import { deleteLikesOfMedia } from "../likes/likes.repository";
+import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
+import { rejectSelfie } from "../../lib/moment-selfie";
+import { findMoment, findMomentSlots, recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
 
 const UPLOAD_URL_TTL = 15 * 60;
@@ -29,6 +36,43 @@ async function uploadResponse(
     presignPut(env, thumbKey, origin, sizes.thumb),
   ]);
   return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
+}
+
+type MomentTarget = { day: string; notifyAt: number; pairedMediaId: string | null };
+
+/**
+ * Validates the moment fields of a new registration (not a retry). Null when it is an ordinary photo or video.
+ * A main photo needs the member's moment row for `momentDay` with no photo yet (409); a selfie (`pairedMediaId`)
+ * must pair with the member's own main moment photo of this rollo (400) and inherits its day.
+ */
+async function resolveMoment(db: D1Database, trip: TripRow, member: MemberRow, input: RegisterMediaInput): Promise<MomentTarget | null> {
+  if (input.momentDay != null && trip.moment_mode === "off") throw badRequest("Este rollo no tiene momento del día");
+  if (input.pairedMediaId) {
+    if (trip.moment_mode !== "photo_selfie") throw badRequest("Este rollo no admite selfie del momento");
+    const main = await repo.findMediaById(db, input.pairedMediaId);
+    const valid =
+      main !== null &&
+      main.deletedAt === null &&
+      main.memberId === member.id &&
+      main.tripId === trip.id &&
+      main.momentDay !== null &&
+      main.pairedMediaId === null;
+    if (!valid || (input.momentDay != null && input.momentDay !== main.momentDay)) {
+      throw badRequest("La foto del momento no corresponde");
+    }
+    const slots = await findMomentSlots(db, trip.id, member.user_id, main.momentDay!);
+    if (!slots) throw badRequest("La foto del momento no corresponde");
+    if (slots.media_id !== main.id) throw badRequest("La foto del momento no corresponde");
+    if (slots.selfie_media_id !== null) throw conflict("Este momento ya tiene selfie");
+    return { day: main.momentDay!, notifyAt: 0, pairedMediaId: main.id };
+  }
+  if (input.momentDay == null) return null;
+
+  const row = await findMoment(db, trip.id, member.user_id, input.momentDay);
+  if (!row) throw conflict("No tenés un momento ese día");
+  const slots = await findMomentSlots(db, trip.id, member.user_id, input.momentDay);
+  if (slots?.media_id != null) throw conflict("Este momento ya tiene foto");
+  return { day: input.momentDay, notifyAt: row.notify_at, pairedMediaId: null };
 }
 
 /** Registers a photo or video and returns signed upload URLs. Idempotent by `input.id`; `created` tells a new row from a retry. */
@@ -68,20 +112,32 @@ export async function registerMedia(
     throw badRequest("Este rollo ya terminó");
   }
 
+  const moment = await resolveMoment(env.DB, trip, member, input);
+
   await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes);
 
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.
+  // Moment photos and selfies are outside the quota.
   const day = localDate(input.takenAt, trip.timezone);
-  const limit = input.type === "photo" ? trip.daily_photo_limit : trip.daily_video_limit;
-  if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, input.type)) >= limit) {
-    const what = input.type === "photo" ? "fotos" : "videos";
-    throw rateLimited(`Ya usaste tus ${limit} ${what} de hoy`);
+  if (moment) {
+    // No quota.
+  } else if (input.type === "video") {
+    if (trip.daily_video_limit === 0) throw badRequest("Este rollo no admite videos");
+    if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, "video")) >= trip.daily_video_limit) {
+      throw rateLimited(`Ya usaste tus ${trip.daily_video_limit} videos de hoy`);
+    }
+  } else if (trip.photo_limit_mode === "total") {
+    // The whole rollo counts, not just the day.
+    if ((await repo.countMemberMedia(env.DB, member.id, "photo")) >= (trip.total_photo_limit ?? 0)) {
+      throw rateLimited("Ya usaste todas tus fotos del rollo");
+    }
+  } else if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, "photo")) >= trip.daily_photo_limit) {
+    throw rateLimited(`Ya usaste tus ${trip.daily_photo_limit} fotos de hoy`);
   }
 
   const keys = mediaKeys(trip.id, input.id, input.type);
-  await repo
-    .insertMedia(env.DB, {
+  const insert = repo.insertMedia(env.DB, {
       id: input.id,
       tripId: trip.id,
       memberId: member.id,
@@ -101,8 +157,31 @@ export async function registerMedia(
       originalKey: keys.original,
       thumbKey: keys.thumb,
       createdAt: now,
-    })
-    .run();
+      momentDay: moment?.day ?? null,
+      pairedMediaId: moment?.pairedMediaId ?? null,
+    });
+  if (!moment) {
+    await insert.run();
+  } else {
+    // The slot claim runs first and fails closed: if it didn't take (a concurrent request got there), the row
+    // just inserted would be a photo outside every quota with no moment, so it is removed and the request is a 409.
+    const claim = moment.pairedMediaId
+      ? recordMomentSelfie(env.DB, trip.id, member.user_id, moment.day, input.id, moment.pairedMediaId)
+      : recordMomentPhoto(
+          env.DB,
+          trip.id,
+          member.user_id,
+          moment.day,
+          input.id,
+          input.takenAt,
+          input.takenAt >= moment.notifyAt && input.takenAt <= moment.notifyAt + MOMENT_WINDOW_MS,
+        );
+    const [claimed] = await env.DB.batch([claim, insert]);
+    if (claimed!.meta.changes === 0) {
+      await env.DB.prepare("DELETE FROM media WHERE id = ?").bind(input.id).run();
+      throw conflict(moment.pairedMediaId ? "Este momento ya tiene selfie" : "Este momento ya tiene foto");
+    }
+  }
 
   return {
     created: true,
@@ -111,10 +190,17 @@ export async function registerMedia(
 }
 
 /** Verifies the files are in R2 with the registered sizes and marks the media as uploaded. */
-export async function completeUpload(env: Env, member: MemberRow, mediaId: string): Promise<{ id: string; status: "uploaded" }> {
+export async function completeUpload(
+  env: Env,
+  trip: TripRow,
+  member: MemberRow,
+  user: Pick<UserRow, "id" | "name" | "username">,
+  mediaId: string,
+): Promise<{ body: { id: string; status: "uploaded" }; notify: AfterResponse }> {
   const row = await repo.findOwnLiveMedia(env.DB, mediaId, member.id);
   if (!row) throw notFound();
-  if (row.status === "uploaded") return { id: row.id, status: "uploaded" };
+  const done = { id: row.id, status: "uploaded" as const };
+  if (row.status === "uploaded") return { body: done, notify: null };
 
   const [original, thumb] = await Promise.all([env.MEDIA.head(row.originalKey), env.MEDIA.head(row.thumbKey)]);
   if (!original || !thumb) {
@@ -130,8 +216,27 @@ export async function completeUpload(env: Env, member: MemberRow, mediaId: strin
     throw badRequest("El archivo no coincide con el que registraste; volvé a subirlo");
   }
 
-  await repo.markUploaded(env.DB, row.id, Date.now(), original.size).run();
-  return { id: row.id, status: "uploaded" };
+  const now = Date.now();
+  const marked = await repo.markUploaded(env.DB, row.id, now, original.size).run();
+
+  // "momentPosted": only the main photo of a moment (the linked image never notifies), only for the request that
+  // actually flipped the row to uploaded (retries and concurrent completes lose the claim), never once revealed
+  // (the reveal push covers it).
+  const isMomentMain = row.momentDay !== null && row.pairedMediaId === null;
+  if (!isMomentMain || marked.meta.changes === 0 || isRevealed(trip, now)) return { body: done, notify: null };
+  return {
+    body: done,
+    notify: async () => {
+      const recipients = await repo.listActiveMemberUserIds(env.DB, trip.id);
+      await sendPush(
+        env,
+        recipients,
+        "momentPosted",
+        { title: `${actorName(user)} subió su momento`, body: trip.name, url: `/photo/${row.id}?tripId=${trip.id}` },
+        { actorId: user.id },
+      );
+    },
+  };
 }
 
 /** Feed rows of the trip for the viewer; `revealed` decides how much of each row the controller exposes. */
@@ -140,24 +245,44 @@ export async function getFeed(db: D1Database, trip: TripRow, viewerId: string): 
   return { revealed, rows: await repo.listFeed(db, trip.id, viewerId) };
 }
 
-/** R2 key of the requested variant; only after the reveal. */
-export async function getDownloadKey(db: D1Database, trip: TripRow, mediaId: string, variant: "thumb" | "original"): Promise<string> {
-  if (!isRevealed(trip)) throw forbidden("Todavía no se reveló el rollo");
-
-  const row = await repo.findDownloadKeys(db, mediaId, trip.id);
+/**
+ * R2 key of the requested variant. Only after the reveal, except for the two images of a daily moment, which any
+ * active member (the route already requires it) can fetch as soon as they are uploaded.
+ */
+export async function getDownloadKey(
+  db: D1Database,
+  trip: TripRow,
+  viewerId: string,
+  mediaId: string,
+  variant: "thumb" | "original",
+): Promise<string> {
+  const revealed = isRevealed(trip);
+  const row = await repo.findDownloadKeys(db, mediaId, trip.id, viewerId);
+  if (!revealed && !row?.isMoment) throw forbidden("Todavía no se reveló el rollo");
   if (!row) throw notFound();
   return variant === "thumb" ? row.thumbKey : row.originalKey;
 }
 
 /**
  * Deletes a photo or video for everyone: removes its files and marks it deleted. The id cannot be registered again.
- * Returns false if it does not exist or was already deleted.
+ * Returns false if it does not exist or was already deleted. With `purge` (the author deleting it after the reveal)
+ * its likes, comments and featured rows go too, in the same batch.
  */
-export async function deleteTripMedia(env: Env, mediaId: string): Promise<boolean> {
+export async function deleteTripMedia(env: Env, mediaId: string, opts: { purge?: boolean } = {}): Promise<boolean> {
   const row = await repo.findLiveMediaById(env.DB, mediaId);
   if (!row) return false;
-  await env.MEDIA.delete([row.originalKey, row.thumbKey]);
-  await repo.markDeleted(env.DB, row.id, Date.now()).run();
+  // A moment's selfie goes with its main photo.
+  const rows = [row, ...(await repo.findLiveSelfies(env.DB, row.id))];
+  await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey]));
+  const now = Date.now();
+  await env.DB.batch(
+    rows.flatMap((r) => [
+      repo.markDeleted(env.DB, r.id, now),
+      ...(opts.purge
+        ? [deleteFeaturedOfMedia(env.DB, r.id), deleteLikesOfMedia(env.DB, r.id), softDeleteCommentsOfMedia(env.DB, r.id, now)]
+        : []),
+    ]),
+  );
   return true;
 }
 
@@ -167,6 +292,60 @@ export async function deleteMediaFromTrip(env: Env, trip: TripRow, mediaId: stri
 
   const inTrip = await repo.mediaExistsInTrip(env.DB, mediaId, trip.id);
   if (!inTrip || !(await deleteTripMedia(env, mediaId))) throw notFound();
+}
+
+/**
+ * `DELETE /media/{id}`: before the reveal it is the admin's moderation delete (anyone else 403); after it, only the
+ * author deletes their own photo or video for good. The admin keeps getting 409 on other people's photos once revealed.
+ */
+export async function deleteMedia(env: Env, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
+  if (!isRevealed(trip)) {
+    if (member.role !== "admin") throw forbidden("Solo el admin del rollo puede hacer esto");
+    return deleteMediaFromTrip(env, trip, mediaId);
+  }
+  const row = await repo.findLiveMediaById(env.DB, mediaId);
+  if (row && row.tripId === trip.id && row.memberId !== member.id) {
+    if (member.role === "admin") throw conflict("El rollo ya se reveló");
+    throw forbidden(NOT_AUTHOR);
+  }
+  const own = await ownRevealedPhoto(env.DB, trip, member, mediaId);
+  if (!(await deleteTripMedia(env, own.id, { purge: true }))) throw notFound();
+}
+
+const NOT_AUTHOR = "Solo quien sacó la foto puede hacer esto";
+
+/**
+ * The member's own uploaded photo or video of a revealed rollo: what archive, unarchive and the author's delete act on.
+ * 404 if it doesn't exist (or is deleted, or of another rollo), 403 if someone else took it, 400 for a moment's linked
+ * image (it follows its main photo), 409 before the reveal.
+ */
+async function ownRevealedPhoto(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string) {
+  const row = await repo.findLiveMediaById(db, mediaId);
+  if (!row || row.tripId !== trip.id || row.status !== "uploaded") throw notFound();
+  if (row.memberId !== member.id) throw forbidden(NOT_AUTHOR);
+  rejectSelfie(row.pairedMediaId);
+  if (!isRevealed(trip)) throw conflict("Todavía no se reveló el rollo");
+  return row;
+}
+
+/** Ids a change to `main` applies to: the photo and, for a daily moment, its linked image. */
+async function withLinked(db: D1Database, mainId: string): Promise<string[]> {
+  return [mainId, ...(await repo.findLiveSelfies(db, mainId)).map((r) => r.id)];
+}
+
+/**
+ * The author hides their photo from everyone else, right away and without confirmation (it is reversible). It leaves
+ * every profile where it was featured, the author's own included; unarchiving does not put it back. Idempotent.
+ */
+export async function archiveMedia(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
+  const row = await ownRevealedPhoto(db, trip, member, mediaId);
+  const ids = await withLinked(db, row.id);
+  await db.batch([repo.markArchived(db, ids, Date.now()), ...ids.map((id) => deleteFeaturedOfMedia(db, id))]);
+}
+
+export async function unarchiveMedia(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
+  const row = await ownRevealedPhoto(db, trip, member, mediaId);
+  await repo.markUnarchived(db, await withLinked(db, row.id)).run();
 }
 
 /**

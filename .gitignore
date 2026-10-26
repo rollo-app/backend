@@ -4,3 +4,4 @@ node_modules/
 login-email-preview.html
 .claude/worktrees/
 .drizzle-check/
+wrangler.seed.generated.jsonc

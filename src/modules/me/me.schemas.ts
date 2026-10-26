@@ -12,6 +12,7 @@ export const TripSummarySchema = z
     revealed: z.boolean(),
     role: RoleSchema,
     totalUploaded: z.number().int(),
+    momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     coverThumbhash: z.string().nullable().openapi({
       description:
         "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
@@ -60,13 +61,28 @@ export const NotificationSettingsSchema = z
     tripRevealed: z.boolean().openapi({ description: "A rollo you are in is revealed" }),
     photoFeatured: z.boolean().openapi({ description: "Someone features a photo of yours on their profile" }),
     photoLiked: z.boolean().openapi({ description: "Someone likes a photo of yours" }),
+    photoCommented: z.boolean().openapi({ description: "Someone comments on a photo of yours, or on one you commented on" }),
+    friendRequest: z.boolean().openapi({ description: "Someone sends you a friend request" }),
+    dailyMoment: z.boolean().openapi({ description: "It is your moment of the day in a rollo with the daily moment on" }),
+    momentPosted: z.boolean().openapi({ description: "Someone in a rollo you are in uploaded their daily moment" }),
   })
   .openapi("NotificationSettings");
 
-export const UserSettingsSchema = z.object({ notifications: NotificationSettingsSchema }).openapi("UserSettings");
+export const PrivacySettingsSchema = z
+  .object({
+    allowFeaturing: z.boolean().openapi({ description: "Others may feature any of your photos on their profile (on by default)" }),
+  })
+  .openapi("PrivacySettings");
+
+export const UserSettingsSchema = z
+  .object({ notifications: NotificationSettingsSchema, privacy: PrivacySettingsSchema })
+  .openapi("UserSettings");
 
 export const UpdateUserSettingsSchema = z
-  .strictObject({ notifications: NotificationSettingsSchema.partial().strict().optional() })
+  .strictObject({
+    notifications: NotificationSettingsSchema.partial().strict().optional(),
+    privacy: PrivacySettingsSchema.partial().strict().optional(),
+  })
   .openapi("UpdateUserSettingsRequest");
 
 export const MyTripsSchema = z.object({ trips: z.array(TripSummarySchema) }).openapi("MyTrips");

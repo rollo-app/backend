@@ -51,6 +51,7 @@ const PROTECTED_ENDPOINTS = [
   ["post", "/friends/redeem"],
   ["post", "/trips/{tripId}/members"],
   ["delete", "/trips/{tripId}/members/me"],
+  ["patch", "/trips/{tripId}/members/me"],
   ["get", "/friends"],
   ["delete", "/friends/{userId}"],
   ["get", "/users/{userId}"],

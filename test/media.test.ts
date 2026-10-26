@@ -297,6 +297,47 @@ describe("daily limit", () => {
   });
 });
 
+describe("total limit", () => {
+  it("cuts off at the total photo limit, whatever the day", async () => {
+    const { tripId, adminToken } = await newTrip({
+      photoLimitMode: "total",
+      totalPhotoLimit: 2,
+      dailyPhotoLimit: 1,
+      startsAt: Date.now() - 3 * DAY,
+    });
+    await uploadMedia(tripId, adminToken);
+    await uploadMedia(tripId, adminToken, { takenAt: Date.now() - DAY - HOUR });
+
+    const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody({ takenAt: Date.now() - 2 * DAY }) });
+    expect(res.status).toBe(429);
+    expect(res.body.error).toBe("Ya usaste todas tus fotos del rollo");
+  });
+
+  it("pending ones count too and the quota is per person", async () => {
+    const { tripId, code, adminToken } = await newTrip({ photoLimitMode: "total", totalPhotoLimit: 1 });
+    const fede = await joinAs(code, "Fede");
+    await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
+    expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() })).status).toBe(429);
+    expect((await api("POST", `/trips/${tripId}/media`, { token: fede.token, body: photoBody() })).status).toBe(201);
+  });
+
+  it("a retry of an already registered photo is not rejected", async () => {
+    const { tripId, adminToken } = await newTrip({ photoLimitMode: "total", totalPhotoLimit: 1 });
+    const body = photoBody();
+    expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(201);
+    expect((await api("POST", `/trips/${tripId}/media`, { token: adminToken, body })).status).toBe(200);
+  });
+});
+
+describe("rollos without videos", () => {
+  it("rejects a video when the video limit is 0", async () => {
+    const { tripId, adminToken } = await newTrip({ dailyVideoLimit: 0 });
+    const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: videoBody() });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Este rollo no admite videos");
+  });
+});
+
 describe("POST /media/:id/complete", () => {
   it("fails if the files are not in R2", async () => {
     const { tripId, adminToken } = await newTrip();
@@ -545,9 +586,10 @@ describe("DELETE /media/:id (admin only)", () => {
     expect((await api("DELETE", `/media/${id}`, { token: b.adminToken })).status).toBe(404);
   });
 
-  it("can't delete after the reveal", async () => {
-    const { tripId, adminToken } = await newTrip();
-    const id = await uploadMedia(tripId, adminToken);
+  it("can't delete someone else's photo after the reveal", async () => {
+    const { tripId, code, adminToken } = await newTrip();
+    const fede = await joinAs(code, "Fede");
+    const id = await uploadMedia(tripId, fede.token);
     await api("POST", `/trips/${tripId}/reveal`, { token: adminToken });
     expect((await api("DELETE", `/media/${id}`, { token: adminToken })).status).toBe(409);
   });

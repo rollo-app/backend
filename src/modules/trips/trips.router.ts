@@ -9,7 +9,9 @@ import {
   AddMembersSchema,
   CreateTripSchema,
   JoinTripSchema,
+  MyMembershipSchema,
   TripMemberParams,
+  UpdateMyMembershipSchema,
   UpdateTripSchema,
 } from "./trips.schemas";
 
@@ -20,7 +22,7 @@ export const createTripRoute = createRoute({
   path: "/",
   tags,
   summary: "Create a trip",
-  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code.",
+  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },
@@ -115,6 +117,23 @@ export const leaveRoute = createRoute({
   responses: { 204: { description: "You left the trip" }, ...errors(401, 403, 409) },
 });
 
+export const updateMyMembershipRoute = createRoute({
+  method: "patch",
+  path: "/{tripId}/members/me",
+  tags,
+  summary: "Your settings in this rollo",
+  description:
+    "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). " +
+    "Turning it off removes them from other profiles; turning it on restores nothing.",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember] as const,
+  request: {
+    params: TripParams,
+    body: { content: { "application/json": { schema: UpdateMyMembershipSchema } }, required: true },
+  },
+  responses: { 200: json(MyMembershipSchema, "Updated"), ...errors(400, 401, 403) },
+});
+
 export const removeMemberRoute = createRoute({
   method: "delete",
   path: "/{tripId}/members/{memberId}",
@@ -135,6 +154,7 @@ trips.openapi(getTripRoute, controller.detail);
 trips.openapi(updateTripRoute, controller.update);
 trips.openapi(revealRoute, controller.reveal);
 trips.openapi(addMembersRoute, controller.addMembers);
+trips.openapi(updateMyMembershipRoute, controller.updateMyMembership);
 trips.openapi(leaveRoute, controller.leave);
 trips.openapi(removeMemberRoute, controller.removeMember);
 

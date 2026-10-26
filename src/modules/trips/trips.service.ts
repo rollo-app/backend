@@ -7,6 +7,7 @@ import { claimRevealedStatement, sendTripRevealed } from "../../lib/trip-notices
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
+import { deleteFeaturedOfTrip, deleteFeaturedByOthersOfMember } from "../featured/featured.repository";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
 import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
@@ -18,14 +19,45 @@ function requireName(user: Pick<UserRow, "name" | "username">) {
 
 // ---------- Create ----------
 
+export const MAX_UNREVEALED_CREATED = 2;
+export const MAX_CREATED_IN_WINDOW = 4;
+export const CREATE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+/** "3 de noviembre" in the given time zone. */
+function spanishDate(ms: number, timeZone: string): string {
+  const [, month = 1, day = 1] = localDate(ms, timeZone).split("-").map(Number);
+  return `${day} de ${MONTHS[month - 1]}`;
+}
+
+/** Limits on rollos the user created (as admin); joined or added ones never count. */
+async function enforceCreateLimits(db: D1Database, userId: string, timeZone: string, now: number) {
+  const unrevealed = await repo.countUnrevealedCreated(db, userId, now);
+  if (unrevealed >= MAX_UNREVEALED_CREATED) {
+    throw conflict(`Ya tenés ${MAX_UNREVEALED_CREATED} rollos sin revelar. Esperá a que se revele uno para crear otro.`);
+  }
+  const recent = await repo.createdSince(db, userId, now - CREATE_WINDOW_MS);
+  if (recent.length >= MAX_CREATED_IN_WINDOW) {
+    // Creating again needs the count to drop below the max: the 4th most recent has to turn 30 days.
+    const blocking = recent[recent.length - MAX_CREATED_IN_WINDOW]!;
+    throw conflict(
+      `Ya creaste ${MAX_CREATED_IN_WINDOW} rollos en los últimos 30 días. Vas a poder crear otro el ${spanishDate(blocking + CREATE_WINDOW_MS, timeZone)}.`,
+    );
+  }
+}
+
 /** Creates the trip with `user` as admin. `null` when no free join code could be generated. */
 export async function createTrip(
   db: D1Database,
   user: UserRow,
   body: CreateTripInput,
+  hooks: { beforeInsert?: () => Promise<void> } = {},
 ): Promise<{ trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> } | null> {
   requireName(user);
   const now = Date.now();
+  const limited = !user.unlimited_rollos;
+  // Early check for a clear error; the INSERT below re-checks atomically.
+  if (limited) await enforceCreateLimits(db, user.id, body.timezone, now);
 
   // Unique code (collisions are very unlikely, but we retry just in case).
   let joinCode = "";
@@ -38,6 +70,8 @@ export async function createTrip(
   const tripId = crypto.randomUUID();
   const memberId = crypto.randomUUID();
 
+  await hooks.beforeInsert?.();
+
   await db.batch([
     repo.insertTrip(db, {
       id: tripId,
@@ -49,15 +83,32 @@ export async function createTrip(
       reveal_at: body.revealAt,
       daily_photo_limit: body.dailyPhotoLimit,
       daily_video_limit: body.dailyVideoLimit,
+      photo_limit_mode: body.photoLimitMode,
+      total_photo_limit: body.photoLimitMode === "total" ? body.totalPhotoLimit! : null,
       created_at: now,
       // Starting now ("Empezar ahora"): the creator is the only member and just did it, so no "Arrancó" push.
       started_notified_at: body.startsAt <= now ? now : null,
+      featuring_disabled: body.featuringDisabled ? 1 : 0,
+      moment_mode: body.momentMode,
+      moment_window_start: body.momentWindowStart,
+      moment_window_end: body.momentWindowEnd,
+    }, {
+      userId: user.id,
+      limited,
+      unrevealedMax: MAX_UNREVEALED_CREATED,
+      windowMax: MAX_CREATED_IN_WINDOW,
+      windowSince: now - CREATE_WINDOW_MS,
     }),
     repo.insertAdminMember(db, memberId, tripId, user.id, now),
   ]);
 
   const trip = await repo.findTripById(db, tripId);
-  return { trip: trip!, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
+  if (!trip) {
+    // The guarded INSERT wrote nothing: a concurrent create used the last slot. Say which limit hit.
+    await enforceCreateLimits(db, user.id, body.timezone, Date.now());
+    throw conflict("No pudimos crear el rollo ahora. Probá de nuevo.");
+  }
+  return { trip, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
 }
 
 // ---------- Membership ----------
@@ -132,6 +183,11 @@ export type TripDetail = {
   totalUploaded: number;
 };
 
+/** Photos per person that apply to this rollo: per day or for the whole rollo. */
+function photoLimit(trip: TripRow): number {
+  return trip.photo_limit_mode === "total" ? (trip.total_photo_limit ?? 0) : trip.daily_photo_limit;
+}
+
 /** Active members, how many photos and videos `me` has left today, and how much has been uploaded. */
 export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow, userId: string): Promise<TripDetail> {
   const now = Date.now();
@@ -139,8 +195,8 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
 
   const [members, usage, totals, blocked] = await Promise.all([
     repo.listActiveMembers(db, trip.id),
-    repo.countMediaByType(db, me.id, today),
-    repo.countUploadedMedia(db, trip.id),
+    trip.photo_limit_mode === "total" ? repo.countMediaByTypeTotal(db, me.id) : repo.countMediaByType(db, me.id, today),
+    repo.countUploadedMedia(db, trip.id, me.id),
     blockedIdsFor(db, userId),
   ]);
 
@@ -153,7 +209,7 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
     blocked,
     today: {
       date: today,
-      photosLeft: !active ? 0 : Math.max(0, trip.daily_photo_limit - used("photo")),
+      photosLeft: !active ? 0 : Math.max(0, photoLimit(trip) - used("photo")),
       videosLeft: !active ? 0 : Math.max(0, trip.daily_video_limit - used("video")),
     },
     totalUploaded: totals?.n ?? 0,
@@ -174,11 +230,15 @@ export async function updateTrip(db: D1Database, trip: TripRow, b: UpdateTripInp
     reveal_at: b.revealAt ?? trip.reveal_at,
     daily_photo_limit: b.dailyPhotoLimit ?? trip.daily_photo_limit,
     daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
+    featuring_disabled: b.featuringDisabled === undefined ? trip.featuring_disabled : b.featuringDisabled ? 1 : 0,
+    total_photo_limit: trip.photo_limit_mode === "total" ? (b.totalPhotoLimit ?? trip.total_photo_limit) : null,
   };
   if (next.ends_at <= trip.starts_at) throw badRequest("El rollo tiene que terminar después de empezar");
   if (next.reveal_at < next.ends_at) throw badRequest("El revelado no puede ser antes del fin");
 
-  await repo.updateTrip(db, trip.id, next).run();
+  // A private rollo takes its photos off every profile (the authors' own too); turning it off restores nothing.
+  const makingPrivate = next.featuring_disabled !== 0 && trip.featuring_disabled === 0;
+  await db.batch([repo.updateTrip(db, trip.id, next), ...(makingPrivate ? [deleteFeaturedOfTrip(db, trip.id)] : [])]);
 
   return { ...trip, ...next };
 }
@@ -229,6 +289,19 @@ export async function addFriendsToTrip(
     ? () => sendPush(env, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id })
     : null;
   return { results, notify };
+}
+
+// ---------- My membership ----------
+
+/**
+ * Whether others may feature my photos of this rollo. Turning it off removes them from other profiles
+ * (mine stay); turning it on restores nothing.
+ */
+export async function setMyFeaturing(db: D1Database, member: MemberRow, allow: boolean): Promise<void> {
+  await db.batch([
+    repo.setMemberAllowFeaturing(db, member.id, allow),
+    ...(allow ? [] : [deleteFeaturedByOthersOfMember(db, member.id, member.user_id)]),
+  ]);
 }
 
 // ---------- Leave ----------

@@ -12,6 +12,7 @@ export type UserProfile = {
   canSee: boolean;
   friendCount: number;
   mutualCount: number;
+  friendRequest: "none" | "sent" | "received";
 };
 
 export async function getProfile(db: D1Database, viewerId: string, userId: string): Promise<UserProfile> {
@@ -27,9 +28,11 @@ export async function getProfile(db: D1Database, viewerId: string, userId: strin
   // A blocked pair (either direction) sees a header-only profile: no access, no friendship, no mutual friends.
   const canSee = !blocked && (await canSeeProfile(db, viewerId, owner));
   const isFriend = !blocked && (await areFriends(db, viewerId, owner.id));
+  const friendRequest = blocked || isFriend || viewerId === owner.id ? "none" : await repo.friendRequestState(db, viewerId, owner.id);
   return {
     owner,
     isFriend,
+    friendRequest,
     blockedByMe,
     reportedByMe,
     canSee,

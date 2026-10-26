@@ -20,11 +20,76 @@ describe("POST /trips", () => {
       name: "Viaje al sur",
       revealed: false,
       dailyPhotoLimit: 10,
-      dailyVideoLimit: 3,
+      dailyVideoLimit: 0,
     });
     expect(res.body.trip.joinCode).toMatch(/^[A-Z2-9]{6}$/);
     expect(res.body.member).toMatchObject({ userId, name: "Juani", avatarUrl: null, role: "admin" });
     expect(res.body).not.toHaveProperty("token");
+  });
+
+  it("defaults to no videos and a daily photo limit", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: tripBody() });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ dailyVideoLimit: 0, photoLimitMode: "daily", totalPhotoLimit: null });
+  });
+
+  it("creates a trip with a total photo limit", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: { ...tripBody(), photoLimitMode: "total", totalPhotoLimit: 20 } });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ photoLimitMode: "total", totalPhotoLimit: 20 });
+  });
+
+  it("requires totalPhotoLimit in total mode and rejects out of range values", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const post = (extra: object) => api("POST", "/trips", { token, body: { ...tripBody(), ...extra } });
+    expect((await post({ photoLimitMode: "total" })).status).toBe(400);
+    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 0 })).status).toBe(400);
+    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 501 })).status).toBe(400);
+  });
+
+  it("ignores totalPhotoLimit in daily mode", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: { ...tripBody(), totalPhotoLimit: 20 } });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ photoLimitMode: "daily", totalPhotoLimit: null });
+  });
+
+  it("defaults the daily moment to off with the 9:00-23:00 window", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const res = await api("POST", "/trips", { token, body: tripBody() });
+    expect(res.status).toBe(201);
+    expect(res.body.trip).toMatchObject({ momentMode: "off", momentWindowStart: 540, momentWindowEnd: 1380 });
+  });
+
+  it("creates a trip with a daily moment and returns it on GET", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const body = { ...tripBody(), momentMode: "photo_selfie", momentWindowStart: 600, momentWindowEnd: 1320 };
+    const res = await api("POST", "/trips", { token, body });
+    expect(res.status).toBe(201);
+    const got = await api("GET", `/trips/${res.body.trip.id}`, { token });
+    expect(got.body.trip).toMatchObject({ momentMode: "photo_selfie", momentWindowStart: 600, momentWindowEnd: 1320 });
+  });
+
+  it("rejects a moment window shorter than 30 minutes or out of range", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const post = (extra: object) => api("POST", "/trips", { token, body: { ...tripBody(), ...extra } });
+    const short = await post({ momentMode: "photo", momentWindowStart: 600, momentWindowEnd: 620 });
+    expect(short.status).toBe(400);
+    expect(JSON.stringify(short.body)).toContain("La franja del momento tiene que durar al menos 30 minutos");
+    expect((await post({ momentWindowStart: -1 })).status).toBe(400);
+    expect((await post({ momentWindowEnd: 1441 })).status).toBe(400);
+    expect((await post({ momentMode: "video" })).status).toBe(400);
+  });
+
+  it("does not let PATCH change the moment", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    const created = await api("POST", "/trips", { token, body: { ...tripBody(), momentMode: "photo" } });
+    const id = created.body.trip.id;
+    await api("PATCH", `/trips/${id}`, { token, body: { momentMode: "off", momentWindowStart: 0 } });
+    const got = await api("GET", `/trips/${id}`, { token });
+    expect(got.body.trip).toMatchObject({ momentMode: "photo", momentWindowStart: 540, momentWindowEnd: 1380 });
   });
 
   it("requires a session", async () => {
@@ -224,6 +289,17 @@ describe("authentication and access", () => {
 });
 
 describe("GET /me/trips", () => {
+  it("includes each rollo's momentMode", async () => {
+    const { token } = await signUp(undefined, "Juani");
+    await createTrip(token, { name: "Con selfie", momentMode: "photo_selfie", startsAt: Date.now() - 2 * DAY });
+    await createTrip(token, { name: "Sin momento", startsAt: Date.now() - 5 * DAY });
+    const res = await api("GET", "/me/trips", { token });
+    expect(res.body.trips.map((t: { name: string; momentMode: string }) => [t.name, t.momentMode])).toEqual([
+      ["Con selfie", "photo_selfie"],
+      ["Sin momento", "off"],
+    ]);
+  });
+
   it("lists the user's rollos, most recent start first, with role and uploads", async () => {
     const { token } = await signUp(undefined, "Juani");
     const older = await createTrip(token, { name: "Viejo", startsAt: Date.now() - 5 * DAY });
@@ -326,6 +402,15 @@ describe("GET /trips/:id", () => {
     expect(res.body.members.map((m: { name: string }) => m.name)).toEqual(["Juani", "Fede"]);
     expect(res.body.today).toMatchObject({ photosLeft: 1, videosLeft: 1 });
     expect(res.body.totalUploaded).toBe(1);
+  });
+
+  it("counts what is left in the whole rollo in total mode", async () => {
+    const { tripId, adminToken } = await newTrip({ photoLimitMode: "total", totalPhotoLimit: 3, startsAt: Date.now() - 3 * DAY });
+    await uploadMedia(tripId, adminToken);
+    await uploadMedia(tripId, adminToken, { takenAt: Date.now() - DAY - HOUR });
+    const res = await api("GET", `/trips/${tripId}`, { token: adminToken });
+    expect(res.body.trip).toMatchObject({ photoLimitMode: "total", totalPhotoLimit: 3 });
+    expect(res.body.today.photosLeft).toBe(1);
   });
 
   it("has nothing left today before the rollo starts", async () => {
@@ -473,10 +558,10 @@ describe("DELETE /trips/:id/members/:memberId", () => {
     expect((await api("DELETE", `/trips/${tripId}/members/${adminId}`, { token: fede.token })).status).toBe(403);
   });
 
-  it("the old per-trip name endpoint no longer exists", async () => {
+  it("the old per-trip name no longer exists (PATCH members/me only takes allowFeaturing)", async () => {
     const { tripId, adminToken } = await newTrip();
     const res = await api("PATCH", `/trips/${tripId}/members/me`, { token: adminToken, body: { name: "Otro" } });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -485,7 +570,7 @@ describe("member shape", () => {
     const { tripId, code, adminUserId } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const res = await api("GET", `/trips/${tripId}`, { token: fede.token });
-    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", blockedByMe: false });
+    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", blockedByMe: false, allowFeaturing: true });
     expect(res.body.members[0]).toMatchObject({ userId: adminUserId, name: "Juani", role: "admin" });
   });
 

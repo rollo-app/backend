@@ -19,12 +19,21 @@ async function canSeeMedia(db: D1Database, viewerId: string, media: Pick<MediaRo
 /** Stores a report (idempotent) and emails support within the caps. A reported photo leaves the reporter's featured list. */
 export async function createReport(env: Env, viewer: UserRow, input: CreateReportInput, adminBase: string): Promise<void> {
   const db = env.DB;
-  const { reason, mediaId, userId } = input;
+  const { reason, mediaId, userId, commentId } = input;
 
   let targetId: string;
   let media: MediaRow | null = null;
-  if (mediaId !== undefined) {
-    media = await repo.findUploadedMedia(db, mediaId);
+  let comment: { id: string; media_id: string; user_id: string; text: string } | null = null;
+  let commentTripId: string | null = null;
+  if (commentId !== undefined) {
+    // A comment is only visible to the active members of its photo's rollo (never through a profile).
+    comment = await repo.findLiveComment(db, commentId);
+    const commented = comment && (await repo.findUploadedMedia(db, comment.media_id, viewer.id));
+    if (!comment || !commented || !(await repo.isActiveTripMember(db, commented.trip_id, viewer.id))) throw notFound();
+    commentTripId = commented.trip_id;
+    targetId = comment.user_id;
+  } else if (mediaId !== undefined) {
+    media = await repo.findUploadedMedia(db, mediaId, viewer.id);
     if (!media || !(await canSeeMedia(db, viewer.id, media))) throw notFound();
     const author = await repo.findMemberUserId(db, media.member_id);
     if (!author) throw notFound();
@@ -35,7 +44,9 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
 
   const target = await repo.findReportTarget(db, targetId);
   if (!target) throw notFound();
-  if (target.id === viewer.id) throw badRequest(mediaId !== undefined ? "No podés denunciar tu propia foto" : "No podés denunciarte a vos mismo");
+  if (target.id === viewer.id) throw badRequest(
+      commentId !== undefined ? "No podés denunciar tu propio comentario" : mediaId !== undefined ? "No podés denunciar tu propia foto" : "No podés denunciarte a vos mismo",
+    );
 
   if (await atModerationActionCap(db, "reports", viewer.id)) throw rateLimited(MODERATION_ACTION_CAP_MESSAGE);
   // Starts flagged as not emailed: it is cleared once the email goes out (otherwise the daily summary lists it).
@@ -45,8 +56,9 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
       id: reportId,
       reporterId: viewer.id,
       mediaId: media?.id ?? null,
+      commentId: comment?.id ?? null,
       targetUserId: target.id,
-      tripId: media?.trip_id ?? null,
+      tripId: media?.trip_id ?? commentTripId,
       reason,
       createdAt: Date.now(),
     })
@@ -57,12 +69,14 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
     if (media) await deleteFeatured(db, viewer.id, media.id).run();
     try {
       if (!(await withinModerationEmailCap(db, viewer.id))) return;
-      const trip = media ? await repo.findTripName(db, media.trip_id) : null;
+      const tripId = media?.trip_id ?? commentTripId;
+      const trip = tripId ? await repo.findTripName(db, tripId) : null;
       await sendReportEmail(env, {
         reason,
         reporter: { id: viewer.id, name: viewer.name, username: viewer.username, email: viewer.email },
         target: { id: target.id, name: target.name, username: target.username, email: target.email },
         ...(trip && { trip: { name: trip.name } }),
+        ...(comment && { comment: { id: comment.id, text: comment.text } }),
         ...(media && {
           media: {
             id: media.id,

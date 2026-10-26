@@ -6,6 +6,10 @@ export const NOTIFICATION_COLUMNS = {
   tripRevealed: "notify_trip_revealed",
   photoFeatured: "notify_photo_featured",
   photoLiked: "notify_photo_liked",
+  photoCommented: "notify_photo_commented",
+  friendRequest: "notify_friend_request",
+  dailyMoment: "notify_daily_moment",
+  momentPosted: "notify_moment_posted",
 } as const;
 
 export type NotificationKind = keyof typeof NOTIFICATION_COLUMNS;
@@ -61,4 +65,21 @@ export async function updateNotificationSettings(
       .run();
   }
   return (await getNotificationSettings(db, [userId])).get(userId)!;
+}
+
+export type PrivacySettings = { allowFeaturing: boolean };
+
+export async function getPrivacySettings(db: D1Database, userId: string): Promise<PrivacySettings> {
+  const row = await db.prepare("SELECT allow_featuring FROM user_settings WHERE user_id = ?").bind(userId).first<{ allow_featuring: number }>();
+  return { allowFeaturing: row ? row.allow_featuring !== 0 : true };
+}
+
+/** Statement (not run): a new row takes the defaults for the rest. */
+export function updatePrivacySettings(db: D1Database, userId: string, allowFeaturing: boolean): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO user_settings (user_id, allow_featuring, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (user_id) DO UPDATE SET allow_featuring = excluded.allow_featuring, updated_at = excluded.updated_at`,
+    )
+    .bind(userId, allowFeaturing ? 1 : 0, Date.now());
 }

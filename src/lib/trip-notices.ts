@@ -7,9 +7,11 @@ import type { Env, TripRow } from "../types";
  * first (`*_notified_at` set only if still null, in one statement), so whoever claims it is the only one who sends.
  */
 
-export function tripStartedMessage(trip: Pick<TripRow, "id" | "name" | "daily_photo_limit">): PushMessage {
-  const n = trip.daily_photo_limit;
-  return { body: `Arrancó ${trip.name}. Tenés ${n} ${n === 1 ? "foto" : "fotos"} hoy.`, url: `/roll?trip=${trip.id}` };
+export function tripStartedMessage(trip: Pick<TripRow, "id" | "name" | "daily_photo_limit" | "photo_limit_mode" | "total_photo_limit">): PushMessage {
+  const total = trip.photo_limit_mode === "total";
+  const n = total ? (trip.total_photo_limit ?? 0) : trip.daily_photo_limit;
+  const when = total ? "en el rollo" : "hoy";
+  return { body: `Arrancó ${trip.name}. Tenés ${n} ${n === 1 ? "foto" : "fotos"} ${when}.`, url: `/roll?trip=${trip.id}` };
 }
 
 export function tripRevealedMessage(trip: Pick<TripRow, "id" | "name">): PushMessage {

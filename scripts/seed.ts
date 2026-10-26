@@ -6,8 +6,8 @@ import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenari
 
 /**
  * Test trips with real photos against the local server: `npm run seed`.
- * Needs `npm run dev:lan` running with DEV_LOCAL_UPLOADS=1 in `.dev.vars`
- * (otherwise the upload URLs point at the real R2).
+ * `npm run seed` starts its own throwaway server from a dev-only config without the rate limits (scripts/seed-with-server.ts)
+ * and needs DEV_LOCAL_UPLOADS=1 in `.dev.vars`; `npm run seed:only` runs this file against a server you started (`SEED_API_URL`).
  *
  * Idempotent: if a scenario's trip already exists in local D1, it is not recreated.
  * `npm run seed -- --reset` deletes those trips and the @rollo.test users (media, members, trips, friendships, friend

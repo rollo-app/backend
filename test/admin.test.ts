@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { api, joinAs, newTrip, uploadMedia } from "./helpers";
+import { localDate } from "../src/lib/util";
+import { TZ, api, joinAs, newTrip, uploadMedia } from "./helpers";
 
 const ENV = { ADMIN_TOKEN: "secret" };
 const admin = (method: string, path: string, token: string | null = "secret") =>
@@ -41,6 +42,21 @@ describe("/admin", () => {
     expect(await env.MEDIA.head(`trips/${trip.tripId}/${mediaId}/thumb.jpg`)).toBeNull();
     expect((await admin("DELETE", `/admin/media/${mediaId}`)).status).toBe(404);
     expect((await admin("DELETE", `/admin/media/nope`)).status).toBe(404);
+  });
+
+  it("DELETE /admin/media of a moment's main photo also deletes its selfie", async () => {
+    const trip = await newTrip({ momentMode: "photo_selfie" });
+    const day = localDate(Date.now(), TZ);
+    await env.DB.prepare("INSERT INTO trip_moments (trip_id, user_id, day, notify_at, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(trip.tripId, trip.adminUserId, day, Date.now() - 60_000, Date.now())
+      .run();
+    const main = await uploadMedia(trip.tripId, trip.adminToken, { momentDay: day });
+    const selfie = await uploadMedia(trip.tripId, trip.adminToken, { pairedMediaId: main });
+    expect((await admin("DELETE", `/admin/media/${main}`)).status).toBe(204);
+    const rows = await env.DB.prepare("SELECT id, deleted_at d FROM media WHERE id IN (?, ?)").bind(main, selfie).all<{ id: string; d: number | null }>();
+    expect(rows.results.every((r) => r.d !== null)).toBe(true);
+    expect(await env.MEDIA.head(`trips/${trip.tripId}/${selfie}/original.jpg`)).toBeNull();
+    expect(await env.MEDIA.head(`trips/${trip.tripId}/${selfie}/thumb.jpg`)).toBeNull();
   });
 
   it("DELETE /admin/users deletes the account like DELETE /me", async () => {

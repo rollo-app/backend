@@ -1,7 +1,9 @@
-import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { featured, likes, media, members, users, type Media, type NewMedia } from "../../db/schema";
-import { notHiddenFor } from "../../lib/moderation";
+import { featured, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
+// A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
+import { commentCountSql } from "../comments/comments.repository";
+import { notHiddenFor, notReportedBy } from "../../lib/moderation";
 import { orm, toStatement } from "../../shared/db";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -27,9 +29,18 @@ export type FeedRow = {
   authorUserId: string;
   authorAvatarKey: string | null;
   featureBlockedAt: number | null;
+  memberAllowsFeaturing: boolean;
+  accountAllowsFeaturing: boolean;
   featuredByMe: boolean;
   likeCount: number;
   likedByMe: boolean;
+  commentCount: number;
+  momentDay: string | null;
+  selfieId: string | null;
+  selfieWidth: number | null;
+  selfieHeight: number | null;
+  selfieThumbhash: string | null;
+  archived: boolean;
 };
 
 export type AuthoredMedia = { id: string; tripId: string; authorUserId: string };
@@ -58,12 +69,22 @@ export async function mediaExistsInTrip(db: D1Database, id: string, tripId: stri
   return row !== undefined;
 }
 
-/** Pending ones count too, and so do the ones deleted by the admin. */
+/** Pending ones count too, and so do the ones deleted by the admin. Moment photos and selfies (`moment_day`) never count. */
 export async function countMemberMediaOnDay(db: D1Database, memberId: string, day: string, type: Media["type"]): Promise<number> {
   const row = await orm(db)
     .select({ n: count() })
     .from(media)
-    .where(and(eq(media.memberId, memberId), eq(media.localDate, day), eq(media.type, type)))
+    .where(and(eq(media.memberId, memberId), eq(media.localDate, day), eq(media.type, type), isNull(media.momentDay)))
+    .get();
+  return row?.n ?? 0;
+}
+
+/** All the media of a given type a member has in the rollo (pending and admin-deleted ones count; moment media never do). */
+export async function countMemberMedia(db: D1Database, memberId: string, type: Media["type"]): Promise<number> {
+  const row = await orm(db)
+    .select({ n: count() })
+    .from(media)
+    .where(and(eq(media.memberId, memberId), eq(media.type, type), isNull(media.momentDay)))
     .get();
   return row?.n ?? 0;
 }
@@ -72,18 +93,47 @@ export function insertMedia(db: D1Database, m: NewMedia): D1PreparedStatement {
   return toStatement(db, orm(db).insert(media).values(m));
 }
 
+/** Only flips a row that is not uploaded yet, so `meta.changes` tells who completed it first (one winner per media). */
 export function markUploaded(db: D1Database, id: string, now: number, size: number): D1PreparedStatement {
-  return toStatement(db, orm(db).update(media).set({ status: "uploaded", uploadedAt: now, sizeBytes: size }).where(eq(media.id, id)));
+  return toStatement(
+    db,
+    orm(db).update(media).set({ status: "uploaded", uploadedAt: now, sizeBytes: size }).where(and(eq(media.id, id), ne(media.status, "uploaded"))),
+  );
+}
+
+/** User ids of the trip's active members (not left, not removed). */
+export async function listActiveMemberUserIds(db: D1Database, tripId: string): Promise<string[]> {
+  const rows = await orm(db)
+    .select({ userId: members.userId })
+    .from(members)
+    .where(and(eq(members.tripId, tripId), isNull(members.removedAt), isNull(members.leftAt)))
+    .all();
+  return rows.map((r) => r.userId);
+}
+
+/** Archives the rows (keeps the first archive time when already archived). */
+export function markArchived(db: D1Database, ids: string[], now: number): D1PreparedStatement {
+  return toStatement(db, orm(db).update(media).set({ archivedAt: sql`COALESCE(${media.archivedAt}, ${now})` }).where(inArray(media.id, ids)));
+}
+
+export function markUnarchived(db: D1Database, ids: string[]): D1PreparedStatement {
+  return toStatement(db, orm(db).update(media).set({ archivedAt: null }).where(inArray(media.id, ids)));
 }
 
 export function markDeleted(db: D1Database, id: string, now: number): D1PreparedStatement {
   return toStatement(db, orm(db).update(media).set({ deletedAt: now }).where(eq(media.id, id)));
 }
 
+/** Ids of the not-deleted selfies paired with a moment's main photo. */
+export async function findLiveSelfies(db: D1Database, mainId: string): Promise<Media[]> {
+  return orm(db).select().from(media).where(and(eq(media.pairedMediaId, mainId), isNull(media.deletedAt))).all();
+}
+
 export async function listFeed(db: D1Database, tripId: string, viewerId: string): Promise<FeedRow[]> {
   const viewerLike = alias(likes, "viewer_like");
   const countedLike = alias(likes, "counted_like");
   const countedMedia = alias(media, "counted_media");
+  const selfie = alias(media, "selfie");
 
   // Likes per photo of this trip, so the feed gets every count in one query.
   const likeCounts = orm(db)
@@ -113,37 +163,76 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
       authorUserId: members.userId,
       authorAvatarKey: users.avatarKey,
       featureBlockedAt: media.featureBlockedAt,
+      memberAllowsFeaturing: sql<boolean>`${members.allowFeaturing} != 0`.mapWith(Boolean),
+      accountAllowsFeaturing: sql<boolean>`COALESCE(${userSettings.allowFeaturing}, 1) != 0`.mapWith(Boolean),
       featuredByMe: sql<boolean>`${featured.mediaId} IS NOT NULL`.mapWith(Boolean),
       likeCount: sql<number>`COALESCE(${likeCounts.n}, 0)`,
       likedByMe: sql<boolean>`${viewerLike.mediaId} IS NOT NULL`.mapWith(Boolean),
+      commentCount: commentCountSql(media.id, viewerId),
+      momentDay: media.momentDay,
+      selfieId: selfie.id,
+      selfieWidth: selfie.width,
+      selfieHeight: selfie.height,
+      selfieThumbhash: selfie.thumbhash,
+      archived: sql<boolean>`${media.archivedAt} IS NOT NULL`.mapWith(Boolean),
     })
     .from(media)
     .innerJoin(members, eq(members.id, media.memberId))
     .innerJoin(users, eq(users.id, members.userId))
+    .leftJoin(userSettings, eq(userSettings.userId, members.userId))
     .leftJoin(featured, and(eq(featured.mediaId, media.id), eq(featured.userId, viewerId)))
     .leftJoin(viewerLike, and(eq(viewerLike.mediaId, media.id), eq(viewerLike.userId, viewerId)))
     .leftJoin(likeCounts, eq(likeCounts.mediaId, media.id))
+    // The selfie of a moment photo travels inside it (never as an item of its own).
+    .leftJoin(
+      selfie,
+      and(
+        eq(selfie.pairedMediaId, media.id),
+        eq(selfie.status, "uploaded"),
+        isNull(selfie.deletedAt),
+        notReportedBy(viewerId, selfie.id),
+        or(isNull(selfie.archivedAt), eq(members.userId, viewerId)),
+      ),
+    )
     .where(
       and(
         eq(media.tripId, tripId),
         eq(media.status, "uploaded"),
         isNull(media.deletedAt),
+        isNull(media.pairedMediaId),
         notHiddenFor(viewerId, media.id, members.userId),
+        // Archived: only its author still sees it.
+        or(isNull(media.archivedAt), eq(members.userId, viewerId)),
       ),
     )
     .orderBy(asc(media.takenAt));
 }
 
-/** Keys of an uploaded, not deleted file of the trip. */
+/** Keys of an uploaded, not deleted file of the trip; an archived one only for its author (`viewerId`). */
 export async function findDownloadKeys(
   db: D1Database,
   id: string,
   tripId: string,
-): Promise<Pick<Media, "originalKey" | "thumbKey"> | null> {
+  viewerId: string,
+): Promise<(Pick<Media, "originalKey" | "thumbKey"> & { isMoment: boolean }) | null> {
   const row = await orm(db)
-    .select({ originalKey: media.originalKey, thumbKey: media.thumbKey })
+    .select({
+      originalKey: media.originalKey,
+      thumbKey: media.thumbKey,
+      // Either image of a daily moment (the main photo or the linked one).
+      isMoment: sql<boolean>`${media.momentDay} IS NOT NULL OR ${media.pairedMediaId} IS NOT NULL`.mapWith(Boolean),
+    })
     .from(media)
-    .where(and(eq(media.id, id), eq(media.tripId, tripId), eq(media.status, "uploaded"), isNull(media.deletedAt)))
+    .innerJoin(members, eq(members.id, media.memberId))
+    .where(
+      and(
+        eq(media.id, id),
+        eq(media.tripId, tripId),
+        eq(media.status, "uploaded"),
+        isNull(media.deletedAt),
+        or(isNull(media.archivedAt), eq(members.userId, viewerId)),
+      ),
+    )
     .get();
   return row ?? null;
 }

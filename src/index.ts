@@ -9,7 +9,9 @@ import admin from "./modules/admin/admin.router";
 import auth from "./modules/auth/auth.router";
 import blocks from "./modules/blocks/blocks.router";
 import featured from "./modules/featured/featured.router";
+import { meFriendRequests, userFriendRequests } from "./modules/friend-requests/friend-requests.router";
 import friends, { friendLinks } from "./modules/friends/friends.router";
+import comments from "./modules/comments/comments.router";
 import likes from "./modules/likes/likes.router";
 import avatars from "./modules/avatars/avatars.router";
 import me from "./modules/me/me.router";
@@ -21,6 +23,7 @@ import { purgeOldEmailCounters } from "./lib/email-caps";
 import { sendModerationSummary } from "./lib/moderation-summary";
 import { cleanupStalePending } from "./lib/pending-cleanup";
 import reports from "./modules/reports/reports.router";
+import moments from "./modules/moments/moments.router";
 import trips from "./modules/trips/trips.router";
 import users from "./modules/users/users.router";
 import usernames from "./modules/usernames/usernames.router";
@@ -40,18 +43,22 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 
 app.route("/admin", admin);
 app.route("/auth", auth);
+app.route("/me", meFriendRequests);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);
+app.route("/users", userFriendRequests);
 app.route("/users", users);
 app.route("/friends", friends);
 app.route("/blocks", blocks);
 app.route("/reports", reports);
 app.route("/friend-links", friendLinks);
+app.route("/trips", moments);
 app.route("/trips", trips);
 app.route("/", media);
 app.route("/", featured);
 app.route("/", likes);
+app.route("/", comments);
 
 // Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {

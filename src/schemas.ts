@@ -30,7 +30,15 @@ export const TripSchema = z
     revealAt: epochMs("Automatic reveal"),
     revealed: z.boolean(),
     dailyPhotoLimit: z.number().int(),
-    dailyVideoLimit: z.number().int(),
+    dailyVideoLimit: z.number().int().openapi({ description: "Legacy: new rollos have no videos (0)" }),
+    featuringDisabled: z.boolean().openapi({ description: "Private rollo: nobody can feature its photos on a profile, not even their author" }),
+    photoLimitMode: z.enum(["daily", "total"]).openapi({
+      description: "daily: dailyPhotoLimit per person per local day; total: totalPhotoLimit per person for the whole rollo",
+    }),
+    totalPhotoLimit: z.number().int().nullable().openapi({ description: "Photos per person in the whole rollo; null in daily mode" }),
+    momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
+    momentWindowStart: z.number().int().openapi({ description: "Moment window start, minutes from midnight in the rollo's time zone" }),
+    momentWindowEnd: z.number().int().openapi({ description: "Moment window end, minutes from midnight in the rollo's time zone" }),
   })
   .openapi("Trip");
 
@@ -69,6 +77,7 @@ export const MemberSchema = z
     avatarUrl: z.string().nullable(),
     role: RoleSchema,
     blockedByMe: z.boolean().openapi({ description: "Whether you blocked this member" }),
+    allowFeaturing: z.boolean().optional().openapi({ description: "Only on `me`: others may feature your photos of this rollo on their profile" }),
   })
   .openapi("Member");
 
@@ -140,7 +149,9 @@ export const TripDetailSchema = z
     members: z.array(MemberSchema),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),
-      photosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
+      photosLeft: z.number().int().openapi({
+        description: "Photos left today (daily mode) or in the whole rollo (total mode); 0 outside the rollo's dates",
+      }),
       videosLeft: z.number().int().openapi({ description: "0 outside the rollo's dates" }),
     }),
     totalUploaded: z.number().int(),

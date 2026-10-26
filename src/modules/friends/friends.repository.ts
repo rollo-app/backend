@@ -85,6 +85,13 @@ export function insertFriendship(db: D1Database, a: string, b: string, now: numb
   return db.prepare("INSERT OR IGNORE INTO friendships (user_a, user_b, created_at) VALUES (?, ?, ?)").bind(a, b, now);
 }
 
+/** Requests between the two users, both directions: a friendship (made or ended) leaves none behind. */
+export function deleteFriendRequests(db: D1Database, a: string, b: string): D1PreparedStatement {
+  return db
+    .prepare("DELETE FROM friend_requests WHERE (from_user_id = ?1 AND to_user_id = ?2) OR (from_user_id = ?2 AND to_user_id = ?1)")
+    .bind(a, b);
+}
+
 export function deleteFriendship(db: D1Database, a: string, b: string): D1PreparedStatement {
   return db.prepare("DELETE FROM friendships WHERE user_a = ? AND user_b = ?").bind(a, b);
 }

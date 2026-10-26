@@ -48,11 +48,21 @@ export type TripRow = {
   revealed_at: number | null;
   daily_photo_limit: number;
   daily_video_limit: number;
+  photo_limit_mode: "daily" | "total";
+  total_photo_limit: number | null;
   created_at: number;
   /** When the "rollo started" push was sent (or the trip had already started when notifications shipped). */
   started_notified_at: number | null;
   /** When the "rollo revealed" push was sent (or the trip had already revealed when notifications shipped). */
   revealed_notified_at: number | null;
+  /** Private rollo: nobody can feature its photos (0/1). */
+  featuring_disabled: number;
+  /** Daily moment: 'off' | 'photo' | 'photo_selfie'. */
+  moment_mode: "off" | "photo" | "photo_selfie";
+  /** Moment window, minutes from midnight in the trip's time zone. */
+  moment_window_start: number;
+  moment_window_end: number;
+  created_by_user_id: string | null;
 };
 
 export type UserRow = {
@@ -64,6 +74,7 @@ export type UserRow = {
   pending_avatar_key: string | null;
   bio: string | null;
   badge: string | null;
+  unlimited_rollos: number;
   profile_visibility: ProfileVisibility;
   created_at: number;
 };
@@ -77,6 +88,8 @@ export type MemberRow = {
   removed_at: number | null;
   left_at: number | null;
   added_by_user_id: string | null;
+  /** Others may feature this member's photos of the rollo (0/1). */
+  allow_featuring: number;
 };
 
 export type MediaType = "photo" | "video";
@@ -85,6 +98,8 @@ export type MediaRow = {
   id: string;
   trip_id: string;
   member_id: string;
+  moment_day: string | null;
+  paired_media_id: string | null;
   type: MediaType;
   taken_at: number;
   local_date: string;
@@ -111,6 +126,12 @@ export type MediaRow = {
   like_notified_at: number | null;
   /** Likes since like_notified_at that did not send a push. */
   likes_since_notified: number;
+  /** Last time a comment on this photo sent a push (anti-spam window). */
+  comment_notified_at: number | null;
+  /** Comments since comment_notified_at that did not send a push. */
+  comments_since_notified: number;
+  /** The author archived it (after the reveal): only they still see it. */
+  archived_at: number | null;
 };
 
 export type AppEnv = {

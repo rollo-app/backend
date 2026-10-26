@@ -140,6 +140,10 @@ const ALL_ON = {
   tripRevealed: true,
   photoFeatured: true,
   photoLiked: true,
+  photoCommented: true,
+  friendRequest: true,
+  dailyMoment: true,
+  momentPosted: true,
 };
 
 describe("GET /me/settings", () => {
@@ -147,7 +151,7 @@ describe("GET /me/settings", () => {
     const u = await signUp();
     const res = await api("GET", "/me/settings", { token: u.token });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ notifications: ALL_ON });
+    expect(res.body).toEqual({ notifications: ALL_ON, privacy: { allowFeaturing: true } });
   });
 
   it("requires a session", async () => {
@@ -156,28 +160,36 @@ describe("GET /me/settings", () => {
 });
 
 describe("PATCH /me/settings", () => {
+  it("toggles dailyMoment and persists it", async () => {
+    const u = await signUp();
+    const off = await api("PATCH", "/me/settings", { token: u.token, body: { notifications: { dailyMoment: false } } });
+    expect(off.status).toBe(200);
+    expect(off.body.notifications.dailyMoment).toBe(false);
+    expect((await api("GET", "/me/settings", { token: u.token })).body.notifications.dailyMoment).toBe(false);
+  });
+
   it("changes only the keys sent and returns the full settings", async () => {
     const u = await signUp();
     const res = await api("PATCH", "/me/settings", { token: u.token, body: { notifications: { photoLiked: false } } });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ notifications: { ...ALL_ON, photoLiked: false } });
+    expect(res.body).toEqual({ notifications: { ...ALL_ON, photoLiked: false }, privacy: { allowFeaturing: true } });
 
     const again = await api("PATCH", "/me/settings", { token: u.token, body: { notifications: { tripStarted: false, photoLiked: true } } });
-    expect(again.body).toEqual({ notifications: { ...ALL_ON, tripStarted: false } });
-    expect((await api("GET", "/me/settings", { token: u.token })).body).toEqual({ notifications: { ...ALL_ON, tripStarted: false } });
+    expect(again.body).toEqual({ notifications: { ...ALL_ON, tripStarted: false }, privacy: { allowFeaturing: true } });
+    expect((await api("GET", "/me/settings", { token: u.token })).body).toEqual({ notifications: { ...ALL_ON, tripStarted: false }, privacy: { allowFeaturing: true } });
   });
 
   it("an empty patch changes nothing", async () => {
     const u = await signUp();
-    expect((await api("PATCH", "/me/settings", { token: u.token, body: {} })).body).toEqual({ notifications: ALL_ON });
-    expect((await api("PATCH", "/me/settings", { token: u.token, body: { notifications: {} } })).body).toEqual({ notifications: ALL_ON });
+    expect((await api("PATCH", "/me/settings", { token: u.token, body: {} })).body).toEqual({ notifications: ALL_ON, privacy: { allowFeaturing: true } });
+    expect((await api("PATCH", "/me/settings", { token: u.token, body: { notifications: {} } })).body).toEqual({ notifications: ALL_ON, privacy: { allowFeaturing: true } });
   });
 
   it("only changes your own settings", async () => {
     const a = await signUp();
     const b = await signUp();
     await api("PATCH", "/me/settings", { token: a.token, body: { notifications: { newFriend: false } } });
-    expect((await api("GET", "/me/settings", { token: b.token })).body).toEqual({ notifications: ALL_ON });
+    expect((await api("GET", "/me/settings", { token: b.token })).body).toEqual({ notifications: ALL_ON, privacy: { allowFeaturing: true } });
   });
 
   it("rejects unknown keys and wrong types", async () => {
@@ -192,7 +204,7 @@ describe("PATCH /me/settings", () => {
     ]) {
       expect((await api("PATCH", "/me/settings", { token: u.token, body })).status, JSON.stringify(body)).toBe(400);
     }
-    expect((await api("GET", "/me/settings", { token: u.token })).body).toEqual({ notifications: ALL_ON });
+    expect((await api("GET", "/me/settings", { token: u.token })).body).toEqual({ notifications: ALL_ON, privacy: { allowFeaturing: true } });
   });
 
   it("requires a session", async () => {

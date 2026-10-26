@@ -36,10 +36,29 @@ export const RegisterMediaSchema = z
     thumbSizeBytes: z.number().int().positive().openapi({
       description: "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length",
     }),
+    momentDay: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullish()
+      .openapi({
+        description:
+          "Trip-local date (YYYY-MM-DD) of the daily moment this photo answers. The member must have a moment for that day " +
+          "(409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
+        example: "2027-01-12",
+      }),
+    pairedMediaId: z.string().uuid().nullish().openapi({
+      description:
+        "Marks this photo as the selfie of a moment: the id of the member's own moment photo in the same rollo (400 otherwise). " +
+        "The selfie takes its moment day from that photo and doesn't use the photo quota.",
+    }),
   })
   .refine((d) => d.type !== "video" || (d.durationS != null && d.durationS <= MAX_VIDEO_SECONDS), {
     message: "Los videos tienen que durar 15 segundos o menos",
     path: ["durationS"],
+  })
+  .refine((d) => d.type === "photo" || (d.momentDay == null && d.pairedMediaId == null), {
+    message: "Solo las fotos pueden ser del momento del día",
+    path: ["momentDay"],
   })
   .refine((d) => d.sizeBytes <= MAX_SIZE[d.type], { message: "El archivo es demasiado grande", path: ["sizeBytes"] })
   .refine((d) => d.thumbSizeBytes <= MAX_THUMB_SIZE, {
@@ -90,20 +109,50 @@ export const FeedItemSchema = z
         avatarUrl: z.string().nullable(),
       })
       .openapi({ description: "`id` is the author's membership id; `userId` their user id" }),
-    width: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
-    height: nullableNumber.optional().openapi({ description: "Only after the reveal" }),
+    width: nullableNumber.optional().openapi({ description: "Only after the reveal (and for the photos of a daily moment, right away)" }),
+    height: nullableNumber.optional().openapi({ description: "Only after the reveal (and for the photos of a daily moment, right away)" }),
     files: z
       .object({ thumb: z.string(), original: z.string() })
       .optional()
-      .openapi({ description: "Download paths; only after the reveal" }),
+      .openapi({ description: "Download paths; only after the reveal, except for the photos of a daily moment (main and linked image), which any active member gets as soon as they are uploaded" }),
     featuredByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you featured it on your profile" }),
     featureBlocked: z.boolean().optional().openapi({
       description: "Only after the reveal: the author does not let others feature it (they still can)",
+    }),
+    canFeature: z.boolean().optional().openapi({
+      description:
+        "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)",
     }),
     likeCount: z.number().int().optional().openapi({
       description: "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos",
     }),
     likedByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you like it" }),
+    archived: z.boolean().optional().openapi({
+      description:
+        "Only after the reveal: its author archived it. Archived items only reach their author (everyone else never gets them), so it is only ever true in your own feed",
+    }),
+    commentCount: z.number().int().optional().openapi({
+      description: "After the reveal, and before it on a daily moment's photo: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos",
+    }),
+    momentDay: z.string().nullable().optional().openapi({
+      description: "Trip-local date (YYYY-MM-DD) when this photo is the answer to a daily moment; absent for ordinary photos",
+    }),
+    selfie: z
+      .object({
+        id: z.string().uuid(),
+        width: nullableNumber,
+        height: nullableNumber,
+        thumbhash: z.string().nullable(),
+        files: z.object({ thumb: z.string(), original: z.string() }).nullable().openapi({
+          description: "Download paths (the linked image of a moment is visible to active members as soon as it is uploaded)",
+        }),
+      })
+      .nullable()
+      .optional()
+      .openapi({
+        description:
+          "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. it comes with files and dimensions right away",
+      }),
   })
   .openapi("FeedItem");
 
