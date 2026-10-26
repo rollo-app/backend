@@ -138,3 +138,29 @@ export function markRemoved(db: D1Database, memberId: string, tripId: string, no
 export function setMemberAllowFeaturing(db: D1Database, memberId: string, allow: boolean): D1PreparedStatement {
   return db.prepare("UPDATE members SET allow_featuring = ? WHERE id = ?").bind(allow ? 1 : 0, memberId);
 }
+
+/** Rollos `userId` created (admin) that are not revealed yet: in progress, upcoming or ended. */
+export async function countUnrevealedCreated(db: D1Database, userId: string, now: number): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM trips t
+       JOIN members m ON m.trip_id = t.id AND m.user_id = ? AND m.role = 'admin'
+       WHERE t.revealed_at IS NULL AND t.reveal_at > ?`,
+    )
+    .bind(userId, now)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+/** `created_at` (ascending) of the rollos `userId` created since `since`. */
+export async function createdSince(db: D1Database, userId: string, since: number): Promise<number[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.created_at FROM trips t
+       JOIN members m ON m.trip_id = t.id AND m.user_id = ? AND m.role = 'admin'
+       WHERE t.created_at > ? ORDER BY t.created_at ASC`,
+    )
+    .bind(userId, since)
+    .all<{ created_at: number }>();
+  return results.map((r) => r.created_at);
+}

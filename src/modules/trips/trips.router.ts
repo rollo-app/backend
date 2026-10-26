@@ -22,7 +22,7 @@ export const createTripRoute = createRoute({
   path: "/",
   tags,
   summary: "Create a trip",
-  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code.",
+  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },

@@ -73,6 +73,7 @@ export type UserRow = {
   pending_avatar_key: string | null;
   bio: string | null;
   badge: string | null;
+  unlimited_rollos: number;
   profile_visibility: ProfileVisibility;
   created_at: number;
 };

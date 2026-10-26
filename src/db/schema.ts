@@ -42,6 +42,7 @@ export const users = sqliteTable(
     bio: text("bio"),
     profileVisibility: text("profile_visibility", { enum: ["friends", "public"] }).notNull().default("friends"),
     badge: text("badge", { enum: ["founder", "first_edition"] }),
+    unlimitedRollos: integer("unlimited_rollos").notNull().default(0),
   },
   (t) => [
     uniqueIndex("idx_users_username").on(t.username),
