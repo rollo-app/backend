@@ -27,18 +27,33 @@ export function findTripByJoinCode(db: D1Database, joinCode: string): Promise<Tr
   return db.prepare("SELECT * FROM trips WHERE join_code = ?").bind(joinCode).first<TripRow>();
 }
 
-export function insertTrip(db: D1Database, t: NewTrip): D1PreparedStatement {
+/**
+ * Inserts the trip only while the creator is under the limits on rollos they created (skipped with
+ * `limited = false`). The check is part of the INSERT, so two concurrent creates cannot both pass.
+ */
+export function insertTrip(
+  db: D1Database,
+  t: NewTrip,
+  creator: { userId: string; limited: boolean; unrevealedMax: number; windowMax: number; windowSince: number },
+): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
                           daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at, featuring_disabled,
-                          moment_mode, moment_window_start, moment_window_end)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          moment_mode, moment_window_start, moment_window_end, created_by_user_id)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE ? = 0 OR (
+         (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?) < ?
+         AND (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND created_at > ?) < ?
+       )`,
     )
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
       t.daily_photo_limit, t.daily_video_limit, t.photo_limit_mode, t.total_photo_limit, t.created_at, t.started_notified_at, t.featuring_disabled,
-      t.moment_mode, t.moment_window_start, t.moment_window_end,
+      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId,
+      creator.limited ? 1 : 0,
+      creator.userId, t.created_at, creator.unrevealedMax,
+      creator.userId, creator.windowSince, creator.windowMax,
     );
 }
 
@@ -46,9 +61,9 @@ export function insertAdminMember(db: D1Database, id: string, tripId: string, us
   return db
     .prepare(
       `INSERT INTO members (id, trip_id, user_id, role, created_at)
-       VALUES (?, ?, ?, 'admin', ?)`,
+       SELECT ?, ?, ?, 'admin', ? WHERE EXISTS (SELECT 1 FROM trips WHERE id = ?)`,
     )
-    .bind(id, tripId, userId, now);
+    .bind(id, tripId, userId, now, tripId);
 }
 
 export function findMember(db: D1Database, tripId: string, userId: string): Promise<MemberRow | null> {
@@ -144,8 +159,7 @@ export async function countUnrevealedCreated(db: D1Database, userId: string, now
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS n FROM trips t
-       JOIN members m ON m.trip_id = t.id AND m.user_id = ? AND m.role = 'admin'
-       WHERE t.revealed_at IS NULL AND t.reveal_at > ?`,
+       WHERE t.created_by_user_id = ? AND t.revealed_at IS NULL AND t.reveal_at > ?`,
     )
     .bind(userId, now)
     .first<{ n: number }>();
@@ -157,8 +171,7 @@ export async function createdSince(db: D1Database, userId: string, since: number
   const { results } = await db
     .prepare(
       `SELECT t.created_at FROM trips t
-       JOIN members m ON m.trip_id = t.id AND m.user_id = ? AND m.role = 'admin'
-       WHERE t.created_at > ? ORDER BY t.created_at ASC`,
+       WHERE t.created_by_user_id = ? AND t.created_at > ? ORDER BY t.created_at ASC`,
     )
     .bind(userId, since)
     .all<{ created_at: number }>();

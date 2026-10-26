@@ -25,6 +25,7 @@ const baseTrip: TripRow = {
   moment_mode: "off",
   moment_window_start: 540,
   moment_window_end: 1380,
+  created_by_user_id: null,
 };
 
 describe("localDate", () => {

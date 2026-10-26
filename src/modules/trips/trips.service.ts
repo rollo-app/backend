@@ -51,10 +51,13 @@ export async function createTrip(
   db: D1Database,
   user: UserRow,
   body: CreateTripInput,
+  hooks: { beforeInsert?: () => Promise<void> } = {},
 ): Promise<{ trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> } | null> {
   requireName(user);
   const now = Date.now();
-  if (!user.unlimited_rollos) await enforceCreateLimits(db, user.id, body.timezone, now);
+  const limited = !user.unlimited_rollos;
+  // Early check for a clear error; the INSERT below re-checks atomically.
+  if (limited) await enforceCreateLimits(db, user.id, body.timezone, now);
 
   // Unique code (collisions are very unlikely, but we retry just in case).
   let joinCode = "";
@@ -66,6 +69,8 @@ export async function createTrip(
 
   const tripId = crypto.randomUUID();
   const memberId = crypto.randomUUID();
+
+  await hooks.beforeInsert?.();
 
   await db.batch([
     repo.insertTrip(db, {
@@ -87,12 +92,23 @@ export async function createTrip(
       moment_mode: body.momentMode,
       moment_window_start: body.momentWindowStart,
       moment_window_end: body.momentWindowEnd,
+    }, {
+      userId: user.id,
+      limited,
+      unrevealedMax: MAX_UNREVEALED_CREATED,
+      windowMax: MAX_CREATED_IN_WINDOW,
+      windowSince: now - CREATE_WINDOW_MS,
     }),
     repo.insertAdminMember(db, memberId, tripId, user.id, now),
   ]);
 
   const trip = await repo.findTripById(db, tripId);
-  return { trip: trip!, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
+  if (!trip) {
+    // The guarded INSERT wrote nothing: a concurrent create used the last slot. Say which limit hit.
+    await enforceCreateLimits(db, user.id, body.timezone, Date.now());
+    throw conflict("No pudimos crear el rollo ahora. Probá de nuevo.");
+  }
+  return { trip, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
 }
 
 // ---------- Membership ----------

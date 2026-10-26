@@ -27,6 +27,7 @@ export const trips = sqliteTable("trips", {
   momentMode: text("moment_mode").notNull().default("off"),
   momentWindowStart: integer("moment_window_start").notNull().default(540),
   momentWindowEnd: integer("moment_window_end").notNull().default(1380),
+  createdByUserId: text("created_by_user_id"),
 });
 
 export const users = sqliteTable(
