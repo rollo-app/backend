@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
 import { NO_AVATAR, renderAvatar } from "./avatars";
-import { NO_USERNAME, PUBLIC_PROFILES, SEED_BADGES, SEED_BIOS } from "./people";
+import { LIMITED_ROLLOS, NO_USERNAME, PUBLIC_PROFILES, SEED_BADGES, SEED_BIOS } from "./people";
 
 /** Seed helpers: API, local D1, images (disk-cached), times and daily quota. */
 
@@ -96,7 +96,7 @@ export function ensureUser(name: string): Promise<string> {
         d1(`INSERT INTO users (id, email, name, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${username}, ${now})`);
       }
       const badge = SEED_BADGES[name];
-      d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"} WHERE id = ${sqlStr(userId)}`);
+      d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"}, unlimited_rollos = ${LIMITED_ROLLOS.has(name) ? 0 : 1} WHERE id = ${sqlStr(userId)}`);
       const token = randomBytes(32).toString("base64url");
       const hash = createHash("sha256").update(token).digest("hex");
       d1(

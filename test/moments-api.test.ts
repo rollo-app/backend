@@ -25,25 +25,34 @@ const get = (tripId: string, token: string) => api<{ moments: Moment[] }>("GET",
 
 describe("GET /trips/{tripId}/moments", () => {
   it("gives an active member one moment per day with a window, from today to the end, inside each day window", async () => {
-    const fx = await newTrip({ momentMode: "photo_selfie" });
-    const res = await get(fx.tripId, fx.adminToken);
-    expect(res.status).toBe(200);
+    // Fixed clock (10:00 local on a trip day), so the result does not depend on the time the suite runs.
+    const now = Date.UTC(2030, 0, 10, 13, 0);
+    const fx = await newTrip({
+      momentMode: "photo_selfie",
+      startsAt: Date.UTC(2030, 0, 9, 12),
+      endsAt: Date.UTC(2030, 0, 14, 12),
+      revealAt: Date.UTC(2030, 0, 15),
+    });
     const trip = await tripRow(fx.tripId);
-    const { localDate } = await import("../src/lib/util");
-    const today = localDate(Date.now(), trip.timezone);
+    const today = localDate(now, trip.timezone);
     const expected = tripDays(trip).filter((d) => d >= today && dayWindow(trip, d));
-    const now = Date.now();
-    // Today's moment is only returned while it can still be taken.
-    const days = res.body.moments.map((m) => m.day);
-    // Everything after today is returned; today's only while it can still be taken.
-    expect(days.filter((d) => d !== today)).toEqual(expected.filter((d) => d !== today));
-    for (const m of res.body.moments) {
+    expect(expected).toContain(today);
+    const moments = await getMyMoments(env.DB, trip, fx.adminUserId, now, () => 0);
+    expect(moments.map((m) => m.day)).toEqual(expected);
+    for (const m of moments) {
       const w = dayWindow(trip, m.day)!;
       expect(m.notifyAt).toBeGreaterThanOrEqual(w.from);
       expect(m.notifyAt).toBeLessThanOrEqual(w.to);
       expect(m.notifyAt + MOMENT_WINDOW_MS).toBeGreaterThan(now);
     }
     expect((await momentRows(fx.tripId)).length).toBe(expected.length);
+  });
+
+  it("answers the endpoint with 200 and the member's moments", async () => {
+    const fx = await newTrip({ momentMode: "photo_selfie" });
+    const res = await get(fx.tripId, fx.adminToken);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.moments)).toBe(true);
   });
 
   it("returns the same notifyAt when asked twice, with one row per day", async () => {

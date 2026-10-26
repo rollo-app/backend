@@ -19,14 +19,45 @@ function requireName(user: Pick<UserRow, "name" | "username">) {
 
 // ---------- Create ----------
 
+export const MAX_UNREVEALED_CREATED = 2;
+export const MAX_CREATED_IN_WINDOW = 4;
+export const CREATE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+/** "3 de noviembre" in the given time zone. */
+function spanishDate(ms: number, timeZone: string): string {
+  const [, month = 1, day = 1] = localDate(ms, timeZone).split("-").map(Number);
+  return `${day} de ${MONTHS[month - 1]}`;
+}
+
+/** Limits on rollos the user created (as admin); joined or added ones never count. */
+async function enforceCreateLimits(db: D1Database, userId: string, timeZone: string, now: number) {
+  const unrevealed = await repo.countUnrevealedCreated(db, userId, now);
+  if (unrevealed >= MAX_UNREVEALED_CREATED) {
+    throw conflict(`Ya tenés ${MAX_UNREVEALED_CREATED} rollos sin revelar. Esperá a que se revele uno para crear otro.`);
+  }
+  const recent = await repo.createdSince(db, userId, now - CREATE_WINDOW_MS);
+  if (recent.length >= MAX_CREATED_IN_WINDOW) {
+    // Creating again needs the count to drop below the max: the 4th most recent has to turn 30 days.
+    const blocking = recent[recent.length - MAX_CREATED_IN_WINDOW]!;
+    throw conflict(
+      `Ya creaste ${MAX_CREATED_IN_WINDOW} rollos en los últimos 30 días. Vas a poder crear otro el ${spanishDate(blocking + CREATE_WINDOW_MS, timeZone)}.`,
+    );
+  }
+}
+
 /** Creates the trip with `user` as admin. `null` when no free join code could be generated. */
 export async function createTrip(
   db: D1Database,
   user: UserRow,
   body: CreateTripInput,
+  hooks: { beforeInsert?: () => Promise<void> } = {},
 ): Promise<{ trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> } | null> {
   requireName(user);
   const now = Date.now();
+  const limited = !user.unlimited_rollos;
+  // Early check for a clear error; the INSERT below re-checks atomically.
+  if (limited) await enforceCreateLimits(db, user.id, body.timezone, now);
 
   // Unique code (collisions are very unlikely, but we retry just in case).
   let joinCode = "";
@@ -38,6 +69,8 @@ export async function createTrip(
 
   const tripId = crypto.randomUUID();
   const memberId = crypto.randomUUID();
+
+  await hooks.beforeInsert?.();
 
   await db.batch([
     repo.insertTrip(db, {
@@ -59,12 +92,23 @@ export async function createTrip(
       moment_mode: body.momentMode,
       moment_window_start: body.momentWindowStart,
       moment_window_end: body.momentWindowEnd,
+    }, {
+      userId: user.id,
+      limited,
+      unrevealedMax: MAX_UNREVEALED_CREATED,
+      windowMax: MAX_CREATED_IN_WINDOW,
+      windowSince: now - CREATE_WINDOW_MS,
     }),
     repo.insertAdminMember(db, memberId, tripId, user.id, now),
   ]);
 
   const trip = await repo.findTripById(db, tripId);
-  return { trip: trip!, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
+  if (!trip) {
+    // The guarded INSERT wrote nothing: a concurrent create used the last slot. Say which limit hit.
+    await enforceCreateLimits(db, user.id, body.timezone, Date.now());
+    throw conflict("No pudimos crear el rollo ahora. Probá de nuevo.");
+  }
+  return { trip, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
 }
 
 // ---------- Membership ----------

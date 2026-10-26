@@ -62,6 +62,7 @@ export type TripRow = {
   /** Moment window, minutes from midnight in the trip's time zone. */
   moment_window_start: number;
   moment_window_end: number;
+  created_by_user_id: string | null;
 };
 
 export type UserRow = {
@@ -73,6 +74,7 @@ export type UserRow = {
   pending_avatar_key: string | null;
   bio: string | null;
   badge: string | null;
+  unlimited_rollos: number;
   profile_visibility: ProfileVisibility;
   created_at: number;
 };

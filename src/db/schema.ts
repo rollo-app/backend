@@ -27,6 +27,7 @@ export const trips = sqliteTable("trips", {
   momentMode: text("moment_mode").notNull().default("off"),
   momentWindowStart: integer("moment_window_start").notNull().default(540),
   momentWindowEnd: integer("moment_window_end").notNull().default(1380),
+  createdByUserId: text("created_by_user_id"),
 });
 
 export const users = sqliteTable(
@@ -42,6 +43,7 @@ export const users = sqliteTable(
     bio: text("bio"),
     profileVisibility: text("profile_visibility", { enum: ["friends", "public"] }).notNull().default("friends"),
     badge: text("badge", { enum: ["founder", "first_edition"] }),
+    unlimitedRollos: integer("unlimited_rollos").notNull().default(0),
   },
   (t) => [
     uniqueIndex("idx_users_username").on(t.username),

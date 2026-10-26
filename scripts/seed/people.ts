@@ -76,6 +76,9 @@ export function tripPhase(t: TripTimes, now = Date.now()): string {
   return "terminado, sin revelar";
 }
 
+/** Seed users that are NOT exempt from the limits on creating rollos (`users.unlimited_rollos`): "Nuevo" creates nothing in the seed, so it is the one to try the limits with. Everyone else creates several rollos. */
+export const LIMITED_ROLLOS = new Set(["Nuevo"]);
+
 /** Seed users with a public profile (anyone signed in sees their featured photos and bio). Everyone else: "friends". */
 export const PUBLIC_PROFILES = new Set(["Tomi"]);
 
