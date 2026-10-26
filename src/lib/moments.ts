@@ -1,6 +1,6 @@
 import { localDate } from "./util";
 
-export const MOMENT_WINDOW_MS = 5 * 60_000;
+export const MOMENT_WINDOW_MS = 15 * 60_000;
 export const MIN_DAY_WINDOW_MS = 30 * 60_000;
 
 const DAY_MS = 86_400_000;

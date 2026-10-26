@@ -1011,7 +1011,7 @@
           },
           "notifyAt": {
             "type": "integer",
-            "description": "Epoch ms when the moment starts; the user has 5 minutes from then"
+            "description": "Epoch ms when the moment starts; the user has 15 minutes from then"
           }
         },
         "required": [

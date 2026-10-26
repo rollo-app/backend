@@ -44,9 +44,9 @@ describe("dayWindow", () => {
     expect(dayWindow(t2, "2027-01-11")?.from).toBe(ba("2027-01-11", 15));
   });
 
-  it("ends 5 minutes before ends_at on the last day", () => {
+  it("ends 15 minutes before ends_at on the last day", () => {
     const t2 = trip(ba("2027-01-11", 8), ba("2027-01-14", 18));
-    expect(dayWindow(t2, "2027-01-14")?.to).toBe(ba("2027-01-14", 17, 55));
+    expect(dayWindow(t2, "2027-01-14")?.to).toBe(ba("2027-01-14", 17, 45));
   });
 
   it("returns null when starts_at leaves under 30 minutes", () => {
@@ -105,7 +105,7 @@ describe("drawNotifyAt", () => {
   });
 
   it("exposes the constants", () => {
-    expect(MOMENT_WINDOW_MS).toBe(300_000);
+    expect(MOMENT_WINDOW_MS).toBe(900_000);
     expect(MIN_DAY_WINDOW_MS).toBe(1_800_000);
   });
 });

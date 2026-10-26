@@ -91,7 +91,7 @@ Decisiones de producto que el backend tiene que respetar:
   (archivos de R2, `deleted_at`, sus `likes` y `featured` se borran y sus comentarios quedan con `deleted_at`); otro miembro 403 y el admin con fotos
   ajenas 409, como antes. En un momento, archivar/desarchivar/eliminar la principal arrastra la vinculada y el id de la vinculada da 400.
 - **Momento del día** (`src/modules/moments/`, `src/lib/moments.ts`, migración `0024_daily_moment.sql`): un aviso por día a una hora al azar
-  de cada miembro, con 5 minutos para sacar la foto (`MOMENT_WINDOW_MS`), estilo BeReal. El rollo lo elige al crearse: `trips.moment_mode`
+  de cada miembro, con 15 minutos para sacar la foto (`MOMENT_WINDOW_MS`), estilo BeReal. El rollo lo elige al crearse: `trips.moment_mode`
   (`off` por default, para rollos viejos y el build viejo, `photo` o `photo_selfie`) y la franja `moment_window_start`/`end` (540 y 1380
   minutos desde medianoche en `trip.timezone`, o sea 9:00 a 23:00). Tabla `trip_moments` (trip, user, day, `notify_at`, `media_id`,
   `selfie_media_id`, `taken_at`, `in_window`); en `media`, `moment_day` y `paired_media_id`; en `user_settings`, `notify_daily_moment`
