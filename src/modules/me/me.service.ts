@@ -1,4 +1,4 @@
-import { deleteAccount } from "../../lib/account";
+import { deleteAccount } from "../account/account.service";
 import { presignPut } from "../../lib/r2";
 import { getNotificationSettings, getPrivacySettings, type NotificationSettings, type PrivacySettings, updateNotificationSettings, updatePrivacySettings } from "../../lib/settings";
 import { deleteFeaturedByOthersOfAuthor } from "../featured/featured.repository";
