@@ -3,7 +3,7 @@ import { requireTripMember, requireUser } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { TripParams } from "../../schemas";
 import * as controller from "./moments.controller";
-import { MyMomentsSchema } from "./moments.schemas";
+import { AllMyMomentsSchema, MyMomentsSchema } from "./moments.schemas";
 
 const tags = ["Moments"];
 
@@ -21,6 +21,24 @@ export const listMyMomentsRoute = createRoute({
   request: { params: TripParams },
   responses: { 200: json(MyMomentsSchema, "My moments"), ...errors(401, 403) },
 });
+
+export const listAllMyMomentsRoute = createRoute({
+  method: "get",
+  path: "/moments",
+  tags,
+  summary: "My daily moments in all my rollos",
+  description:
+    "The moments of the caller for every rollo where they are an active member, the moment is on, the rollo is not revealed and it is within the " +
+    "scheduling window (from 3 days before the start until the end). One call instead of one `GET /trips/{tripId}/moments` per rollo. " +
+    "Each rollo carries exactly what that endpoint would return for it, possibly empty (so the app can cancel old notifications). " +
+    "Like the per-rollo endpoint, the first time it draws and stores the missing moments and never re-draws. Ordered by rollo id.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  responses: { 200: json(AllMyMomentsSchema, "My moments in all my rollos"), ...errors(401) },
+});
+
+export const meMoments = createApp();
+meMoments.openapi(listAllMyMomentsRoute, controller.listAllMine);
 
 const moments = createApp();
 
