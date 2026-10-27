@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { devSentBlocks, devSentCodes, devSentNotices, devSentReports } from "../src/lib/email";
-import { sendModerationSummary } from "../src/lib/moderation-summary";
+import { sendModerationSummary } from "../src/modules/moderation/moderation.service";
 import { LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
 import { api, newTrip, requestCode, signUp, uploadMedia, DAY } from "./helpers";
 

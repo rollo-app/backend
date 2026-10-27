@@ -1,9 +1,50 @@
+import { and, isNotNull, eq, notInArray, type SQL } from "drizzle-orm";
+import { QueryBuilder, type SQLiteColumn } from "drizzle-orm/sqlite-core";
+import { blocks, reports } from "../../db/schema";
 import type { MediaRow, UserRow } from "../../types";
 // A repository importing another module's SQL fragments is OK for now: the visibility rules are the featured ones.
 import { VISIBLE_FROM, VISIBLE_WHERE } from "../featured/featured.repository";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])`.
+
+// Visibility rules of reported media and blocked authors. The repositories of comments, featured, likes, me and media
+// import them, so the rule lives in one place.
+/**
+ * SQL boolean fragment to AND into a WHERE clause: hides media the viewer reported and media whose author the viewer blocked.
+ * `mediaAlias` is the alias of `media`, `authorMemberAlias` the alias of the author's `members` row.
+ * Consumes exactly two binds, in this order, both the viewer's user id: (1) reports, (2) blocks.
+ */
+export function hiddenMediaSql(mediaAlias: string, authorMemberAlias: string): string {
+  return (
+    `(${mediaAlias}.id NOT IN (SELECT media_id FROM reports WHERE reporter_id = ? AND media_id IS NOT NULL)` +
+    ` AND ${authorMemberAlias}.user_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?))`
+  );
+}
+
+/**
+ * Drizzle version of `hiddenMediaSql`: a condition to AND into a query that hides media the viewer reported and
+ * media whose author the viewer blocked. Pass the media id column and the author's user id column (`members.userId`)
+ * of the query being built. Same semantics as the string version; no binds to order by hand.
+ */
+export function notHiddenFor(viewerId: string, mediaId: SQLiteColumn, authorUserId: SQLiteColumn): SQL {
+  const qb = new QueryBuilder();
+  const reportedByViewer = qb
+    .select({ mediaId: reports.mediaId })
+    .from(reports)
+    .where(and(eq(reports.reporterId, viewerId), isNotNull(reports.mediaId)));
+  const blockedByViewer = qb.select({ blockedId: blocks.blockedId }).from(blocks).where(eq(blocks.blockerId, viewerId));
+  return and(notInArray(mediaId, reportedByViewer), notInArray(authorUserId, blockedByViewer))!;
+}
+
+/** Only the report half of `notHiddenFor`: media the viewer reported (e.g. a moment selfie, whose author's block already applies through its main photo). */
+export function notReportedBy(viewerId: string, mediaId: SQLiteColumn): SQL {
+  const reportedByViewer = new QueryBuilder()
+    .select({ mediaId: reports.mediaId })
+    .from(reports)
+    .where(and(eq(reports.reporterId, viewerId), isNotNull(reports.mediaId)));
+  return notInArray(mediaId, reportedByViewer);
+}
 
 export type ReportTargetRow = Pick<UserRow, "id" | "email" | "name" | "username">;
 

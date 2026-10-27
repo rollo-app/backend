@@ -1,4 +1,4 @@
-import { hiddenMediaSql } from "../../lib/moderation";
+import { hiddenMediaSql } from "../reports/reports.repository";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 // A repository importing another module's SQL fragments is OK for now: the likes visibility rules mirror the featured ones.
 import { VISIBLE_FROM, VISIBLE_WHERE } from "../featured/featured.repository";

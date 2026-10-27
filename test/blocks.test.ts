@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { devSentBlocks } from "../src/lib/email";
-import { hiddenMediaSql } from "../src/lib/moderation";
+import { hiddenMediaSql } from "../src/modules/reports/reports.repository";
 import { photoWithMetadata } from "./jpeg-fixture";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 

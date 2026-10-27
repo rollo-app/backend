@@ -1,4 +1,4 @@
-import { isBlockedEitherWay } from "../../lib/moderation";
+import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { canSeeProfile } from "../users/users.service";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import { rejectSelfie, rejectSelfieById } from "../moments/moments.service";

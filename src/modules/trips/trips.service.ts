@@ -1,9 +1,9 @@
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
-import { blockedIdsFor } from "../../lib/moderation";
+import { blockedIdsFor } from "../blocks/blocks.service";
 import { actorName, sendPush } from "../../lib/push";
 import { areFriends } from "../friends/friends.service";
-import { claimRevealedStatement, sendTripRevealed } from "../../lib/trip-notices";
+import { sendTripRevealed } from "./notices.service";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
@@ -250,7 +250,7 @@ export async function revealTrip(env: Env, trip: TripRow, actorId: string): Prom
   const now = Date.now();
   // Claim the notice and write revealed_at in one batch (a transaction), claim first: a cron run can never see
   // the trip revealed but unclaimed and notify the admin about their own reveal. Sent after the response.
-  const [claim] = await env.DB.batch([claimRevealedStatement(env.DB, trip.id, now), repo.markRevealed(env.DB, trip.id, now)]);
+  const [claim] = await env.DB.batch([repo.claimRevealedNotice(env.DB, trip.id, now), repo.markRevealed(env.DB, trip.id, now)]);
   return {
     trip: { ...trip, revealed_at: trip.revealed_at ?? now },
     notify: claim!.meta.changes > 0 ? () => sendTripRevealed(env, trip, actorId) : null,

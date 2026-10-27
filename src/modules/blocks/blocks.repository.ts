@@ -53,3 +53,18 @@ export function markBlockEmailed(db: D1Database, blockerId: string, blockedId: s
 export function deleteBlock(db: D1Database, blockerId: string, blockedId: string): D1PreparedStatement {
   return db.prepare("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?").bind(blockerId, blockedId);
 }
+
+/** Whether either of the two users has blocked the other. */
+export async function blockExistsEitherWay(db: D1Database, a: string, b: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 FROM blocks WHERE (blocker_id = ?1 AND blocked_id = ?2) OR (blocker_id = ?2 AND blocked_id = ?1)")
+    .bind(a, b)
+    .first();
+  return row !== null;
+}
+
+/** Ids of the users the blocker has blocked. */
+export async function listBlockedIds(db: D1Database, blockerId: string): Promise<string[]> {
+  const { results } = await db.prepare("SELECT blocked_id FROM blocks WHERE blocker_id = ?").bind(blockerId).all<{ blocked_id: string }>();
+  return results.map((r) => r.blocked_id);
+}

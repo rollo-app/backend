@@ -1,7 +1,7 @@
 import { generateToken, hashToken } from "../../lib/auth";
 import { ipKey } from "../../lib/ip";
 import { FRIEND_CLAIM_TTL, FRIEND_LINK_TTL, generateFriendCode, normalizeFriendCode, pairKey } from "../../lib/friend-code";
-import { isBlockedEitherWay } from "../../lib/moderation";
+import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";

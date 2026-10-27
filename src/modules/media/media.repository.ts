@@ -3,7 +3,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { featured, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
 // A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
 import { commentCountSql } from "../comments/comments.repository";
-import { notHiddenFor, notReportedBy } from "../../lib/moderation";
+import { notHiddenFor, notReportedBy } from "../reports/reports.repository";
 import { orm, toStatement } from "../../shared/db";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides

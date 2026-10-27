@@ -1,6 +1,6 @@
 import { rejectSelfie } from "../moments/moments.service";
 import { actorName, sendPush, type PushMessage } from "../../lib/push";
-import { isBlockedEitherWay } from "../../lib/moderation";
+import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, forbidden, notFound } from "../../shared/errors";

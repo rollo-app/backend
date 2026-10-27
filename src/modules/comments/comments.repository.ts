@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { hiddenMediaSql } from "../../lib/moderation";
+import { hiddenMediaSql } from "../reports/reports.repository";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides

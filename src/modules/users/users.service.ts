@@ -1,4 +1,4 @@
-import { isBlockedEitherWay } from "../../lib/moderation";
+import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { areFriends } from "../friends/friends.service";
 import { notFound } from "../../shared/errors";
 import type { UserRow } from "../../types";
