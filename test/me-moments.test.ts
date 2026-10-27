@@ -30,7 +30,6 @@ describe("GET /me/moments", () => {
     expect(t.tripName).toBe("Bariloche");
     expect(t.momentMode).toBe("photo_selfie");
     expect(t.moments.length).toBeGreaterThan(0);
-    console.log(JSON.stringify(res.body));
   });
 
   it("matches the per-trip endpoint and does not duplicate rows when both are called", async () => {
