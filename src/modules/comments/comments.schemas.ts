@@ -28,7 +28,7 @@ export const CommentSchema = z
       username: z.string().nullable(),
       avatarUrl: z.string().nullable(),
     }),
-    canDelete: z.boolean().openapi({ description: "You wrote it, or the photo is yours" }),
+    canDelete: z.boolean().openapi({ description: "You wrote it, the photo is yours, or you are the rollo admin" }),
   })
   .openapi("Comment");
 

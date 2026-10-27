@@ -93,7 +93,7 @@ describe("POST /media/{mediaId}/comments", () => {
 });
 
 describe("GET /media/{mediaId}/comments", () => {
-  it("lists the comments oldest first with their author, and `canDelete` for yours or on your photo", async () => {
+  it("lists the comments oldest first with their author, and `canDelete` for yours, on your photo or as admin", async () => {
     const t = await revealedTrip();
     const start = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(start);
@@ -108,9 +108,11 @@ describe("GET /media/{mediaId}/comments", () => {
     expect(CommentListSchema.safeParse(asJuani.body).success).toBe(true);
     expect(asJuani.body.comments.map((c: { text: string; canDelete: boolean }) => [c.text, c.canDelete])).toEqual([
       ["primero", true],
-      ["segundo", false],
-      ["tercero", false],
+      ["segundo", true], // Juani is the rollo admin
+      ["tercero", true],
     ]);
+    const asThird = await list(third.token, t.fedePhoto);
+    expect(asThird.body.comments.map((c: { canDelete: boolean }) => c.canDelete)).toEqual([false, false, true]);
     // Fede is the author of the photo: he can delete all of them.
     const asFede = await list(t.fede.token, t.fedePhoto);
     expect(asFede.body.comments.map((c: { canDelete: boolean }) => c.canDelete)).toEqual([true, true, true]);
@@ -174,6 +176,35 @@ describe("DELETE /comments/{commentId}", () => {
     expect((await remove(t.juani.token, crypto.randomUUID())).status).toBe(404);
     expect((await remove(t.juani.token, id)).status).toBe(204);
     expect((await remove(t.juani.token, id)).status).toBe(404);
+  });
+});
+
+describe("the rollo admin and comments", () => {
+  it("the admin (neither the comment's nor the photo's author) sees `canDelete` and deletes someone else's comment", async () => {
+    const t = await revealedTrip();
+    const cami = await joinMember(t.tripId, "Cami");
+    const id = (await comment(cami.token, t.fedePhoto, "de cami")).body.id;
+    const asAdmin = await list(t.juani.token, t.fedePhoto);
+    expect(asAdmin.body.comments.find((c: { id: string }) => c.id === id).canDelete).toBe(true);
+    const another = await joinMember(t.tripId, "Rocío");
+    const asMember = await list(another.token, t.fedePhoto);
+    expect(asMember.body.comments.find((c: { id: string }) => c.id === id).canDelete).toBe(false);
+    expect((await remove(another.token, id)).status).toBe(403);
+    expect((await remove(t.juani.token, id)).status).toBe(204);
+    expect((await list(t.fede.token, t.fedePhoto)).body.comments).toEqual([]);
+  });
+
+  it("a former admin who left or was removed can no longer delete", async () => {
+    for (const column of ["left_at", "removed_at"]) {
+      const t = await revealedTrip();
+      const cami = await joinMember(t.tripId, "Cami");
+      const id = (await comment(t.fede.token, t.juaniPhoto, "de fede")).body.id;
+      await env.DB.prepare("UPDATE members SET role = 'admin' WHERE trip_id = ? AND user_id = ?").bind(t.tripId, cami.userId).run();
+      expect((await list(cami.token, t.juaniPhoto)).body.comments[0].canDelete).toBe(true);
+      await env.DB.prepare(`UPDATE members SET ${column} = ? WHERE trip_id = ? AND user_id = ?`).bind(Date.now(), t.tripId, cami.userId).run();
+      expect((await remove(cami.token, id)).status).toBe(404);
+      expect((await list(t.juani.token, t.juaniPhoto)).body.comments).toHaveLength(1);
+    }
   });
 });
 

@@ -75,7 +75,7 @@ Decisiones de producto que el backend tiene que respetar:
 - **Comentarios** (`src/modules/comments/`, `src/lib/comments.ts`, tabla `comments`): `GET/POST /media/{mediaId}/comments` y `DELETE /comments/{commentId}`.
   Solo fotos (un video da 400 al comentar y lista vacía) y **solo miembros activos del rollo ya revelado** (excepción: la foto principal de un momento del día se comenta apenas se sube, con las mismas reglas; una foto normal da 404 antes del revelado y la imagen vinculada 400): sin camino por perfiles (los comentarios
   muestran nombres y charla del rollo), si no 404; tampoco si hay bloqueo con el autor de la foto o la denunciaste. Texto plano de 1 a 500 caracteres
-  (con trim). Borra el autor del comentario o el de la foto (soft delete, `deleted_at`; otro miembro 403). No se ven los de usuarios bloqueados (cualquier
+  (con trim). Borra el autor del comentario, el de la foto o el admin del rollo (soft delete, `deleted_at`; otro miembro 403). No se ven los de usuarios bloqueados (cualquier
   sentido), los borrados ni los que denunciaste; el feed revelado trae `commentCount` con esa misma regla (`commentCountSql`). Se denuncia con
   `POST /reports { commentId }` (`reports.comment_id`, `media_id` queda null para no ocultar la foto; solo miembros activos; el mail a soporte lleva el
   texto). Push `photoCommented` ("Cami comentó tu foto" al autor y "Cami también comentó una foto" a quienes ya comentaron) con la misma ventana de 30 min
