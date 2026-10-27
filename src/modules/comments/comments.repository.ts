@@ -6,22 +6,24 @@ import type { MediaRow, TripRow, UserRow } from "../../types";
 // whether to `.run()` it or group it with others in `db.batch([...])`.
 
 export type CommentableRow = Pick<MediaRow, "id" | "type" | "trip_id" | "paired_media_id" | "moment_day" | "archived_at"> &
-  Pick<TripRow, "revealed_at" | "reveal_at"> & { author_user_id: string; is_member: number };
+  Pick<TripRow, "revealed_at" | "reveal_at"> & { author_user_id: string; is_member: number; is_admin: number };
 
 export type CommentRow = { id: string; text: string; created_at: number; user_id: string } & Pick<UserRow, "name" | "username" | "avatar_key">;
 
-/** The live uploaded media the viewer hasn't hidden (reported or blocked author), with whether they are an active member of its rollo. */
+/** The live uploaded media the viewer hasn't hidden (reported or blocked author), with whether they are an active member (and admin) of its rollo. */
 export function findCommentableRow(db: D1Database, viewerId: string, mediaId: string): Promise<CommentableRow | null> {
   return db
     .prepare(
       `SELECT m.id, m.type, m.trip_id, m.paired_media_id, m.moment_day, m.archived_at, author.user_id AS author_user_id, t.revealed_at, t.reveal_at,
               EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
-                        AND me.removed_at IS NULL AND me.left_at IS NULL) AS is_member
+                        AND me.removed_at IS NULL AND me.left_at IS NULL) AS is_member,
+              EXISTS (SELECT 1 FROM members ad WHERE ad.trip_id = m.trip_id AND ad.user_id = ? AND ad.role = 'admin'
+                        AND ad.removed_at IS NULL AND ad.left_at IS NULL) AS is_admin
        FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
        WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "author")}
          AND (m.archived_at IS NULL OR author.user_id = ?)`,
     )
-    .bind(viewerId, mediaId, viewerId, viewerId, viewerId)
+    .bind(viewerId, viewerId, mediaId, viewerId, viewerId, viewerId)
     .first<CommentableRow>();
 }
 
