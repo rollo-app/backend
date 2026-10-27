@@ -1,6 +1,6 @@
 import { sendReportEmail } from "../../lib/email";
 import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../../lib/moderation";
-import { canSeeProfile } from "../../lib/profile-access";
+import { canSeeProfile } from "../users/users.service";
 import { presignGet } from "../../lib/r2";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
 import type { Env, MediaRow, UserRow } from "../../types";

@@ -11,7 +11,7 @@ import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schem
 import { deleteFeaturedByOthers, deleteFeaturedOfMedia } from "../featured/featured.repository";
 import { deleteLikesOfMedia } from "../likes/likes.repository";
 import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
-import { rejectSelfie } from "../../lib/moment-selfie";
+import { rejectSelfie } from "../moments/moments.service";
 import { findMoment, findMomentSlots, recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
 

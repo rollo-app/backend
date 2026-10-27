@@ -2,7 +2,7 @@ import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import { blockedIdsFor } from "../../lib/moderation";
 import { actorName, sendPush } from "../../lib/push";
-import { areFriends } from "../../lib/profile-access";
+import { areFriends } from "../friends/friends.service";
 import { claimRevealedStatement, sendTripRevealed } from "../../lib/trip-notices";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";

@@ -95,3 +95,9 @@ export async function listMomentTrips(db: D1Database, userId: string, now: numbe
     .all<TripRow>();
   return results;
 }
+
+/** `media.paired_media_id` of a media (null when it is not a linked image or does not exist). */
+export async function findPairedMediaId(db: D1Database, mediaId: string): Promise<string | null> {
+  const row = await db.prepare("SELECT paired_media_id FROM media WHERE id = ?").bind(mediaId).first<{ paired_media_id: string | null }>();
+  return row?.paired_media_id ?? null;
+}

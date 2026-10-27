@@ -1,6 +1,7 @@
 import { isBlockedEitherWay } from "../../lib/moderation";
-import { areFriends, canSeeProfile } from "../../lib/profile-access";
+import { areFriends } from "../friends/friends.service";
 import { notFound } from "../../shared/errors";
+import type { UserRow } from "../../types";
 import * as repo from "./users.repository";
 import type { ProfileOwnerRow, UserFriendRow } from "./users.repository";
 
@@ -53,4 +54,20 @@ export async function listFriends(
 
   const scope = (await canSeeProfile(db, viewerId, owner)) ? "all" : "mutual";
   return { scope, friends: await repo.listFriendsOf(db, owner.id, scope === "mutual" ? viewerId : undefined) };
+}
+
+/**
+ * Whether `viewerId` can see the private parts of `owner`'s profile (bio and featured photos):
+ * the owner themselves, their friends, or anyone signed in when the profile is public.
+ * A block in either direction makes the profile private, whatever its visibility.
+ */
+export async function canSeeProfile(
+  db: D1Database,
+  viewerId: string,
+  owner: Pick<UserRow, "id" | "profile_visibility">,
+): Promise<boolean> {
+  if (viewerId === owner.id) return true;
+  if (await isBlockedEitherWay(db, viewerId, owner.id)) return false;
+  if (owner.profile_visibility === "public") return true;
+  return areFriends(db, viewerId, owner.id);
 }

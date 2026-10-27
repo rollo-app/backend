@@ -1,5 +1,5 @@
-import { rejectSelfie } from "../../lib/moment-selfie";
-import { notifyComment } from "../../lib/comments";
+import { rejectSelfie } from "../moments/moments.service";
+import { actorName, sendPush, type PushMessage } from "../../lib/push";
 import { isBlockedEitherWay } from "../../lib/moderation";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import type { AfterResponse } from "../../shared/after-response";
@@ -79,4 +79,57 @@ export async function deleteComment(db: D1Database, viewerId: string, commentId:
   const photo = await visiblePhoto(db, viewerId, comment.media_id, Date.now());
   if (!canDeleteComment(comment.user_id, viewerId, photo)) throw forbidden("No podés borrar este comentario");
   await repo.softDeleteComment(db, commentId, Date.now()).run();
+}
+
+/** After a "photoCommented" push, the next comments on that photo within this window are counted but not notified. */
+export const COMMENT_PUSH_WINDOW_MS = 30 * 60_000;
+
+type PushPhoto = { id: string; tripId: string };
+
+/** Opens the photo in its rollo's gallery with the comments sheet. */
+const photoUrl = (photo: PushPhoto) => `/photo/${photo.id}?tripId=${photo.tripId}&comments=1`;
+
+/** "Cami comentó tu foto" / "Cami y 3 más comentaron tu foto". */
+export function photoCommentedMessage(commenter: Pick<UserRow, "name" | "username">, silenced: number, photo: PushPhoto): PushMessage {
+  const who = actorName(commenter);
+  return { body: silenced > 0 ? `${who} y ${silenced} más comentaron tu foto` : `${who} comentó tu foto`, url: photoUrl(photo) };
+}
+
+/** For those who commented before: "Cami también comentó una foto" / "Cami y 3 más también comentaron una foto". */
+export function alsoCommentedMessage(commenter: Pick<UserRow, "name" | "username">, silenced: number, photo: PushPhoto): PushMessage {
+  const who = actorName(commenter);
+  return {
+    body: silenced > 0 ? `${who} y ${silenced} más también comentaron una foto` : `${who} también comentó una foto`,
+    url: photoUrl(photo),
+  };
+}
+
+/**
+ * Anti-spam for comment pushes, decided per photo (same scheme as likes). Returns how many comments were silenced since the
+ * last push if this comment should notify now (and opens a new window), or null if it falls inside the window (it is counted).
+ * The read and the conditional claim run in one batch, so two concurrent comments can't both notify.
+ */
+async function claimCommentPush(db: D1Database, mediaId: string, now: number): Promise<number | null> {
+  const [before, claim] = await db.batch<{ silenced: number }>([
+    repo.selectSilencedComments(db, mediaId),
+    repo.claimCommentPushWindow(db, mediaId, now, now - COMMENT_PUSH_WINDOW_MS),
+  ]);
+  if (claim!.meta.changes > 0) return before!.results[0]?.silenced ?? 0;
+  await repo.countSilencedComment(db, mediaId).run();
+  return null;
+}
+
+/** After a new comment: the anti-spam decision and, if it's time, the push to the author and to those who commented before. */
+async function notifyComment(
+  env: Pick<Env, "DB">,
+  commenter: Pick<UserRow, "id" | "name" | "username">,
+  photo: PushPhoto & { authorUserId: string },
+  now: number,
+): Promise<void> {
+  const silenced = await claimCommentPush(env.DB, photo.id, now);
+  if (silenced === null) return;
+  const opts = { actorId: commenter.id };
+  await sendPush(env, [photo.authorUserId], "photoCommented", photoCommentedMessage(commenter, silenced, photo), opts);
+  const others = await repo.listEarlierCommenters(env.DB, photo.tripId, photo.id, photo.authorUserId);
+  if (others.length) await sendPush(env, others, "photoCommented", alsoCommentedMessage(commenter, silenced, photo), opts);
 }

@@ -1,8 +1,9 @@
 import { MIN_DAY_WINDOW_MS, MOMENT_WINDOW_MS, dayWindow, drawNotifyAt } from "../../lib/moments";
 import { getNotificationSettings } from "../settings/settings.service";
 import { isRevealed, localDate } from "../../lib/util";
+import { badRequest } from "../../shared/errors";
 import type { TripRow } from "../../types";
-import { insertMomentsIgnoringExisting, listMomentTrips, listUserMoments } from "./moments.repository";
+import { findPairedMediaId, insertMomentsIgnoringExisting, listMomentTrips, listUserMoments } from "./moments.repository";
 
 /** Days (trip local, starting today) drawn per request; later days are drawn by later requests. */
 export const MOMENT_DRAW_DAYS = 31;
@@ -78,4 +79,19 @@ export async function getAllMyMoments(
     });
   }
   return out;
+}
+
+/** Selfies of a moment (`media.paired_media_id`) travel inside their main photo: no likes, comments or featuring of their own. */
+export function rejectSelfie(pairedMediaId: string | null): void {
+  if (pairedMediaId !== null) throw badRequest("Esta foto es parte de un momento: usá la principal.");
+}
+
+/** For the endpoints that have no lookup of their own (unlike, unfeature). */
+export async function rejectSelfieById(db: D1Database, mediaId: string): Promise<void> {
+  rejectSelfie(await findPairedMediaId(db, mediaId));
+}
+
+/** Neither image of a moment (main or linked one) goes to a profile. */
+export function rejectMomentFeaturing(row: { moment_day: string | null; paired_media_id: string | null }): void {
+  if (row.moment_day !== null || row.paired_media_id !== null) throw badRequest("Las fotos del momento no se pueden agregar a tu perfil.");
 }

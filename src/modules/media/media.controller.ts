@@ -1,4 +1,4 @@
-import { canFeature } from "../../lib/featuring";
+import { canFeature } from "../featured/featured.service";
 import type { RouteHandler } from "@hono/zod-openapi";
 import { deferPush } from "../../lib/push";
 import { serveMediaFile } from "../../lib/r2";

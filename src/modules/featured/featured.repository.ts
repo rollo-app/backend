@@ -1,9 +1,17 @@
-import { FEATURING_ALLOWED_SQL } from "../../lib/featuring";
 import { hiddenMediaSql } from "../../lib/moderation";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])`.
+
+/**
+ * The same rule as `featuringDenial`, for SQL: use inside a query that has `media m`, `trips t` and the author's
+ * membership `members author`, with one bind (the viewer's user id). Lets a write re-check the rule in the very
+ * statement that inserts, so a level turned off in between can't be slipped past.
+ */
+export const FEATURING_ALLOWED_SQL = `(t.featuring_disabled = 0 AND (author.user_id = ?
+    OR (m.feature_blocked_at IS NULL AND author.allow_featuring != 0
+        AND COALESCE((SELECT us.allow_featuring FROM user_settings us WHERE us.user_id = author.user_id), 1) != 0)))`;
 
 /**
  * Featured rows (`f`) that are visible on their owner's profile: an uploaded, not deleted photo of a revealed

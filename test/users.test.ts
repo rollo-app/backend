@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { areFriends, canSeeProfile } from "../src/lib/profile-access";
+import { areFriends } from "../src/modules/friends/friends.service";
+import { canSeeProfile } from "../src/modules/users/users.service";
 import { api, befriend, signUp } from "./helpers";
 
 async function setVisibility(token: string, profileVisibility: "friends" | "public") {
