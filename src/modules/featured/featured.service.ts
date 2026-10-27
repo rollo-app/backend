@@ -6,6 +6,7 @@ import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import { MAX_FEATURED } from "./featured.schemas";
+import * as mediaRepo from "../media/media.repository";
 import * as repo from "./featured.repository";
 
 /**
@@ -135,4 +136,29 @@ export async function getFeaturedFileKey(
   const row = await repo.findVisibleFeaturedKeys(db, viewerId, owner.id, mediaId, Date.now());
   if (!row) throw notFound();
   return variant === "thumb" ? row.thumb_key : row.original_key;
+}
+
+/**
+ * The photo must be yours (you took it) and not deleted. Authorship is the media's member → user, so it holds
+ * even after you left the rollo or were removed from it. 404 if it doesn't exist (or you aren't in its rollo
+ * and didn't take it), 403 if an active member who didn't take it.
+ */
+export async function assertOwnMedia(db: D1Database, userId: string, mediaId: string): Promise<string> {
+  const row = await mediaRepo.findAuthoredMedia(db, mediaId);
+  if (!row) throw notFound();
+  if (row.authorUserId === userId) return row.id;
+
+  if (!(await mediaRepo.isActiveTripMember(db, row.tripId, userId))) throw notFound();
+  throw forbidden("Solo quien sacó la foto puede cambiar esto");
+}
+
+/** Author-only: others can no longer feature the photo, and it leaves their profiles. Idempotent. */
+export async function blockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
+  const id = await assertOwnMedia(db, userId, mediaId);
+  await db.batch([mediaRepo.blockFeaturing(db, id, Date.now()), repo.deleteFeaturedByOthers(db, id, userId)]);
+}
+
+export async function unblockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
+  const id = await assertOwnMedia(db, userId, mediaId);
+  await mediaRepo.unblockFeaturing(db, id).run();
 }

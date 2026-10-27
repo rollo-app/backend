@@ -1,9 +1,11 @@
 import { MIN_DAY_WINDOW_MS, MOMENT_WINDOW_MS, dayWindow, drawNotifyAt } from "../../lib/moments";
 import { getNotificationSettings } from "../settings/settings.service";
 import { isRevealed, localDate } from "../../lib/util";
-import { badRequest } from "../../shared/errors";
-import type { TripRow } from "../../types";
-import { findPairedMediaId, insertMomentsIgnoringExisting, listMomentTrips, listUserMoments } from "./moments.repository";
+import { badRequest, conflict } from "../../shared/errors";
+import type { MemberRow, TripRow } from "../../types";
+import { findMediaById } from "../media/media.repository";
+import type { RegisterMediaInput } from "../media/media.schemas";
+import { findMoment, findMomentSlots, findPairedMediaId, insertMomentsIgnoringExisting, listMomentTrips, listUserMoments } from "./moments.repository";
 
 /** Days (trip local, starting today) drawn per request; later days are drawn by later requests. */
 export const MOMENT_DRAW_DAYS = 31;
@@ -94,4 +96,41 @@ export async function rejectSelfieById(db: D1Database, mediaId: string): Promise
 /** Neither image of a moment (main or linked one) goes to a profile. */
 export function rejectMomentFeaturing(row: { moment_day: string | null; paired_media_id: string | null }): void {
   if (row.moment_day !== null || row.paired_media_id !== null) throw badRequest("Las fotos del momento no se pueden agregar a tu perfil.");
+}
+
+export type MomentTarget = { day: string; notifyAt: number; pairedMediaId: string | null };
+
+/**
+ * Validates the moment fields of a new registration (not a retry). Null when it is an ordinary photo or video.
+ * A main photo needs the member's moment row for `momentDay` with no photo yet (409); a selfie (`pairedMediaId`)
+ * must pair with the member's own main moment photo of this rollo (400) and inherits its day.
+ */
+export async function resolveMoment(db: D1Database, trip: TripRow, member: MemberRow, input: RegisterMediaInput): Promise<MomentTarget | null> {
+  if (input.momentDay != null && trip.moment_mode === "off") throw badRequest("Este rollo no tiene momento del día");
+  if (input.pairedMediaId) {
+    if (trip.moment_mode !== "photo_selfie") throw badRequest("Este rollo no admite selfie del momento");
+    const main = await findMediaById(db, input.pairedMediaId);
+    const valid =
+      main !== null &&
+      main.deletedAt === null &&
+      main.memberId === member.id &&
+      main.tripId === trip.id &&
+      main.momentDay !== null &&
+      main.pairedMediaId === null;
+    if (!valid || (input.momentDay != null && input.momentDay !== main.momentDay)) {
+      throw badRequest("La foto del momento no corresponde");
+    }
+    const slots = await findMomentSlots(db, trip.id, member.user_id, main.momentDay!);
+    if (!slots) throw badRequest("La foto del momento no corresponde");
+    if (slots.media_id !== main.id) throw badRequest("La foto del momento no corresponde");
+    if (slots.selfie_media_id !== null) throw conflict("Este momento ya tiene selfie");
+    return { day: main.momentDay!, notifyAt: 0, pairedMediaId: main.id };
+  }
+  if (input.momentDay == null) return null;
+
+  const row = await findMoment(db, trip.id, member.user_id, input.momentDay);
+  if (!row) throw conflict("No tenés un momento ese día");
+  const slots = await findMomentSlots(db, trip.id, member.user_id, input.momentDay);
+  if (slots?.media_id != null) throw conflict("Este momento ya tiene foto");
+  return { day: input.momentDay, notifyAt: row.notify_at, pairedMediaId: null };
 }

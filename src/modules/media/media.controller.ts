@@ -16,6 +16,7 @@ import type {
   unarchiveRoute,
   unblockFeatureRoute,
 } from "./media.router";
+import * as featured from "../featured/featured.service";
 import * as service from "./media.service";
 
 export const register: RouteHandler<typeof registerRoute, AppEnv> = async (c) => {
@@ -133,11 +134,11 @@ export const unarchive: RouteHandler<typeof unarchiveRoute, AppEnv> = async (c) 
 };
 
 export const blockFeature: RouteHandler<typeof blockFeatureRoute, AppEnv> = async (c) => {
-  await service.blockFeature(c.env.DB, c.get("user").id, c.req.valid("param").mediaId);
+  await featured.blockFeature(c.env.DB, c.get("user").id, c.req.valid("param").mediaId);
   return c.body(null, 204);
 };
 
 export const unblockFeature: RouteHandler<typeof unblockFeatureRoute, AppEnv> = async (c) => {
-  await service.unblockFeature(c.env.DB, c.get("user").id, c.req.valid("param").mediaId);
+  await featured.unblockFeature(c.env.DB, c.get("user").id, c.req.valid("param").mediaId);
   return c.body(null, 204);
 };
