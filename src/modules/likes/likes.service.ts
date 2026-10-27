@@ -1,8 +1,8 @@
-import { isBlockedEitherWay } from "../../lib/moderation";
-import { canSeeProfile } from "../../lib/profile-access";
+import { isBlockedEitherWay } from "../blocks/blocks.service";
+import { canSeeProfile } from "../users/users.service";
 import { avatarUrl, isRevealed } from "../../lib/util";
-import { rejectSelfie, rejectSelfieById } from "../../lib/moment-selfie";
-import { notifyLike } from "../../lib/likes";
+import { rejectSelfie, rejectSelfieById } from "../moments/moments.service";
+import { actorName, sendPush, type PushMessage } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, notFound } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
@@ -110,4 +110,48 @@ export async function listMyLikes(
   });
   const last = page[page.length - 1];
   return { items, nextCursor: rows.length > opts.limit && last ? encodeCursor({ likedAt: last.liked_at, mediaId: last.media_id }) : null, total };
+}
+
+/** After a "photoLiked" push, the next likes of that photo within this window are counted but not notified. */
+export const LIKE_PUSH_WINDOW_MS = 30 * 60_000;
+
+/** "A Cami le gustó tu foto" / "A Cami y 3 más les gustó tu foto". Opens the photo in its rollo's gallery. */
+export function photoLikedMessage(
+  liker: Pick<UserRow, "name" | "username">,
+  silenced: number,
+  photo: { id: string; tripId: string },
+): PushMessage {
+  const who = actorName(liker);
+  return {
+    body: silenced > 0 ? `A ${who} y ${silenced} más les gustó tu foto` : `A ${who} le gustó tu foto`,
+    url: `/photo/${photo.id}?tripId=${photo.tripId}`,
+  };
+}
+
+/**
+ * Anti-spam for like pushes, decided per photo. Returns how many likes were silenced since the last push
+ * if this like should notify now (and opens a new window), or null if it falls inside the window (it is counted).
+ * The read and the conditional claim run in one batch (a transaction), so two concurrent likes can't both notify.
+ * Unliking doesn't touch the counter: a silenced like that was later removed still counts in "y N más".
+ */
+async function claimLikePush(db: D1Database, mediaId: string, now: number): Promise<number | null> {
+  const [before, claim] = await db.batch<{ silenced: number }>([
+    repo.selectSilencedLikes(db, mediaId),
+    repo.claimLikePushWindow(db, mediaId, now, now - LIKE_PUSH_WINDOW_MS),
+  ]);
+  if (claim!.meta.changes > 0) return before!.results[0]?.silenced ?? 0;
+  await repo.countSilencedLike(db, mediaId).run();
+  return null;
+}
+
+/** After a new like by someone other than the author: the anti-spam decision and, if it's time, the push. */
+async function notifyLike(
+  env: Pick<Env, "DB">,
+  liker: Pick<UserRow, "id" | "name" | "username">,
+  photo: { id: string; tripId: string; authorUserId: string },
+  now: number,
+): Promise<void> {
+  const silenced = await claimLikePush(env.DB, photo.id, now);
+  if (silenced === null) return;
+  await sendPush(env, [photo.authorUserId], "photoLiked", photoLikedMessage(liker, silenced, photo), { actorId: liker.id });
 }

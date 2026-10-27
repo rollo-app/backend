@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { flushPendingPushes } from "../src/lib/push";
-import { tripRevealedMessage, tripStartedMessage } from "../src/lib/trip-notices";
+import { tripRevealedMessage, tripStartedMessage } from "../src/modules/trips/notices.service";
 import { DAY, HOUR, MINUTE, api, befriend, joinAs, mockExpo, newTrip, registerToken, signUp, uploadMedia } from "./helpers";
 
 /** Runs the Worker's Cron Trigger the way Cloudflare does and waits for everything it started. */

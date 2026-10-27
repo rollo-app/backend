@@ -177,3 +177,37 @@ export async function createdSince(db: D1Database, userId: string, since: number
     .all<{ created_at: number }>();
   return results.map((r) => r.created_at);
 }
+
+/** Trips whose start has come and whose "Arrancó" push was not claimed yet. */
+export async function listTripsToAnnounceStart(db: D1Database, now: number): Promise<TripRow[]> {
+  const { results } = await db.prepare("SELECT * FROM trips WHERE started_notified_at IS NULL AND starts_at <= ?").bind(now).all<TripRow>();
+  return results;
+}
+
+/** Trips revealed (by the admin or by their date) whose "Se reveló" push was not claimed yet. */
+export async function listTripsToAnnounceReveal(db: D1Database, now: number): Promise<TripRow[]> {
+  const { results } = await db
+    .prepare("SELECT * FROM trips WHERE revealed_notified_at IS NULL AND (revealed_at IS NOT NULL OR reveal_at <= ?)")
+    .bind(now)
+    .all<TripRow>();
+  return results;
+}
+
+/** Marks the trip as "started" notified; it changes a row only for the caller that flipped it. */
+export function claimStartedNotice(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET started_notified_at = ? WHERE id = ? AND started_notified_at IS NULL").bind(now, tripId);
+}
+
+/** Marks the trip as "revealed" notified; it changes a row only for the caller that flipped it. */
+export function claimRevealedNotice(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET revealed_notified_at = ? WHERE id = ? AND revealed_notified_at IS NULL").bind(now, tripId);
+}
+
+/** User ids of the trip's active members (neither left nor removed). */
+export async function listActiveMemberUserIds(db: D1Database, tripId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare("SELECT user_id FROM members WHERE trip_id = ? AND removed_at IS NULL AND left_at IS NULL")
+    .bind(tripId)
+    .all<{ user_id: string }>();
+  return results.map((r) => r.user_id);
+}

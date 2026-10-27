@@ -1,6 +1,6 @@
 import { sendBlockEmail } from "../../lib/email";
 import { pairKey } from "../../lib/friend-code";
-import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../../lib/moderation";
+import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../moderation/moderation.service";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import * as repo from "./blocks.repository";
@@ -41,4 +41,14 @@ export async function blockUser(env: Env, blocker: UserRow, targetId: string, ad
 
 export async function unblockUser(db: D1Database, blockerId: string, blockedId: string): Promise<void> {
   await repo.deleteBlock(db, blockerId, blockedId).run();
+}
+
+/** Whether either of the two users has blocked the other. */
+export function isBlockedEitherWay(db: D1Database, a: string, b: string): Promise<boolean> {
+  return repo.blockExistsEitherWay(db, a, b);
+}
+
+/** Ids of the users the viewer has blocked. */
+export async function blockedIdsFor(db: D1Database, viewerId: string): Promise<Set<string>> {
+  return new Set(await repo.listBlockedIds(db, viewerId));
 }

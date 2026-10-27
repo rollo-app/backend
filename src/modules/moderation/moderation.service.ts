@@ -1,14 +1,32 @@
-import type { Env } from "../types";
-import { adminCurlFor, sendSupportNotice } from "./email";
+import { adminCurlFor, sendSupportNotice } from "../../lib/email";
+import { MODERATION_ACTIONS_PER_DAY, reserveEmailSlot, SUPPORT_EMAILS_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY } from "../../lib/email-caps";
+import type { Env } from "../../types";
+import * as repo from "./moderation.repository";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Whether the user already made the maximum of reports (or blocks) in the last 24 hours. */
+export async function atModerationActionCap(db: D1Database, table: "reports" | "blocks", userId: string): Promise<boolean> {
+  return (await repo.countActionsSince(db, table, userId, Date.now() - DAY_MS)) >= MODERATION_ACTIONS_PER_DAY;
+}
+
+export const MODERATION_ACTION_CAP_MESSAGE = "Hiciste muchas denuncias o bloqueos hoy. Probá mañana.";
+
+/**
+ * Whether a moderation email may be sent for this user. Call after inserting the new report/block row,
+ * so the count includes it: the 3rd is still emailed, the 4th is not. Also takes a slot of the global daily support cap
+ * (`SUPPORT_EMAILS_PER_DAY`), so call it only when an email will actually be sent.
+ */
+export async function withinModerationEmailCap(db: D1Database, userId: string): Promise<boolean> {
+  const n = await repo.countReportsAndBlocksSince(db, userId, Date.now() - DAY_MS);
+  return n <= SUPPORT_EMAILS_PER_USER_PER_DAY && (await reserveEmailSlot(db, "support", SUPPORT_EMAILS_PER_DAY));
+}
 
 /** The cron has no request to take the origin from. */
 const ADMIN_BASE = "https://rollo-api.juanifraga.com";
 /** Rows younger than this may still be on their way out by email (the route clears the flag after sending). */
 const GRACE = 10 * 60_000;
 const MAX_LISTED = 40;
-
-type PendingReport = { id: string; reporter_id: string; media_id: string | null; target_user_id: string; reason: string };
-type PendingBlock = { blocker_id: string; blocked_id: string };
 
 /**
  * Once per UTC day, ONE email to support listing the reports and blocks that were stored without email
@@ -19,18 +37,13 @@ type PendingBlock = { blocker_id: string; blocked_id: string };
 export async function sendModerationSummary(env: Env, now: number): Promise<void> {
   const before = now - GRACE;
   const [reports, blocks] = await Promise.all([
-    env.DB.prepare("SELECT id, reporter_id, media_id, target_user_id, reason FROM reports WHERE unemailed = 1 AND created_at < ? ORDER BY created_at LIMIT 500")
-      .bind(before)
-      .all<PendingReport>(),
-    env.DB.prepare("SELECT blocker_id, blocked_id FROM blocks WHERE unemailed = 1 AND created_at < ? ORDER BY created_at LIMIT 500")
-      .bind(before)
-      .all<PendingBlock>(),
+    repo.listUnemailedReports(env.DB, before),
+    repo.listUnemailedBlocks(env.DB, before),
   ]);
   if (!reports.results.length && !blocks.results.length) return;
 
   const day = new Date(now).toISOString().slice(0, 10);
-  const claim = await env.DB.prepare("INSERT OR IGNORE INTO email_counters (kind, day, count) VALUES ('summary', ?, 1)").bind(day).run();
-  if (claim.meta.changes === 0) return;
+  if (!(await repo.claimSummaryDay(env.DB, day))) return;
 
   const lines: string[] = [];
   if (reports.results.length) {
@@ -55,11 +68,11 @@ export async function sendModerationSummary(env: Env, now: number): Promise<void
   try {
     await sendSupportNotice(env, `Rollo: ${reports.results.length} denuncias y ${blocks.results.length} bloqueos sin mail`, lines.join("\n"));
   } catch (err) {
-    await env.DB.prepare("DELETE FROM email_counters WHERE kind = 'summary' AND day = ?").bind(day).run();
+    await repo.releaseSummaryDay(env.DB, day);
     throw err;
   }
   await env.DB.batch([
-    ...reports.results.map((r) => env.DB.prepare("UPDATE reports SET unemailed = 0 WHERE id = ?").bind(r.id)),
-    ...blocks.results.map((b) => env.DB.prepare("UPDATE blocks SET unemailed = 0 WHERE blocker_id = ? AND blocked_id = ?").bind(b.blocker_id, b.blocked_id)),
+    ...reports.results.map((r) => repo.markReportEmailed(env.DB, r.id)),
+    ...blocks.results.map((b) => repo.markBlockEmailed(env.DB, b.blocker_id, b.blocked_id)),
   ]);
 }

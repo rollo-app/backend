@@ -1,13 +1,46 @@
-import { rejectMomentFeaturing, rejectSelfieById } from "../../lib/moment-selfie";
-import { featuringDenial } from "../../lib/featuring";
-import { canSeeProfile } from "../../lib/profile-access";
+import { rejectMomentFeaturing, rejectSelfieById } from "../moments/moments.service";
+import { canSeeProfile } from "../users/users.service";
 import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import { MAX_FEATURED } from "./featured.schemas";
+import * as mediaRepo from "../media/media.repository";
 import * as repo from "./featured.repository";
+
+/**
+ * Where can a photo go? Whether `viewer` may feature a photo on their profile. The single place for the rule
+ * (featuring, the revealed feed and the cleanups all agree with it). Four levels, the most restrictive wins:
+ *  1. private rollo (`trips.featuring_disabled`): nobody, not even the author;
+ *  2. the author can always feature their own photos;
+ *  3. others need the photo (`media.feature_blocked_at`), the author's membership (`members.allow_featuring`)
+ *     and the author's account (`user_settings.allow_featuring`) to allow it.
+ * Turning a level off also deletes what it now blocks from other profiles (see `featured.repository`).
+ */
+export type FeaturingFacts = {
+  viewerIsAuthor: boolean;
+  /** The rollo is private. */
+  rolloPrivate: boolean;
+  /** The author blocked this one photo. */
+  photoBlocked: boolean;
+  /** The author lets others feature their photos of this rollo. */
+  memberAllows: boolean;
+  /** The author lets others feature any of their photos. */
+  accountAllows: boolean;
+};
+
+export type FeaturingDenial = "private_rollo" | "author_declined" | null;
+
+/** Why `viewer` can't feature the photo, or null if they can. */
+export function featuringDenial(f: FeaturingFacts): FeaturingDenial {
+  if (f.rolloPrivate) return "private_rollo";
+  if (f.viewerIsAuthor) return null;
+  if (f.photoBlocked || !f.memberAllows || !f.accountAllows) return "author_declined";
+  return null;
+}
+
+export const canFeature = (f: FeaturingFacts): boolean => featuringDenial(f) === null;
 
 /**
  * Featured photos: photos from revealed rollos that a user pins to their profile.
@@ -103,4 +136,29 @@ export async function getFeaturedFileKey(
   const row = await repo.findVisibleFeaturedKeys(db, viewerId, owner.id, mediaId, Date.now());
   if (!row) throw notFound();
   return variant === "thumb" ? row.thumb_key : row.original_key;
+}
+
+/**
+ * The photo must be yours (you took it) and not deleted. Authorship is the media's member → user, so it holds
+ * even after you left the rollo or were removed from it. 404 if it doesn't exist (or you aren't in its rollo
+ * and didn't take it), 403 if an active member who didn't take it.
+ */
+export async function assertOwnMedia(db: D1Database, userId: string, mediaId: string): Promise<string> {
+  const row = await mediaRepo.findAuthoredMedia(db, mediaId);
+  if (!row) throw notFound();
+  if (row.authorUserId === userId) return row.id;
+
+  if (!(await mediaRepo.isActiveTripMember(db, row.tripId, userId))) throw notFound();
+  throw forbidden("Solo quien sacó la foto puede cambiar esto");
+}
+
+/** Author-only: others can no longer feature the photo, and it leaves their profiles. Idempotent. */
+export async function blockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
+  const id = await assertOwnMedia(db, userId, mediaId);
+  await db.batch([mediaRepo.blockFeaturing(db, id, Date.now()), repo.deleteFeaturedByOthers(db, id, userId)]);
+}
+
+export async function unblockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
+  const id = await assertOwnMedia(db, userId, mediaId);
+  await mediaRepo.unblockFeaturing(db, id).run();
 }

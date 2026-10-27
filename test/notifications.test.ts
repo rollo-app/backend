@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { getNotificationSettings } from "../src/lib/settings";
+import { getNotificationSettings } from "../src/modules/settings/settings.service";
 import { DAY, api, join, logIn, newTrip, signUp, uploadMedia } from "./helpers";
 
 const TOKEN = "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]";

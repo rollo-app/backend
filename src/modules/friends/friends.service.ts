@@ -1,8 +1,7 @@
 import { generateToken, hashToken } from "../../lib/auth";
 import { ipKey } from "../../lib/ip";
 import { FRIEND_CLAIM_TTL, FRIEND_LINK_TTL, generateFriendCode, normalizeFriendCode, pairKey } from "../../lib/friend-code";
-import { isBlockedEitherWay } from "../../lib/moderation";
-import { areFriends } from "../../lib/profile-access";
+import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
@@ -152,4 +151,11 @@ export async function getFriendProfile(
 export async function removeFriend(db: D1Database, me: string, otherId: string): Promise<void> {
   const [a, b] = pairKey(me, otherId);
   await db.batch([repo.deleteFriendship(db, a, b), repo.deleteFriendRequests(db, a, b)]);
+}
+
+/** Whether the two users are friends (order does not matter). Nobody is their own friend. */
+export async function areFriends(db: D1Database, a: string, b: string): Promise<boolean> {
+  if (a === b) return false;
+  const [userA, userB] = pairKey(a, b);
+  return repo.friendshipExists(db, userA, userB);
 }

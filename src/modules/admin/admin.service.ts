@@ -1,4 +1,4 @@
-import { deleteAccount } from "../../lib/account";
+import { deleteAccount } from "../account/account.service";
 import { notFound } from "../../shared/errors";
 import type { Env } from "../../types";
 import { deleteTripMedia } from "../media/media.service";

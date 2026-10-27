@@ -122,3 +122,9 @@ export async function listCommonTrips(db: D1Database, me: string, friendId: stri
     .all<TripRow>();
   return results;
 }
+
+/** Whether the pair (already ordered by `pairKey`) is in `friendships`. */
+export async function friendshipExists(db: D1Database, userA: string, userB: string): Promise<boolean> {
+  const row = await db.prepare("SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?").bind(userA, userB).first();
+  return row !== null;
+}

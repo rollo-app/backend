@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { hiddenMediaSql } from "../../lib/moderation";
+import { hiddenMediaSql } from "../reports/reports.repository";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -78,4 +78,37 @@ export function softDeleteCommentsOfMedia(db: D1Database, mediaId: string, now: 
 
 export function softDeleteComment(db: D1Database, commentId: string, now: number): D1PreparedStatement {
   return db.prepare("UPDATE comments SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL").bind(now, commentId);
+}
+
+/** Statement: how many comments were silenced on the photo since the last push. */
+export function selectSilencedComments(db: D1Database, mediaId: string): D1PreparedStatement {
+  return db.prepare("SELECT comments_since_notified AS silenced FROM media WHERE id = ?").bind(mediaId);
+}
+
+/** Statement: opens a new push window, changing a row only if the previous one is over (`olderThan` = now - window). */
+export function claimCommentPushWindow(db: D1Database, mediaId: string, now: number, olderThan: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE media SET comment_notified_at = ?, comments_since_notified = 0
+         WHERE id = ? AND (comment_notified_at IS NULL OR comment_notified_at <= ?)`,
+    )
+    .bind(now, mediaId, olderThan);
+}
+
+/** Statement: counts one more silenced comment. */
+export function countSilencedComment(db: D1Database, mediaId: string): D1PreparedStatement {
+  return db.prepare("UPDATE media SET comments_since_notified = comments_since_notified + 1 WHERE id = ?").bind(mediaId);
+}
+
+/** Active members of the rollo (other than the photo's author) with a live comment on the photo. */
+export async function listEarlierCommenters(db: D1Database, tripId: string, mediaId: string, authorUserId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT c.user_id FROM comments c
+       JOIN members m ON m.trip_id = ? AND m.user_id = c.user_id AND m.removed_at IS NULL AND m.left_at IS NULL
+       WHERE c.media_id = ? AND c.deleted_at IS NULL AND c.user_id <> ?`,
+    )
+    .bind(tripId, mediaId, authorUserId)
+    .all<{ user_id: string }>();
+  return results.map((r) => r.user_id);
 }

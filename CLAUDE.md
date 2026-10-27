@@ -31,14 +31,14 @@ Decisiones de producto que el backend tiene que respetar:
   sirven por `/featured/{userId}/{mediaId}/{variant}` con el permiso del perfil, no del rollo. No se ven (ni sus archivos) si la foto se
   borró, se bloqueó o el dueño ya no es miembro activo de ese rollo. El feed revelado trae `featuredByMe`, `featureBlocked` y `canFeature`, y todo
   ítem del feed trae `author.userId`.
-  **Adónde pueden ir tus fotos** (`src/lib/featuring.ts`, la regla en un solo lugar: `featuringDenial` / `canFeature`): cuatro niveles, gana el más
+  **Adónde pueden ir tus fotos** (`featuring` en `src/modules/featured/featured.service.ts`, la regla en un solo lugar: `featuringDenial` / `canFeature`): cuatro niveles, gana el más
   restrictivo. (1) cuenta: `user_settings.allow_featuring`, `PATCH /me/settings` `{ privacy: { allowFeaturing } }` (también en `GET`); (2) rollo:
   `members.allow_featuring`, `PATCH /trips/{id}/members/me` `{ allowFeaturing }` (`me.allowFeaturing` en el detalle); (3) foto: `feature-block`;
   (4) rollo privado: `trips.featuring_disabled` (`featuringDisabled` al crear y en `PATCH /trips/{id}`, solo admin; está en `Trip`): nadie
   destaca sus fotos, **ni el autor**. El autor siempre puede con las suyas salvo en el rollo privado. Destacar da 409 si algún nivel lo frena.
   **Al apagar un nivel se limpia** (en un `batch` con el cambio): cuenta → las fotos del autor de todos los rollos salen de los perfiles ajenos;
   rollo → las de esa membresía; rollo privado → todas las del rollo, también las del autor. Prender no restaura nada.
-- **Notificaciones push** (`src/lib/push.ts`, `src/lib/trip-notices.ts`): se mandan con Expo Push Service
+- **Notificaciones push** (`src/lib/push.ts`, `src/modules/trips/notices.service.ts`): se mandan con Expo Push Service
   (`POST https://exp.host/--/api/v2/push/send`, lotes de 100, sin access token). `sendPush(env, userIds, kind, message, { actorId })`
   es el único lugar que manda: saca al actor, a quien tenga un bloqueo con él (cualquier sentido) y a quien apagó ese tipo
   (`user_settings`); cada push lleva `data.url` (deep link de la app). Nunca tira error: en las rutas se corre con `deferPush(c, ...)`
@@ -52,9 +52,9 @@ Decisiones de producto que el backend tiene que respetar:
   **Tokens:** `PUT /me/push-tokens/{token}` (idempotente; si el token era de otra cuenta pasa a esta: mismo celular, otra
   sesión) y `DELETE` al cerrar sesión; borrar la cuenta los borra todos (tabla `push_tokens`). **Preferencias:**
   `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked, photoCommented, friendRequest, dailyMoment, momentPosted } }`
-  (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/lib/settings.ts`).
+  (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/modules/settings/`, con las columnas y los tipos puros en `src/lib/settings.ts`).
   `profileVisibility` sigue en `users`.
-- **"Me gusta"** (`src/modules/likes/`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
+- **"Me gusta"** (`src/modules/likes/`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
   idempotentes. Solo fotos. Puede dar "me gusta" **quien puede ver la foto**: miembro activo de su rollo ya revelado, o quien puede
   ver (`canSeeProfile`) un perfil donde la foto se ve destacada **ahora** (mismas reglas que `VISIBLE_FROM/WHERE` de
   `featured.ts`: no borrada, no bloqueada por el autor, el dueño sigue en el rollo). Si no, o si hay bloqueo con el autor o la
@@ -72,7 +72,7 @@ Decisiones de producto que el backend tiene que respetar:
   (`canSeeProfile` en SQL) donde sigue destacada (`{ kind: "featured", userId }`, sin rollo; si valen las dos, gana `trip`). Nunca salen
   denunciadas, de autores bloqueados (en ningún sentido) ni videos; el me gusta queda guardado y la foto vuelve si recuperás el acceso.
   Sin migración (un índice `(user_id, created_at)` queda para cuando haga falta).
-- **Comentarios** (`src/modules/comments/`, `src/lib/comments.ts`, tabla `comments`): `GET/POST /media/{mediaId}/comments` y `DELETE /comments/{commentId}`.
+- **Comentarios** (`src/modules/comments/`, tabla `comments`): `GET/POST /media/{mediaId}/comments` y `DELETE /comments/{commentId}`.
   Solo fotos (un video da 400 al comentar y lista vacía) y **solo miembros activos del rollo ya revelado** (excepción: la foto principal de un momento del día se comenta apenas se sube, con las mismas reglas; una foto normal da 404 antes del revelado y la imagen vinculada 400): sin camino por perfiles (los comentarios
   muestran nombres y charla del rollo), si no 404; tampoco si hay bloqueo con el autor de la foto o la denunciaste. Texto plano de 1 a 500 caracteres
   (con trim). Borra el autor del comentario, el de la foto o el admin del rollo (soft delete, `deleted_at`; otro miembro 403). No se ven los de usuarios bloqueados (cualquier
@@ -154,11 +154,11 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 
 ```
 src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de errores, cron (scheduled)
-src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): admin, auth, avatars, blocks, featured, friends, likes, me, media, reports, trips, users, usernames
+src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): account, admin, auth, avatars, blocks, comments, featured, friend-requests, friends, likes, me, media, moderation, moments, reports, settings, trips, users, usernames
 src/db/schema.ts       esquema Drizzle de toda la DB (camelCase en TS, columnas snake_case); las migraciones SQL siguen siendo la fuente de verdad y `npm run db:check-schema` falla si se desalinean
 src/shared/           db.ts (`orm`, `toStatement`), errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
 src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
-src/lib/              auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta"), account (borrar cuenta), storage, rate-limit, email...
+src/lib/              infra transversal: auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), zone (zona de ~5 km), settings (columnas y tipos puros de las preferencias), moments (cálculo puro de días y ventanas), push (Expo), storage, rate-limit, email, email-caps...
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -200,9 +200,12 @@ Reglas:
   controller de otro módulo.
 - **Middlewares** (sesión, membresía, admin, rate limit) van en el `middleware` de cada `createRoute`; su código
   vive en `src/lib/auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
-- **`src/lib/`** queda para lo transversal (sesiones, R2, mail, push, storage, rate limit, helpers puros). Parte
-  todavía tiene SQL (`account`, `profile-access`, `settings`, `trip-notices`...): pasarlo a módulos es un paso
-  pendiente.
+- **`src/lib/`** es solo infra transversal y helpers puros (sesiones, R2, mail, push, storage, rate limit, fechas): sin
+  SQL de dominio. El SQL vive en el repository del módulo dueño y la regla en su service: p. ej. `account/` (borrar
+  cuenta), `settings/` (preferencias; `lib/push.ts` lee las notificaciones desde `settings.service`), `moderation/`
+  (topes y mail de resumen), `friends/` (`areFriends`), `users/` (`canSeeProfile`), `blocks/` (`isBlockedEitherWay`),
+  `moments/` (reglas de la foto vinculada) y `trips/notices.service.ts` (avisos del cron). Los fragmentos SQL de
+  "oculto para el viewer" (`hiddenMediaSql`, `notHiddenFor`) viven en `reports.repository`.
 - **PRs:** un refactor de estructura que toca varios módulos puede ir en un solo PR, con un commit por módulo o
   grupo, para no encadenar conflictos en `src/index.ts` y `src/schemas.ts`.
 - **Sin interfaces por capa:** services y repos son módulos de funciones tipadas; el contrato es la firma exportada.

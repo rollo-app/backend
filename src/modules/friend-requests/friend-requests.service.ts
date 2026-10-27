@@ -1,6 +1,6 @@
 import { pairKey } from "../../lib/friend-code";
-import { isBlockedEitherWay } from "../../lib/moderation";
-import { areFriends } from "../../lib/profile-access";
+import { isBlockedEitherWay } from "../blocks/blocks.service";
+import { areFriends } from "../friends/friends.service";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";

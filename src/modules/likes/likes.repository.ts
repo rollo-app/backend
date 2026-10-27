@@ -1,4 +1,4 @@
-import { hiddenMediaSql } from "../../lib/moderation";
+import { hiddenMediaSql } from "../reports/reports.repository";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 // A repository importing another module's SQL fragments is OK for now: the likes visibility rules mirror the featured ones.
 import { VISIBLE_FROM, VISIBLE_WHERE } from "../featured/featured.repository";
@@ -134,4 +134,24 @@ export async function listVisibleLikes(
 export async function countVisibleLikes(db: D1Database, viewerId: string, now: number): Promise<number> {
   const row = await db.prepare(`SELECT COUNT(*) AS n ${VISIBLE_LIKES}`).bind(viewerId, now).first<{ n: number }>();
   return row?.n ?? 0;
+}
+
+/** Statement: how many likes were silenced on the photo since the last push. */
+export function selectSilencedLikes(db: D1Database, mediaId: string): D1PreparedStatement {
+  return db.prepare("SELECT likes_since_notified AS silenced FROM media WHERE id = ?").bind(mediaId);
+}
+
+/** Statement: opens a new push window, changing a row only if the previous one is over (`olderThan` = now - window). */
+export function claimLikePushWindow(db: D1Database, mediaId: string, now: number, olderThan: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE media SET like_notified_at = ?, likes_since_notified = 0
+         WHERE id = ? AND (like_notified_at IS NULL OR like_notified_at <= ?)`,
+    )
+    .bind(now, mediaId, olderThan);
+}
+
+/** Statement: counts one more silenced like. */
+export function countSilencedLike(db: D1Database, mediaId: string): D1PreparedStatement {
+  return db.prepare("UPDATE media SET likes_since_notified = likes_since_notified + 1 WHERE id = ?").bind(mediaId);
 }

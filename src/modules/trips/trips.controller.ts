@@ -14,6 +14,7 @@ import type {
   updateMyMembershipRoute,
   updateTripRoute,
 } from "./trips.router";
+import * as members from "./members.service";
 import * as service from "./trips.service";
 
 export const create: RouteHandler<typeof createTripRoute, AppEnv> = async (c) => {
@@ -26,7 +27,7 @@ export const create: RouteHandler<typeof createTripRoute, AppEnv> = async (c) =>
 
 export const join: RouteHandler<typeof joinTripRoute, AppEnv> = async (c) => {
   const user = c.get("user");
-  const { created, trip, member } = await service.joinTrip(c.env.DB, user, c.req.valid("json").code);
+  const { created, trip, member } = await members.joinTrip(c.env.DB, user, c.req.valid("json").code);
   const body = { trip: publicTrip(trip, Date.now()), member: publicMember(member, user) };
   if (created) return c.json(body, 201);
   return c.json(body, 200);
@@ -60,7 +61,7 @@ export const reveal: RouteHandler<typeof revealRoute, AppEnv> = async (c) => {
 };
 
 export const addMembers: RouteHandler<typeof addMembersRoute, AppEnv> = async (c) => {
-  const { results, notify } = await service.addFriendsToTrip(
+  const { results, notify } = await members.addFriendsToTrip(
     c.env,
     c.get("trip"),
     c.get("user"),
@@ -73,16 +74,16 @@ export const addMembers: RouteHandler<typeof addMembersRoute, AppEnv> = async (c
 
 export const updateMyMembership: RouteHandler<typeof updateMyMembershipRoute, AppEnv> = async (c) => {
   const { allowFeaturing } = c.req.valid("json");
-  await service.setMyFeaturing(c.env.DB, c.get("member"), allowFeaturing);
+  await members.setMyFeaturing(c.env.DB, c.get("member"), allowFeaturing);
   return c.json({ allowFeaturing }, 200);
 };
 
 export const leave: RouteHandler<typeof leaveRoute, AppEnv> = async (c) => {
-  await service.leaveTrip(c.env.DB, c.get("member"));
+  await members.leaveTrip(c.env.DB, c.get("member"));
   return c.body(null, 204);
 };
 
 export const removeMember: RouteHandler<typeof removeMemberRoute, AppEnv> = async (c) => {
-  await service.removeMember(c.env.DB, c.get("trip"), c.get("member"), c.req.valid("param").memberId);
+  await members.removeMember(c.env.DB, c.get("trip"), c.get("member"), c.req.valid("param").memberId);
   return c.body(null, 204);
 };

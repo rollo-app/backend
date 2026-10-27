@@ -8,11 +8,11 @@ import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import type { Env, MemberRow, TripRow, UserRow } from "../../types";
 import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
-import { deleteFeaturedByOthers, deleteFeaturedOfMedia } from "../featured/featured.repository";
+import { deleteFeaturedOfMedia } from "../featured/featured.repository";
 import { deleteLikesOfMedia } from "../likes/likes.repository";
 import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
-import { rejectSelfie } from "../../lib/moment-selfie";
-import { findMoment, findMomentSlots, recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
+import { rejectSelfie, resolveMoment } from "../moments/moments.service";
+import { recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
 
 const UPLOAD_URL_TTL = 15 * 60;
@@ -36,43 +36,6 @@ async function uploadResponse(
     presignPut(env, thumbKey, origin, sizes.thumb),
   ]);
   return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
-}
-
-type MomentTarget = { day: string; notifyAt: number; pairedMediaId: string | null };
-
-/**
- * Validates the moment fields of a new registration (not a retry). Null when it is an ordinary photo or video.
- * A main photo needs the member's moment row for `momentDay` with no photo yet (409); a selfie (`pairedMediaId`)
- * must pair with the member's own main moment photo of this rollo (400) and inherits its day.
- */
-async function resolveMoment(db: D1Database, trip: TripRow, member: MemberRow, input: RegisterMediaInput): Promise<MomentTarget | null> {
-  if (input.momentDay != null && trip.moment_mode === "off") throw badRequest("Este rollo no tiene momento del día");
-  if (input.pairedMediaId) {
-    if (trip.moment_mode !== "photo_selfie") throw badRequest("Este rollo no admite selfie del momento");
-    const main = await repo.findMediaById(db, input.pairedMediaId);
-    const valid =
-      main !== null &&
-      main.deletedAt === null &&
-      main.memberId === member.id &&
-      main.tripId === trip.id &&
-      main.momentDay !== null &&
-      main.pairedMediaId === null;
-    if (!valid || (input.momentDay != null && input.momentDay !== main.momentDay)) {
-      throw badRequest("La foto del momento no corresponde");
-    }
-    const slots = await findMomentSlots(db, trip.id, member.user_id, main.momentDay!);
-    if (!slots) throw badRequest("La foto del momento no corresponde");
-    if (slots.media_id !== main.id) throw badRequest("La foto del momento no corresponde");
-    if (slots.selfie_media_id !== null) throw conflict("Este momento ya tiene selfie");
-    return { day: main.momentDay!, notifyAt: 0, pairedMediaId: main.id };
-  }
-  if (input.momentDay == null) return null;
-
-  const row = await findMoment(db, trip.id, member.user_id, input.momentDay);
-  if (!row) throw conflict("No tenés un momento ese día");
-  const slots = await findMomentSlots(db, trip.id, member.user_id, input.momentDay);
-  if (slots?.media_id != null) throw conflict("Este momento ya tiene foto");
-  return { day: input.momentDay, notifyAt: row.notify_at, pairedMediaId: null };
 }
 
 /** Registers a photo or video and returns signed upload URLs. Idempotent by `input.id`; `created` tells a new row from a retry. */
@@ -346,29 +309,4 @@ export async function archiveMedia(db: D1Database, trip: TripRow, member: Member
 export async function unarchiveMedia(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string): Promise<void> {
   const row = await ownRevealedPhoto(db, trip, member, mediaId);
   await repo.markUnarchived(db, await withLinked(db, row.id)).run();
-}
-
-/**
- * The photo must be yours (you took it) and not deleted. Authorship is the media's member → user, so it holds
- * even after you left the rollo or were removed from it. 404 if it doesn't exist (or you aren't in its rollo
- * and didn't take it), 403 if an active member who didn't take it.
- */
-export async function assertOwnMedia(db: D1Database, userId: string, mediaId: string): Promise<string> {
-  const row = await repo.findAuthoredMedia(db, mediaId);
-  if (!row) throw notFound();
-  if (row.authorUserId === userId) return row.id;
-
-  if (!(await repo.isActiveTripMember(db, row.tripId, userId))) throw notFound();
-  throw forbidden("Solo quien sacó la foto puede cambiar esto");
-}
-
-/** Author-only: others can no longer feature the photo, and it leaves their profiles. Idempotent. */
-export async function blockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
-  const id = await assertOwnMedia(db, userId, mediaId);
-  await db.batch([repo.blockFeaturing(db, id, Date.now()), deleteFeaturedByOthers(db, id, userId)]);
-}
-
-export async function unblockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
-  const id = await assertOwnMedia(db, userId, mediaId);
-  await repo.unblockFeaturing(db, id).run();
 }
