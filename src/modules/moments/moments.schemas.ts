@@ -8,3 +8,16 @@ export const MomentSchema = z
   .openapi("Moment");
 
 export const MyMomentsSchema = z.object({ moments: z.array(MomentSchema) }).openapi("MyMoments");
+
+export const AllMyMomentsSchema = z
+  .object({
+    trips: z.array(
+      z.object({
+        tripId: z.string().uuid(),
+        tripName: z.string(),
+        momentMode: z.enum(["photo", "photo_selfie"]),
+        moments: z.array(MomentSchema),
+      }),
+    ),
+  })
+  .openapi("AllMyMoments");

@@ -1,3 +1,5 @@
+import type { TripRow } from "../../types";
+
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])`.
 
@@ -74,4 +76,22 @@ export function findMomentSlots(
     .prepare("SELECT media_id, selfie_media_id FROM trip_moments WHERE trip_id = ? AND user_id = ? AND day = ?")
     .bind(tripId, userId, day)
     .first<{ media_id: string | null; selfie_media_id: string | null }>();
+}
+
+/**
+ * Trips the user is an active member of that can have moments to schedule: moment on, not revealed, from 3 days
+ * before the start (the app's prefetch window) until the end. Ordered by trip id so the response is deterministic.
+ */
+export async function listMomentTrips(db: D1Database, userId: string, now: number, prefetchMs: number): Promise<TripRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.* FROM trips t JOIN members m ON m.trip_id = t.id
+       WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL
+         AND t.moment_mode != 'off' AND t.revealed_at IS NULL AND t.reveal_at > ?
+         AND t.starts_at - ? <= ? AND t.ends_at > ?
+       ORDER BY t.id`,
+    )
+    .bind(userId, now, prefetchMs, now, now)
+    .all<TripRow>();
+  return results;
 }

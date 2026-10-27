@@ -23,7 +23,7 @@ import { purgeOldEmailCounters } from "./lib/email-caps";
 import { sendModerationSummary } from "./lib/moderation-summary";
 import { cleanupStalePending } from "./lib/pending-cleanup";
 import reports from "./modules/reports/reports.router";
-import moments from "./modules/moments/moments.router";
+import moments, { meMoments } from "./modules/moments/moments.router";
 import trips from "./modules/trips/trips.router";
 import users from "./modules/users/users.router";
 import usernames from "./modules/usernames/usernames.router";
@@ -44,6 +44,7 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 app.route("/admin", admin);
 app.route("/auth", auth);
 app.route("/me", meFriendRequests);
+app.route("/me", meMoments);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);

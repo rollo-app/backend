@@ -279,6 +279,66 @@
           "friend"
         ]
       },
+      "AllMyMoments": {
+        "type": "object",
+        "properties": {
+          "trips": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tripId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "tripName": {
+                  "type": "string"
+                },
+                "momentMode": {
+                  "type": "string",
+                  "enum": [
+                    "photo",
+                    "photo_selfie"
+                  ]
+                },
+                "moments": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Moment"
+                  }
+                }
+              },
+              "required": [
+                "tripId",
+                "tripName",
+                "momentMode",
+                "moments"
+              ]
+            }
+          }
+        },
+        "required": [
+          "trips"
+        ]
+      },
+      "Moment": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "Local date of the trip (YYYY-MM-DD)",
+            "example": "2027-01-12"
+          },
+          "notifyAt": {
+            "type": "integer",
+            "description": "Epoch ms when the moment starts; the user has 15 minutes from then"
+          }
+        },
+        "required": [
+          "day",
+          "notifyAt"
+        ]
+      },
       "UpdateProfileRequest": {
         "type": "object",
         "properties": {
@@ -999,24 +1059,6 @@
         },
         "required": [
           "moments"
-        ]
-      },
-      "Moment": {
-        "type": "object",
-        "properties": {
-          "day": {
-            "type": "string",
-            "description": "Local date of the trip (YYYY-MM-DD)",
-            "example": "2027-01-12"
-          },
-          "notifyAt": {
-            "type": "integer",
-            "description": "Epoch ms when the moment starts; the user has 15 minutes from then"
-          }
-        },
-        "required": [
-          "day",
-          "notifyAt"
         ]
       },
       "TripCreated": {
@@ -2550,6 +2592,42 @@
         "responses": {
           "204": {
             "description": "Request rejected"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/moments": {
+      "get": {
+        "tags": [
+          "Moments"
+        ],
+        "summary": "My daily moments in all my rollos",
+        "description": "The moments of the caller for every rollo where they are an active member, the moment is on, the rollo is not revealed and it is within the scheduling window (from 3 days before the start until the end). One call instead of one `GET /trips/{tripId}/moments` per rollo. Each rollo carries exactly what that endpoint would return for it, possibly empty (so the app can cancel old notifications). Like the per-rollo endpoint, the first time it draws and stores the missing moments and never re-draws. Ordered by rollo id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "My moments in all my rollos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllMyMoments"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid session token",
