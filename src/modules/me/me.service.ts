@@ -1,6 +1,7 @@
 import { deleteAccount } from "../account/account.service";
 import { presignPut } from "../../lib/r2";
-import { getNotificationSettings, getPrivacySettings, type NotificationSettings, type PrivacySettings, updateNotificationSettings, updatePrivacySettings } from "../../lib/settings";
+import type { NotificationSettings } from "../../lib/settings";
+import { getNotificationSettings, getPrivacySettings, type PrivacySettings, updateNotificationSettings, updatePrivacySettings } from "../settings/settings.service";
 import { deleteFeaturedByOthersOfAuthor } from "../featured/featured.repository";
 import { assertStorageAvailable } from "../../lib/storage";
 import { USERNAME_TAKEN_MESSAGE } from "../../lib/username";

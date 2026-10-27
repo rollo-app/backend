@@ -1,5 +1,5 @@
 import { MIN_DAY_WINDOW_MS, MOMENT_WINDOW_MS, dayWindow, drawNotifyAt } from "../../lib/moments";
-import { getNotificationSettings } from "../../lib/settings";
+import { getNotificationSettings } from "../settings/settings.service";
 import { isRevealed, localDate } from "../../lib/util";
 import type { TripRow } from "../../types";
 import { insertMomentsIgnoringExisting, listMomentTrips, listUserMoments } from "./moments.repository";

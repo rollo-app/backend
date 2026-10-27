@@ -1,5 +1,6 @@
 import type { Context } from "hono";
-import { getNotificationSettings, type NotificationKind } from "./settings";
+import type { NotificationKind } from "./settings";
+import { getNotificationSettings } from "../modules/settings/settings.service";
 import type { Env } from "../types";
 
 /**
