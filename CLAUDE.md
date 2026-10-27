@@ -215,6 +215,10 @@ Reglas:
   consecuencias, cuándo revisarla). La del stack: [`docs/decisiones/0001-stack.md`](docs/decisiones/0001-stack.md).
 - **TDD siempre:** primero el test, verlo fallar, código mínimo, refactor.
   Escenarios con los helpers de `test/helpers.ts` (`signUp`, `newTrip`, `joinAs`, `uploadMedia`...). Los códigos de login se leen de `devSentCodes` (y los links mágicos de `devSentLinks`) (`src/lib/email.ts`), que se llena cuando no hay `RESEND_API_KEY`.
+  **Correr tests sin ahogar la Mac** (cada worker levanta su `workerd` y varias sesiones a la vez se quedaban sin RAM):
+  corré **solo los tests de lo que tocaste**, nunca la suite completa, y siempre con `--maxWorkers=2`
+  (`npx vitest run test/<archivo>.test.ts --maxWorkers=2` o `npx vitest related <archivos> --run --maxWorkers=2`). La suite
+  completa la corre el CI, o se corre solo si el usuario la pide. `vitest.config.ts` ya fija `maxWorkers: 2`.
 - **Si tocás la API:** `npm run openapi` y commiteá `openapi.json`. Hay un test que falla si quedó
   desactualizado. Después la app corre `npm run api:generate`.
 - **Ramas:** `develop` es la default. Features en `feature/*` (o `fix/*`, `chore/*`) desde `develop`,

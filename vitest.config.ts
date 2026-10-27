@@ -27,6 +27,8 @@ export default defineConfig({
     })),
   ],
   test: {
+    // Each worker spins up its own workerd: keep it low so parallel agent sessions don't run the Mac out of RAM.
+    maxWorkers: 2,
     setupFiles: ["./test/setup.ts"],
     exclude: [...configDefaults.exclude, ".claude/**"],
   },
