@@ -142,13 +142,17 @@ export function markRevealed(db: D1Database, tripId: string, now: number): D1Pre
 
 /** Leaving also drops the admin role: whoever comes back is a regular member. */
 export function markLeft(db: D1Database, memberId: string, now: number): D1PreparedStatement {
-  return db.prepare("UPDATE members SET left_at = ?, role = 'member' WHERE id = ?").bind(now, memberId);
+  return db.prepare("UPDATE members SET left_at = ?, role = 'member', archived_at = NULL WHERE id = ?").bind(now, memberId);
 }
 
 export function markRemoved(db: D1Database, memberId: string, tripId: string, now: number): D1PreparedStatement {
   return db
-    .prepare("UPDATE members SET removed_at = ?, role = 'member' WHERE id = ? AND trip_id = ? AND removed_at IS NULL")
+    .prepare("UPDATE members SET removed_at = ?, role = 'member', archived_at = NULL WHERE id = ? AND trip_id = ? AND removed_at IS NULL")
     .bind(now, memberId, tripId);
+}
+
+export function setMemberArchived(db: D1Database, memberId: string, at: number | null): D1PreparedStatement {
+  return db.prepare("UPDATE members SET archived_at = ? WHERE id = ?").bind(at, memberId);
 }
 
 export function setMemberAllowFeaturing(db: D1Database, memberId: string, allow: boolean): D1PreparedStatement {

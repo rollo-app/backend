@@ -127,14 +127,15 @@ export const updateMyMembershipRoute = createRoute({
   summary: "Your settings in this rollo",
   description:
     "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). " +
-    "Turning it off removes them from other profiles; turning it on restores nothing.",
+    "Turning it off removes them from other profiles; turning it on restores nothing. " +
+    "`archived`: archive or unarchive the rollo for you only (409 if it is not revealed). Send at least one field.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateMyMembershipSchema } }, required: true },
   },
-  responses: { 200: json(MyMembershipSchema, "Updated"), ...errors(400, 401, 403) },
+  responses: { 200: json(MyMembershipSchema, "Updated"), ...errors(400, 401, 403, 409) },
 });
 
 export const removeMemberRoute = createRoute({

@@ -117,11 +117,27 @@ export async function addFriendsToTrip(
  * Whether others may feature my photos of this rollo. Turning it off removes them from other profiles
  * (mine stay); turning it on restores nothing.
  */
-export async function setMyFeaturing(db: D1Database, member: MemberRow, allow: boolean): Promise<void> {
+async function setMyFeaturing(db: D1Database, member: MemberRow, allow: boolean): Promise<void> {
   await db.batch([
     repo.setMemberAllowFeaturing(db, member.id, allow),
     ...(allow ? [] : [deleteFeaturedByOthersOfMember(db, member.id, member.user_id)]),
   ]);
+}
+
+/** Applies the given fields of my membership; archiving is only for revealed rollos and only affects me. */
+export async function updateMyMembership(
+  db: D1Database,
+  trip: TripRow,
+  member: MemberRow,
+  patch: { allowFeaturing?: boolean; archived?: boolean },
+): Promise<{ allowFeaturing: boolean; archived: boolean }> {
+  if (patch.archived !== undefined && !isRevealed(trip)) throw conflict("Solo podés archivar rollos revelados");
+  if (patch.allowFeaturing !== undefined) await setMyFeaturing(db, member, patch.allowFeaturing);
+  if (patch.archived !== undefined) await repo.setMemberArchived(db, member.id, patch.archived ? Date.now() : null).run();
+  return {
+    allowFeaturing: patch.allowFeaturing ?? member.allow_featuring !== 0,
+    archived: patch.archived ?? member.archived_at !== null,
+  };
 }
 
 // ---------- Leave ----------

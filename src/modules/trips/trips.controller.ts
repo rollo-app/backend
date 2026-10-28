@@ -79,9 +79,8 @@ export const addMembers: RouteHandler<typeof addMembersRoute, AppEnv> = async (c
 };
 
 export const updateMyMembership: RouteHandler<typeof updateMyMembershipRoute, AppEnv> = async (c) => {
-  const { allowFeaturing } = c.req.valid("json");
-  await members.setMyFeaturing(c.env.DB, c.get("member"), allowFeaturing);
-  return c.json({ allowFeaturing }, 200);
+  const mine = await members.updateMyMembership(c.env.DB, c.get("trip"), c.get("member"), c.req.valid("json"));
+  return c.json(mine, 200);
 };
 
 export const leave: RouteHandler<typeof leaveRoute, AppEnv> = async (c) => {

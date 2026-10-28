@@ -52,6 +52,7 @@ export const myTrips: RouteHandler<typeof myTripsRoute, AppEnv> = async (c) => {
         revealed: isRevealed(t, now),
         role: t.my_role,
         isCreator: t.created_by_user_id === c.get("user").id,
+        archived: t.my_archived_at !== null,
         totalUploaded: t.total_uploaded,
         momentMode: t.moment_mode,
         coverThumbhash: t.cover_thumbhash,

@@ -450,6 +450,10 @@
             "type": "boolean",
             "description": "You created this rollo"
           },
+          "archived": {
+            "type": "boolean",
+            "description": "You archived this rollo (only for you)"
+          },
           "totalUploaded": {
             "type": "integer"
           },
@@ -480,6 +484,7 @@
           "revealed",
           "role",
           "isCreator",
+          "archived",
           "totalUploaded",
           "momentMode",
           "coverThumbhash"
@@ -1531,10 +1536,14 @@
         "properties": {
           "allowFeaturing": {
             "type": "boolean"
+          },
+          "archived": {
+            "type": "boolean"
           }
         },
         "required": [
-          "allowFeaturing"
+          "allowFeaturing",
+          "archived"
         ]
       },
       "UpdateMyMembershipRequest": {
@@ -1543,11 +1552,12 @@
           "allowFeaturing": {
             "type": "boolean",
             "description": "Others may feature your photos of this rollo. Turning it off removes them from other profiles; turning it on restores nothing"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Archive the rollo for you only (revealed rollos only, 409 otherwise); it stays in your list marked as archived"
           }
-        },
-        "required": [
-          "allowFeaturing"
-        ]
+        }
       },
       "MediaRegistered": {
         "type": "object",
@@ -4634,7 +4644,7 @@
           "Trips"
         ],
         "summary": "Your settings in this rollo",
-        "description": "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). Turning it off removes them from other profiles; turning it on restores nothing.",
+        "description": "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). Turning it off removes them from other profiles; turning it on restores nothing. `archived`: archive or unarchive the rollo for you only (409 if it is not revealed). Send at least one field.",
         "security": [
           {
             "bearerAuth": []
@@ -4693,6 +4703,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {

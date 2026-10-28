@@ -4,7 +4,7 @@ import type { Role, TripRow } from "../../types";
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])`.
 
-export type MyTripRow = TripRow & { my_role: Role; total_uploaded: number; cover_thumbhash: string | null };
+export type MyTripRow = TripRow & { my_role: Role; my_archived_at: number | null; total_uploaded: number; cover_thumbhash: string | null };
 
 export type ProfileFields = { name: string | null; username: string | null; bio: string | null; profile_visibility: "friends" | "public" };
 
@@ -29,7 +29,7 @@ export function promoteAvatar(db: D1Database, userId: string, key: string): D1Pr
 export async function listMyTrips(db: D1Database, userId: string): Promise<MyTripRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT t.*, m.role AS my_role,
+      `SELECT t.*, m.role AS my_role, m.archived_at AS my_archived_at,
             (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL
                AND (archived_at IS NULL OR member_id = m.id)) AS total_uploaded,
             (SELECT cm.thumbhash FROM media cm JOIN members cmem ON cmem.id = cm.member_id
