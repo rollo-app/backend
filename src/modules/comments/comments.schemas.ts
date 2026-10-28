@@ -33,3 +33,37 @@ export const CommentSchema = z
   .openapi("Comment");
 
 export const CommentListSchema = z.object({ comments: z.array(CommentSchema) }).openapi("CommentList");
+
+export const DEFAULT_MY_COMMENTS_PAGE = 60;
+export const MAX_MY_COMMENTS_PAGE = 100;
+
+export const MyCommentsQuery = z.object({
+  cursor: z.string().optional().openapi({ param: { name: "cursor", in: "query" }, description: "`nextCursor` of the previous page" }),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_MY_COMMENTS_PAGE)
+    .optional()
+    .openapi({ param: { name: "limit", in: "query" }, description: `Page size (default ${DEFAULT_MY_COMMENTS_PAGE})` }),
+});
+
+export const MyCommentSchema = z
+  .object({
+    commentId: z.string().uuid(),
+    mediaId: z.string().uuid().openapi({ description: "The photo you commented on" }),
+    tripId: z.string().uuid().openapi({ description: "Its rollo, to open it in the gallery" }),
+    text: z.string(),
+    createdAt: z.number().int().openapi({ description: "When you wrote it (epoch ms)" }),
+    thumbPath: z.string().openapi({ example: "/trips/<tripId>/media/<mediaId>/thumb" }),
+    thumbHash: z.string().nullable(),
+  })
+  .openapi("MyComment");
+
+export const MyCommentsSchema = z
+  .object({
+    items: z.array(MyCommentSchema).openapi({ description: "Newest comment first" }),
+    nextCursor: z.string().nullable().openapi({ description: "null on the last page" }),
+    total: z.number().int().openapi({ description: "How many of your comments you can open today, across all pages" }),
+  })
+  .openapi("MyComments");

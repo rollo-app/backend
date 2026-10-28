@@ -2306,6 +2306,79 @@
         "required": [
           "text"
         ]
+      },
+      "MyComments": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyComment"
+            },
+            "description": "Newest comment first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many of your comments you can open today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "MyComment": {
+        "type": "object",
+        "properties": {
+          "commentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mediaId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The photo you commented on"
+          },
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Its rollo, to open it in the gallery"
+          },
+          "text": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "When you wrote it (epoch ms)"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/trips/<tripId>/media/<mediaId>/thumb"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "commentId",
+          "mediaId",
+          "tripId",
+          "text",
+          "createdAt",
+          "thumbPath",
+          "thumbHash"
+        ]
       }
     },
     "parameters": {}
@@ -6016,6 +6089,76 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/comments": {
+      "get": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "Comments you wrote",
+        "description": "Only yours. Your live comments on photos you can open today in a rollo gallery, newest first, paginated with `cursor`. Filtered by the server: a comment drops out if you deleted it, its photo was deleted, archived by its author (yours stay), its rollo is not revealed or you left it, there is a block with the photo's author or you reported the photo (it comes back if you regain access). Open it at `/photo/<mediaId>?tripId=<tripId>&comments=1`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of your comments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyComments"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {

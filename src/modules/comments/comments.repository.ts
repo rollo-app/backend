@@ -112,3 +112,55 @@ export async function listEarlierCommenters(db: D1Database, tripId: string, medi
     .all<{ user_id: string }>();
   return results.map((r) => r.user_id);
 }
+
+export type MyCommentRow = { comment_id: string; media_id: string; trip_id: string; text: string; created_at: number; thumbhash: string | null };
+
+/**
+ * The viewer's own live comments on photos they can open today in the rollo gallery: active member of a revealed rollo,
+ * photo uploaded and not deleted, not archived (unless theirs), not reported by the viewer, no block with the author either way.
+ * Binds, in order: viewer id (member), now, then the viewer id five times (comments, archived, reports, blocks, blocked by).
+ * Only photos that take comments: not a video nor the linked image of a daily moment.
+ */
+const MY_COMMENTS_FROM = `
+  FROM comments c
+  JOIN media m ON m.id = c.media_id
+  JOIN trips t ON t.id = m.trip_id
+  JOIN members author ON author.id = m.member_id
+  JOIN members me ON me.trip_id = m.trip_id AND me.user_id = ? AND me.removed_at IS NULL AND me.left_at IS NULL
+  WHERE (t.revealed_at IS NOT NULL OR t.reveal_at <= ?)
+    AND c.user_id = ? AND c.deleted_at IS NULL
+    AND m.type = 'photo' AND m.paired_media_id IS NULL AND m.status = 'uploaded' AND m.deleted_at IS NULL
+    AND (m.archived_at IS NULL OR author.user_id = ?)
+    AND ${hiddenMediaSql("m", "author")}
+    AND NOT EXISTS (SELECT 1 FROM blocks ab WHERE ab.blocker_id = author.user_id AND ab.blocked_id = ?)`;
+
+export type MyCommentsCursor = { createdAt: number; commentId: string };
+
+/** One page (`limit` rows), newest comment first; ties broken by comment id so a cursor never skips or repeats. */
+export async function listMyComments(
+  db: D1Database,
+  viewerId: string,
+  now: number,
+  limit: number,
+  after: MyCommentsCursor | null,
+): Promise<MyCommentRow[]> {
+  const cursorSql = after ? "AND (c.created_at < ? OR (c.created_at = ? AND c.id < ?))" : "";
+  const cursorBinds = after ? [after.createdAt, after.createdAt, after.commentId] : [];
+  const { results } = await db
+    .prepare(
+      `SELECT c.id AS comment_id, c.media_id, m.trip_id, c.text, c.created_at, m.thumbhash
+       ${MY_COMMENTS_FROM} ${cursorSql}
+       ORDER BY c.created_at DESC, c.id DESC LIMIT ?`,
+    )
+    .bind(viewerId, now, viewerId, viewerId, viewerId, viewerId, viewerId, ...cursorBinds, limit)
+    .all<MyCommentRow>();
+  return results;
+}
+
+export async function countMyComments(db: D1Database, viewerId: string, now: number): Promise<number> {
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS n ${MY_COMMENTS_FROM}`)
+    .bind(viewerId, now, viewerId, viewerId, viewerId, viewerId, viewerId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}

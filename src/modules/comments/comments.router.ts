@@ -4,7 +4,7 @@ import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { rateLimit } from "../../lib/rate-limit";
 import { MediaParams } from "../../schemas";
 import * as controller from "./comments.controller";
-import { CommentListSchema, CommentParams, CommentSchema, CreateCommentSchema } from "./comments.schemas";
+import { CommentListSchema, CommentParams, CommentSchema, CreateCommentSchema, MyCommentsQuery, MyCommentsSchema } from "./comments.schemas";
 
 const tags = ["Comments"];
 
@@ -51,10 +51,27 @@ export const deleteCommentRoute = createRoute({
   responses: { 204: { description: "Deleted" }, ...errors(401, 403, 404) },
 });
 
+export const myCommentsRoute = createRoute({
+  method: "get",
+  path: "/me/comments",
+  tags,
+  summary: "Comments you wrote",
+  description:
+    "Only yours. Your live comments on photos you can open today in a rollo gallery, newest first, paginated with `cursor`. " +
+    "Filtered by the server: a comment drops out if you deleted it, its photo was deleted, archived by its author (yours stay), " +
+    "its rollo is not revealed or you left it, there is a block with the photo's author or you reported the photo " +
+    "(it comes back if you regain access). Open it at `/photo/<mediaId>?tripId=<tripId>&comments=1`.",
+  security: bearerAuth,
+  middleware: [requireUser] as const,
+  request: { query: MyCommentsQuery },
+  responses: { 200: json(MyCommentsSchema, "A page of your comments"), ...errors(400, 401) },
+});
+
 const comments = createApp();
 
 comments.openapi(listCommentsRoute, controller.list);
 comments.openapi(createCommentRoute, controller.create);
 comments.openapi(deleteCommentRoute, controller.remove);
+comments.openapi(myCommentsRoute, controller.myComments);
 
 export default comments;

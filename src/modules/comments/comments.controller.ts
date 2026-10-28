@@ -1,7 +1,8 @@
 import type { RouteHandler } from "@hono/zod-openapi";
 import { deferPush } from "../../lib/push";
 import type { AppEnv } from "../../types";
-import type { createCommentRoute, deleteCommentRoute, listCommentsRoute } from "./comments.router";
+import type { createCommentRoute, deleteCommentRoute, listCommentsRoute, myCommentsRoute } from "./comments.router";
+import { DEFAULT_MY_COMMENTS_PAGE } from "./comments.schemas";
 import * as service from "./comments.service";
 
 export const list: RouteHandler<typeof listCommentsRoute, AppEnv> = async (c) => {
@@ -18,4 +19,9 @@ export const create: RouteHandler<typeof createCommentRoute, AppEnv> = async (c)
 export const remove: RouteHandler<typeof deleteCommentRoute, AppEnv> = async (c) => {
   await service.deleteComment(c.env.DB, c.get("user").id, c.req.valid("param").commentId);
   return c.body(null, 204);
+};
+
+export const myComments: RouteHandler<typeof myCommentsRoute, AppEnv> = async (c) => {
+  const { cursor, limit } = c.req.valid("query");
+  return c.json(await service.listMyComments(c.env.DB, c.get("user").id, { cursor, limit: limit ?? DEFAULT_MY_COMMENTS_PAGE }), 200);
 };

@@ -1,5 +1,6 @@
 import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { canSeeProfile } from "../users/users.service";
+import { decodeCursor, encodeCursor } from "../../lib/cursor";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import { rejectSelfie, rejectSelfieById } from "../moments/moments.service";
 import { actorName, sendPush, type PushMessage } from "../../lib/push";
@@ -65,21 +66,6 @@ export type LikedPhoto = {
   source: { kind: "trip"; tripId: string } | { kind: "featured"; userId: string };
 };
 
-function encodeCursor(c: repo.LikesCursor): string {
-  return btoa(`${c.likedAt}:${c.mediaId}`).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function decodeCursor(raw: string): repo.LikesCursor {
-  try {
-    const [at, mediaId, ...rest] = atob(raw.replace(/-/g, "+").replace(/_/g, "/")).split(":");
-    const likedAt = Number(at);
-    if (rest.length === 0 && mediaId && Number.isSafeInteger(likedAt) && likedAt >= 0) return { likedAt, mediaId };
-  } catch {
-    // falls through
-  }
-  throw badRequest("Cursor inválido");
-}
-
 /**
  * The photos the viewer liked that they can open today, newest like first (filtered by the server, see
  * `repo.listVisibleLikes`). Each says where to open it: the rollo wins over a profile.
@@ -92,7 +78,7 @@ export async function listMyLikes(
   const now = Date.now();
   const after = opts.cursor ? decodeCursor(opts.cursor) : null;
   const [rows, total] = await Promise.all([
-    repo.listVisibleLikes(db, viewerId, now, opts.limit + 1, after),
+    repo.listVisibleLikes(db, viewerId, now, opts.limit + 1, after && { likedAt: after.at, mediaId: after.id }),
     repo.countVisibleLikes(db, viewerId, now),
   ]);
   const page = rows.slice(0, opts.limit);
@@ -109,7 +95,7 @@ export async function listMyLikes(
     };
   });
   const last = page[page.length - 1];
-  return { items, nextCursor: rows.length > opts.limit && last ? encodeCursor({ likedAt: last.liked_at, mediaId: last.media_id }) : null, total };
+  return { items, nextCursor: rows.length > opts.limit && last ? encodeCursor({ at: last.liked_at, id: last.media_id }) : null, total };
 }
 
 /** After a "photoLiked" push, the next likes of that photo within this window are counted but not notified. */

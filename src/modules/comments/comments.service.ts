@@ -1,6 +1,7 @@
 import { rejectSelfie } from "../moments/moments.service";
 import { actorName, sendPush, type PushMessage } from "../../lib/push";
 import { isBlockedEitherWay } from "../blocks/blocks.service";
+import { decodeCursor, encodeCursor } from "../../lib/cursor";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, forbidden, notFound } from "../../shared/errors";
@@ -133,3 +134,41 @@ async function notifyComment(
   const others = await repo.listEarlierCommenters(env.DB, photo.tripId, photo.id, photo.authorUserId);
   if (others.length) await sendPush(env, others, "photoCommented", alsoCommentedMessage(commenter, silenced, photo), opts);
 }
+
+/** Your comments on photos you can open today in the gallery, newest first (filtered in SQL, see `repo.listMyComments`). */
+export async function listMyComments(
+  db: D1Database,
+  viewerId: string,
+  opts: { cursor?: string; limit: number },
+): Promise<{ items: MyComment[]; nextCursor: string | null; total: number }> {
+  const now = Date.now();
+  const after = opts.cursor ? decodeCursor(opts.cursor) : null;
+  const [rows, total] = await Promise.all([
+    repo.listMyComments(db, viewerId, now, opts.limit + 1, after && { createdAt: after.at, commentId: after.id }),
+    repo.countMyComments(db, viewerId, now),
+  ]);
+  const page = rows.slice(0, opts.limit);
+  const items = page.map(
+    (r): MyComment => ({
+      commentId: r.comment_id,
+      mediaId: r.media_id,
+      tripId: r.trip_id,
+      text: r.text,
+      createdAt: r.created_at,
+      thumbPath: `/trips/${r.trip_id}/media/${r.media_id}/thumb`,
+      thumbHash: r.thumbhash,
+    }),
+  );
+  const last = page[page.length - 1];
+  return { items, nextCursor: rows.length > opts.limit && last ? encodeCursor({ at: last.created_at, id: last.comment_id }) : null, total };
+}
+
+export type MyComment = {
+  commentId: string;
+  mediaId: string;
+  tripId: string;
+  text: string;
+  createdAt: number;
+  thumbPath: string;
+  thumbHash: string | null;
+};
