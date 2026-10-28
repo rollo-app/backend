@@ -149,7 +149,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Bariloche 2025 (revelado)",
-    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member and has it ARCHIVED (her own view only); featured photos come from here",
+    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member and has it ARCHIVED (own view only); featured photos come from here",
     members: ["Cami", "Tomi", "Fede", "Lu", "Nacho"],
     // Backdated to Jan 2025 right after creating (the API rejects dates in the past). The reveal stays in
     // the future so media can be registered; `after` moves it into the past and reveals it.
@@ -184,7 +184,7 @@ export const SCENARIOS: Scenario[] = [
       if (!feed.revealed || !feed.items.length || !feed.items.every((i: any) => i.files)) {
         throw new Error("Bariloche: the feed was not left revealed with files");
       }
-      // Juani archives it for herself only (PATCH /trips/{id}/members/me): /me/trips must flag it.
+      // Juani archives it only for Juani (PATCH /trips/{id}/members/me): /me/trips must flag it.
       const juani = ctx.tokens[ctx.names.indexOf("Juani")]!;
       await api("PATCH", `/trips/${ctx.tripId}/members/me`, { archived: true }, juani);
       const mine = await api("GET", "/me/trips", undefined, juani);

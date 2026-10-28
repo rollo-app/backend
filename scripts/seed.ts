@@ -60,7 +60,7 @@ async function main() {
 
   console.log("\n=== Cuentas (el código de login aparece en la consola de wrangler) ===");
   const accounts: [string, string][] = [
-    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin y creadora de \"Finde en Tandil\"; tiene archivado \"Bariloche 2025\" (solo en su vista). Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros). Su primera foto de Bariloche tiene 5 me gusta. Insignia Founder."],
+    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin y creó \"Finde en Tandil\"; tiene archivado \"Bariloche 2025\" (solo en su vista). Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros). Su primera foto de Bariloche tiene 5 me gusta. Insignia Founder."],
     ["Cami", "Creó \"Rollo con admins\" (Tomi y Fede son admins ahí, Juani miembro). Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche. Insignia First Edition."],
     ["Tomi", "Amigo con varios rollos en común; descripción de 150 caracteres justos (el tope). Perfil PÚBLICO con 3 destacadas."],
     ["Fede", "Amigo con varios rollos en común; descripción de 3 renglones."],
