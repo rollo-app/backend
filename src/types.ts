@@ -65,6 +65,9 @@ export type TripRow = {
   created_by_user_id: string | null;
 };
 
+/** Global backoffice role (distinct from the per-rollo `Role`). */
+export type AppRole = "user" | "superadmin";
+
 export type UserRow = {
   id: string;
   email: string;
@@ -76,6 +79,7 @@ export type UserRow = {
   badge: string | null;
   unlimited_rollos: number;
   profile_visibility: ProfileVisibility;
+  app_role: AppRole;
   created_at: number;
 };
 
