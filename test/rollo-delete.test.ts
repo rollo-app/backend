@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { purgeDeletedFiles } from "../src/lib/r2-purge";
+import { PURGE_GRACE_MS, purgeDeletedFiles } from "../src/lib/r2-purge";
 import { api, befriend, joinAs, newTrip, photoBody, uploadMedia } from "./helpers";
 
 const GONE = "Este rollo se borró";
@@ -83,8 +83,27 @@ describe("DELETE /trips/{tripId}", () => {
     const keys = (await env.DB.prepare("SELECT original_key o, thumb_key t FROM media WHERE trip_id = ?").bind(t.trip.tripId).all<{ o: string; t: string }>()).results.flatMap((r) => [r.o, r.t]);
     for (const k of keys) expect(await env.MEDIA.head(k)).not.toBeNull();
     await api("DELETE", `/trips/${t.trip.tripId}`, { token: t.trip.adminToken });
-    await purgeDeletedFiles(env, Date.now());
+    await purgeDeletedFiles(env, Date.now() + PURGE_GRACE_MS + 1000);
     for (const k of keys) expect(await env.MEDIA.head(k)).toBeNull();
     expect(await count("SELECT COUNT(*) n FROM r2_purge")).toBe(0);
+  });
+
+  it("keeps keys queued within the grace period", async () => {
+    const t = await setup();
+    const keys = (await env.DB.prepare("SELECT original_key o FROM media WHERE trip_id = ?").bind(t.trip.tripId).all<{ o: string }>()).results.map((r) => r.o);
+    await api("DELETE", `/trips/${t.trip.tripId}`, { token: t.trip.adminToken });
+    await purgeDeletedFiles(env, Date.now());
+    for (const k of keys) expect(await env.MEDIA.head(k)).not.toBeNull();
+    expect(await count("SELECT COUNT(*) n FROM r2_purge")).toBeGreaterThan(0);
+    await purgeDeletedFiles(env, Date.now() + PURGE_GRACE_MS + 1000);
+    for (const k of keys) expect(await env.MEDIA.head(k)).toBeNull();
+  });
+
+  it("deleting twice is 410", async () => {
+    const trip = await newTrip();
+    expect((await api("DELETE", `/trips/${trip.tripId}`, { token: trip.adminToken })).status).toBe(204);
+    const again = await api("DELETE", `/trips/${trip.tripId}`, { token: trip.adminToken });
+    expect(again.status).toBe(410);
+    expect(again.body.error).toBe(GONE);
   });
 });

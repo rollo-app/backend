@@ -5171,6 +5171,16 @@
               }
             }
           },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
