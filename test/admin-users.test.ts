@@ -19,6 +19,15 @@ describe("GET /admin/users", () => {
     expect(typeof creator.lastSeenAt).toBe("number");
   });
 
+  it("q matches accented names as they are stored (LIKE folds ASCII case only)", async () => {
+    const su = await makeSuperadmin();
+    await signUp("a1@rollo.test", "Ángela", "angie");
+    const by = async (q: string) => (await api("GET", `/admin/users?q=${encodeURIComponent(q)}`, { token: su.token })).body.items.map((u: any) => u.name);
+    expect(await by("Ángela")).toEqual(["Ángela"]);
+    expect(await by("ngela")).toEqual(["Ángela"]);
+    expect(await by("ANGELA")).toEqual([]);
+  });
+
   it("q searches email, name and username without wildcards", async () => {
     const su = await makeSuperadmin();
     await signUp("ana_perez@rollo.test", "Ana", "anita");

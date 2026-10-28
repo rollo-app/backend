@@ -93,11 +93,11 @@ export type AdminUserRow = {
 /** Sort keys the users list accepts (an allowlist: they map to SQL, so never user input). */
 export const userSortable = { createdAt: users.createdAt, lastSeenAt, name: users.name, email: users.email };
 
-/** Case-insensitive substring match on email, name and username; `%`, `_` and `\` in `q` are literal. */
+/** Substring match on email, name and username; `%`, `_` and `\` in `q` are literal. SQLite `LIKE` is case-insensitive for ASCII only (no `lower()`: it would not fold accents either). */
 function userSearch(q: string | undefined): SQL | undefined {
   if (!q) return undefined;
-  const pattern = `%${q.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
-  const matches = (col: AnyColumn) => sql`lower(${col}) LIKE ${pattern} ESCAPE '\\'`;
+  const pattern = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+  const matches = (col: AnyColumn) => sql`${col} LIKE ${pattern} ESCAPE '\\'`;
   return or(matches(users.email), matches(users.name), matches(users.username));
 }
 
