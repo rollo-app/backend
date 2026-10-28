@@ -140,14 +140,19 @@ export function markRevealed(db: D1Database, tripId: string, now: number): D1Pre
   return db.prepare("UPDATE trips SET revealed_at = ? WHERE id = ? AND revealed_at IS NULL").bind(now, tripId);
 }
 
+/** Leaving also drops the admin role: whoever comes back is a regular member. */
 export function markLeft(db: D1Database, memberId: string, now: number): D1PreparedStatement {
-  return db.prepare("UPDATE members SET left_at = ? WHERE id = ?").bind(now, memberId);
+  return db.prepare("UPDATE members SET left_at = ?, role = 'member', archived_at = NULL WHERE id = ?").bind(now, memberId);
 }
 
 export function markRemoved(db: D1Database, memberId: string, tripId: string, now: number): D1PreparedStatement {
   return db
-    .prepare("UPDATE members SET removed_at = ? WHERE id = ? AND trip_id = ? AND removed_at IS NULL")
+    .prepare("UPDATE members SET removed_at = ?, role = 'member', archived_at = NULL WHERE id = ? AND trip_id = ? AND removed_at IS NULL")
     .bind(now, memberId, tripId);
+}
+
+export function setMemberArchived(db: D1Database, memberId: string, at: number | null): D1PreparedStatement {
+  return db.prepare("UPDATE members SET archived_at = ? WHERE id = ?").bind(at, memberId);
 }
 
 export function setMemberAllowFeaturing(db: D1Database, memberId: string, allow: boolean): D1PreparedStatement {
@@ -210,4 +215,44 @@ export async function listActiveMemberUserIds(db: D1Database, tripId: string): P
     .bind(tripId)
     .all<{ user_id: string }>();
   return results.map((r) => r.user_id);
+}
+
+/** The rollo's creator (current user name), or null when unknown or their user row is missing. */
+export async function findCreator(db: D1Database, trip: Pick<TripRow, "created_by_user_id">): Promise<{ userId: string; name: string } | null> {
+  if (!trip.created_by_user_id) return null;
+  const row = await db.prepare("SELECT id, name FROM users WHERE id = ?").bind(trip.created_by_user_id).first<{ id: string; name: string | null }>();
+  return row ? { userId: row.id, name: row.name ?? "" } : null;
+}
+
+/** Active member of the rollo by membership id. */
+export function findActiveMemberById(db: D1Database, tripId: string, memberId: string): Promise<MemberRow | null> {
+  return db
+    .prepare("SELECT * FROM members WHERE id = ? AND trip_id = ? AND removed_at IS NULL AND left_at IS NULL")
+    .bind(memberId, tripId)
+    .first<MemberRow>();
+}
+
+export function setMemberRole(db: D1Database, memberId: string, role: Role): D1PreparedStatement {
+  return db.prepare("UPDATE members SET role = ? WHERE id = ?").bind(role, memberId);
+}
+
+export function findUserCard(db: D1Database, userId: string): Promise<{ name: string | null; username: string | null; avatar_key: string | null } | null> {
+  return db.prepare("SELECT name, username, avatar_key FROM users WHERE id = ?").bind(userId).first();
+}
+
+/** Statements that delete a rollo for everyone, in FK order; run them in ONE `db.batch` (a transaction). Queues its R2 keys for the cron purge. */
+export function deleteTripStatements(db: D1Database, tripId: string, now: number): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO r2_purge (key, created_at)
+         SELECT original_key, ?1 FROM media WHERE trip_id = ?2
+         UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2`,
+      )
+      .bind(now, tripId),
+    db.prepare("INSERT OR IGNORE INTO deleted_trips (trip_id, deleted_at) VALUES (?, ?)").bind(tripId, now),
+    db.prepare("DELETE FROM media WHERE trip_id = ?").bind(tripId),
+    db.prepare("DELETE FROM members WHERE trip_id = ?").bind(tripId),
+    db.prepare("DELETE FROM trips WHERE id = ?").bind(tripId),
+  ];
 }

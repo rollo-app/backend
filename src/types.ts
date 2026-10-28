@@ -98,6 +98,8 @@ export type MemberRow = {
   added_by_user_id: string | null;
   /** Others may feature this member's photos of the rollo (0/1). */
   allow_featuring: number;
+  /** The member hid this rollo from their list; NULL = not archived. */
+  archived_at: number | null;
 };
 
 export type MediaType = "photo" | "video";

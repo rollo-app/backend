@@ -22,7 +22,7 @@ Decisiones de producto que el backend tiene que respetar:
   (`POST /trips/{id}/members`, respuesta por amigo, no si ya se reveló). `members.left_at` (se salió: `DELETE /trips/{id}/members/me`,
   puede volver por código o por amigos, sus fotos quedan)
   **Solicitudes de amistad** (`src/modules/friend-requests/`, tabla `friend_requests`): desde el perfil de otra persona, `POST/DELETE /users/{id}/friend-request`, `GET /me/friend-requests` y `POST /me/friend-requests/{id}/accept|reject`; `GET /users/{id}` suma `friendRequest` (`none|sent|received`). Solicitud cruzada o a quien ya te pidió → amigos al toque; rechazar es silencioso (el que la mandó sigue viendo `sent`, y recién a los 30 días puede reenviar); 30 por día; bloquear las borra; push `friendRequest` (abre `/friends`) y `newFriend` al aceptar.
-  es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
+  es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El creador no puede salirse (409).
 - **Destacadas** (`src/modules/featured/`, `src/lib/zone.ts`): cada uno elige hasta **60 fotos** (no videos) de rollos **revelados**
   donde es miembro activo, **suyas o de un amigo** (solo fotos de amigos actuales; si no, 409 "Solo podés destacar fotos tuyas o de tus amigos"), para su perfil (`PUT/DELETE /me/featured/{mediaId}`, tabla `featured`). El autor puede
   no dejar que otros la destaquen (`PUT/DELETE /media/{id}/feature-block`, `media.feature_blocked_at`): borra las de otros y las nuevas dan
@@ -102,6 +102,15 @@ Decisiones de producto que el backend tiene que respetar:
   `DELETE /media/{id}`: **antes del revelado** es el borrado del admin de siempre (cualquier otro 403); **después**, el autor la elimina para siempre
   (archivos de R2, `deleted_at`, sus `likes` y `featured` se borran y sus comentarios quedan con `deleted_at`); otro miembro 403 y el admin con fotos
   ajenas 409, como antes. En un momento, archivar/desarchivar/eliminar la principal arrastra la vinculada y el id de la vinculada da 400.
+- **Roles del rollo, archivar y borrar** (`src/lib/creator.ts`, migración `0029_rollo_roles_archive_delete.sql`): el **creador** es `trips.created_by_user_id` (`isCreator`, `requireCreator`; la migración lo completa en rollos viejos con el admin más viejo activo). El `role` de la API sigue siendo `admin` | `member`; los miembros y `GET /me/trips` traen `isCreator` y el rollo `createdBy { userId, name } | null`. Puede haber **varios admins**: `POST/DELETE /trips/{tripId}/members/{memberId}/admin` (sumar y sacar el rol).
+  | Acción | Creador | Admin | Miembro |
+  |---|---|---|---|
+  | Renombrar, sacar miembros, volver a sumar a uno sacado, moderar (borrar fotos y comentarios), hacer admin a otro | sí | sí | no |
+  | Revelar, editar fechas, cupo y momento, rollo privado (`featuringDisabled`), sacar el rol admin, sacar a otro admin, borrar el rollo | sí | no (403 "Solo quien creó el rollo puede hacer esto") | no |
+  | Salirse (`DELETE /trips/{id}/members/me`) | no (409) | sí | sí |
+  Salirse o que te saquen vuelve el rol a `member` y limpia `archived_at`. **Borrar la cuenta del creador** pasa el rollo al admin activo más viejo (si no hay, al miembro activo más viejo, que queda admin; si no queda nadie, se borra el rollo como antes), en el mismo `batch` (`BACKFILL_CREATOR_SQL`).
+  **Archivar un rollo** (solo vos, `members.archived_at`): `PATCH /trips/{id}/members/me` `{ archived }`, solo si el rollo ya está **revelado** (si no, 409); `GET /me/trips` trae `archived` por rollo. No cambia nada para los demás.
+  **Borrar un rollo** (`DELETE /trips/{id}`, solo el creador, 204): un solo `batch` (`deleteTripStatements`) borra las filas de `media`, `members` y `trips` (el resto cae en cascada), deja una lápida en `deleted_trips` y encola en `r2_purge` las claves de R2 de originales y miniaturas. Desde ahí **toda ruta con `tripId` responde 410** `{ error: "Este rollo se borró" }` (`loadTripAndMember` en `src/lib/auth.ts`, en vez del 404 de "no existe"). El cron (`purgeDeletedFiles`, `src/lib/r2-purge.ts`) borra de R2 las claves con más de **1 hora** en la cola (`PURGE_GRACE_MS`, de a 1000 por pasada) y recién ahí saca sus filas de `r2_purge`; el período de gracia deja que una subida en vuelo no deje archivos huérfanos. No se puede deshacer.
 - **Momento del día** (`src/modules/moments/`, `src/lib/moments.ts`, migración `0024_daily_moment.sql`): un aviso por día a una hora al azar
   de cada miembro, con 15 minutos para sacar la foto (`MOMENT_WINDOW_MS`), estilo BeReal. El rollo lo elige al crearse: `trips.moment_mode`
   (`off` por default, para rollos viejos y el build viejo, `photo` o `photo_selfie`) y la franja `moment_window_start`/`end` (540 y 1380

@@ -64,13 +64,17 @@ export const UpdateTripSchema = z
 
 export const UpdateMyMembershipSchema = z
   .object({
-    allowFeaturing: z.boolean().openapi({
+    allowFeaturing: z.boolean().optional().openapi({
       description: "Others may feature your photos of this rollo. Turning it off removes them from other profiles; turning it on restores nothing",
     }),
+    archived: z.boolean().optional().openapi({
+      description: "Archive the rollo for you only (revealed rollos only, 409 otherwise); it stays in your list marked as archived",
+    }),
   })
+  .refine((b) => b.allowFeaturing !== undefined || b.archived !== undefined, "Mandá al menos un campo")
   .openapi("UpdateMyMembershipRequest");
 
-export const MyMembershipSchema = z.object({ allowFeaturing: z.boolean() }).openapi("MyMembership");
+export const MyMembershipSchema = z.object({ allowFeaturing: z.boolean(), archived: z.boolean() }).openapi("MyMembership");
 
 export const AddMembersSchema = z
   .object({

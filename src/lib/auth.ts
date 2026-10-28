@@ -65,7 +65,12 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
 
 async function loadTripAndMember(c: Context<AppEnv>, tripId: string, notMember: () => HTTPException) {
   const trip = await c.env.DB.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>();
-  if (!trip) throw new HTTPException(404, { message: "Rollo no encontrado" });
+  if (!trip) {
+    // A deleted rollo leaves a tombstone: "gone" instead of "never existed".
+    const tombstone = await c.env.DB.prepare("SELECT 1 FROM deleted_trips WHERE trip_id = ?").bind(tripId).first();
+    if (tombstone) throw new HTTPException(410, { message: "Este rollo se borró" });
+    throw new HTTPException(404, { message: "Rollo no encontrado" });
+  }
   const member = await c.env.DB.prepare(
     "SELECT * FROM members WHERE trip_id = ? AND user_id = ? AND removed_at IS NULL AND left_at IS NULL",
   )

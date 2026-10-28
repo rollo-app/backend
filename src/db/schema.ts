@@ -95,6 +95,7 @@ export const members = sqliteTable(
     leftAt: integer("left_at"),
     addedByUserId: text("added_by_user_id"),
     allowFeaturing: integer("allow_featuring").notNull().default(1),
+    archivedAt: integer("archived_at"),
   },
   (t) => [
     unique().on(t.tripId, t.userId),
@@ -102,6 +103,16 @@ export const members = sqliteTable(
     check("members_role_check", sql`${t.role} IN ('admin', 'member')`),
   ],
 );
+
+export const deletedTrips = sqliteTable("deleted_trips", {
+  tripId: text("trip_id").primaryKey(),
+  deletedAt: integer("deleted_at").notNull(),
+});
+
+export const r2Purge = sqliteTable("r2_purge", {
+  key: text("key").primaryKey(),
+  createdAt: integer("created_at").notNull(),
+});
 
 export const media = sqliteTable(
   "media",

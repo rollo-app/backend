@@ -24,6 +24,7 @@ const ERROR_DESCRIPTIONS: Record<number, string> = {
   401: "Missing or invalid session token",
   403: "Forbidden",
   404: "Not found",
+  410: "The rollo was deleted",
   409: "Conflict with the current state",
   429: "Daily limit or rate limit reached",
   503: "Storage limit reached; new uploads are paused",

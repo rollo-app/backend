@@ -83,7 +83,7 @@ describe("level 2: your photos of one rollo (PATCH /trips/{id}/members/me)", () 
 
     const res = await setMember(t.tripId, t.fede.token, false);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ allowFeaturing: false });
+    expect(res.body).toEqual({ allowFeaturing: false, archived: false });
     expect((await api("GET", `/trips/${t.tripId}`, { token: t.fede.token })).body.me.allowFeaturing).toBe(false);
     expect(await featured(t.juani.token, t.juani.userId)).toEqual([]);
     expect(await featured(t.fede.token, t.fede.userId)).toEqual([t.fedePhoto]);
