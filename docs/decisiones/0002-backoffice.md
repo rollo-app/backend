@@ -1,6 +1,6 @@
 # 0002 — Backoffice: panel web de administración (`front-admin`)
 
-- **Estado:** propuesta (en revisión con Juani)
+- **Estado:** aceptada (Juani la aprobó el 28/10/2026)
 - **Fecha:** 28/10/2026
 - **Revisar:** cuando se encare la fase 2 (listas de rollos/fotos/denuncias, modo degradado automático, log de auditoría), o si el uso de Cloudflare se acerca al límite gratis antes
 

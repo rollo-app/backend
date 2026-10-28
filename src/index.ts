@@ -101,7 +101,7 @@ app.onError((err, c) => {
   return c.json({ error: "Error interno" }, 500);
 });
 
-/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads and the sweep of orphan avatar files. */
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the sweep of orphan avatar files, the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(

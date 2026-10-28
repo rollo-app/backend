@@ -59,6 +59,7 @@
   // Opcionales:
   //   RESEND_API_KEY            envío de los códigos de login (sin esto solo se loguean en consola)
   //   REPORTS_EMAIL             destino de las denuncias (default soporte@juanifraga.com)
+  //   CF_ANALYTICS_TOKEN        token con "Account Analytics: Read" para medir el uso de Cloudflare (sin él no se mide)
   //   ADMIN_TOKEN               token de las rutas /admin/* (borrar fotos y cuentas denunciadas)
   //   LOGIN_LINK_URL            base del link mágico del mail (default https://rollo.juanifraga.com/entrar)
   //   REVIEW_EMAIL, REVIEW_CODE cuenta para App Review: a ese email no se le manda nada y REVIEW_CODE es su código
