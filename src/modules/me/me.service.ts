@@ -3,6 +3,7 @@ import { presignPut } from "../../lib/r2";
 import type { NotificationSettings } from "../../lib/settings";
 import { getNotificationSettings, getPrivacySettings, type PrivacySettings, updateNotificationSettings, updatePrivacySettings } from "../settings/settings.service";
 import { deleteFeaturedByOthersOfAuthor } from "../featured/featured.repository";
+import { assertNotDegraded } from "../../lib/degraded";
 import { assertStorageAvailable } from "../../lib/storage";
 import { USERNAME_TAKEN_MESSAGE } from "../../lib/username";
 import { badRequest, conflict } from "../../shared/errors";
@@ -53,6 +54,7 @@ export async function requestAvatarUpload(
   user: UserRow,
   sizeBytes: number,
 ): Promise<{ upload: string; expiresIn: number }> {
+  await assertNotDegraded(env);
   await assertStorageAvailable(env, sizeBytes);
   // Don't leave the previous unconfirmed upload orphaned in R2.
   if (user.pending_avatar_key) await env.MEDIA.delete(user.pending_avatar_key);

@@ -9,9 +9,10 @@ import {
   releaseEmailSlot,
   reserveEmailSlot,
 } from "../../lib/email-caps";
+import { DEGRADED_MESSAGE, isDegraded } from "../../lib/degraded";
 import { ipKey } from "../../lib/ip";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../../lib/login-code";
-import { badRequest, rateLimited } from "../../shared/errors";
+import { badRequest, rateLimited, unavailable } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import * as repo from "./auth.repository";
 
@@ -53,6 +54,7 @@ export async function startLogin(
   let ipKind: EmailKind | null = null;
   if (!isReview) {
     isNewUser = !(await repo.userExists(env.DB, email));
+    if (isNewUser && (await isDegraded(env))) throw unavailable(DEGRADED_MESSAGE);
     if (isNewUser) {
       // The new-user caps answer 204 like a success and send nothing: a 429 only for new emails would reveal whether an account exists.
       if (ip) {

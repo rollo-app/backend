@@ -2,6 +2,7 @@ import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import { blockedIdsFor } from "../blocks/blocks.service";
 import { sendTripRevealed } from "./notices.service";
+import { assertNotDegraded } from "../../lib/degraded";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
@@ -48,6 +49,7 @@ export async function createTrip(
   hooks: { beforeInsert?: () => Promise<void> } = {},
 ): Promise<{ trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> } | null> {
   requireName(user);
+  await assertNotDegraded({ DB: db });
   const now = Date.now();
   const limited = !user.unlimited_rollos;
   // Early check for a clear error; the INSERT below re-checks atomically.

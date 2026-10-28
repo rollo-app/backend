@@ -1,4 +1,5 @@
 import { conflict, badRequest, forbidden, notFound, rateLimited } from "../../shared/errors";
+import { assertNotDegraded } from "../../lib/degraded";
 import { assertStorageAvailable } from "../../lib/storage";
 import { mediaKeys, presignPut } from "../../lib/r2";
 import { isRevealed, localDate } from "../../lib/util";
@@ -46,6 +47,7 @@ export async function registerMedia(
   member: MemberRow,
   input: RegisterMediaInput,
 ): Promise<RegisterResult> {
+  await assertNotDegraded(env);
   const now = Date.now();
 
   if (isRevealed(trip, now)) throw conflict("El rollo ya se reveló");
