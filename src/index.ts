@@ -1,4 +1,5 @@
 import { swaggerUI } from "@hono/swagger-ui";
+import { snapshotDailyMetrics } from "./modules/metrics/metrics.service";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
 import { globalRateLimit } from "./lib/rate-limit";
@@ -103,7 +104,7 @@ app.onError((err, c) => {
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), snapshotDailyMetrics(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

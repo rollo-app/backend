@@ -2,7 +2,8 @@ import type { Context } from "hono";
 import type { AppEnv } from "../../types";
 import type { ReportRow } from "./admin.repository";
 import { badRequest } from "../../shared/errors";
-import { DegradedModeBodySchema } from "./admin.schemas";
+import { getMetrics as readMetrics } from "../metrics/metrics.service";
+import { DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
 import * as service from "./admin.service";
 
 type Person = { id: string; name: string | null; username: string | null; email: string };
@@ -52,4 +53,10 @@ export async function setDegradedMode(c: Context<AppEnv>) {
   const parsed = DegradedModeBodySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) throw badRequest("Cuerpo inválido");
   return c.json(await service.setDegradedMode(c.env.DB, parsed.data.on, c.get("adminUser")));
+}
+
+export async function getMetrics(c: Context<AppEnv>) {
+  const parsed = MetricsQuerySchema.safeParse({ days: c.req.query("days") });
+  if (!parsed.success) throw badRequest("Parámetros inválidos");
+  return c.json(await readMetrics(c.env.DB, parsed.data.days));
 }
