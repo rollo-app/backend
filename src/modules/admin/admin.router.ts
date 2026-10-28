@@ -16,6 +16,8 @@ admin.get("/degraded-mode", adminAuth({ session: true }), controller.getDegraded
 admin.put("/degraded-mode", adminAuth({ session: true }), controller.setDegradedMode);
 admin.get("/metrics", adminAuth({ session: true }), controller.getMetrics);
 admin.get("/usage", adminAuth({ session: true }), controller.getUsage);
+admin.get("/users", adminAuth({ session: true }), controller.listUsers);
+admin.get("/users/:id", adminAuth({ session: true }), controller.getUser);
 admin.delete("/media/:mediaId", adminAuth({ session: false }), controller.deleteMedia);
 admin.delete("/users/:userId", adminAuth({ session: false }), controller.deleteUser);
 

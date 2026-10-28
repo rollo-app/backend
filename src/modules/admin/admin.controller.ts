@@ -5,6 +5,7 @@ import { getUsage as readUsage } from "../../lib/cf-usage";
 import { storageLimitBytes, storageUsage } from "../../lib/storage";
 import { badRequest } from "../../shared/errors";
 import { getMetrics as readMetrics } from "../metrics/metrics.service";
+import { PageQuerySchema } from "../../lib/paging";
 import { DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
 import * as service from "./admin.service";
 
@@ -66,4 +67,14 @@ export async function getMetrics(c: Context<AppEnv>) {
 export async function getUsage(c: Context<AppEnv>) {
   const [usage, usedBytes] = await Promise.all([readUsage(c.env.DB), storageUsage(c.env)]);
   return c.json({ usage, storage: { usedBytes, limitBytes: storageLimitBytes(c.env) } });
+}
+
+export async function listUsers(c: Context<AppEnv>) {
+  const parsed = PageQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) throw badRequest("Parámetros inválidos");
+  return c.json(await service.listUsers(c.env.DB, parsed.data));
+}
+
+export async function getUser(c: Context<AppEnv>) {
+  return c.json(await service.getUser(c.env.DB, c.req.param("id")!, Date.now()));
 }
