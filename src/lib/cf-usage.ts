@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { sendUsageAlert } from "./email";
+import { releaseEmailSlot, reserveEmailSlot, SUPPORT_EMAILS_PER_DAY } from "./email-caps";
 
 /** Cloudflare free-tier limits we watch (workers/D1 per UTC day, R2 operations per UTC month). */
 export const USAGE_LIMITS = {
@@ -131,11 +132,17 @@ export async function pollUsage(env: Env, now: number, fetchImpl?: typeof fetch)
       // The insert decides the winner, so overlapping runs do not alert twice.
       const claimed = await env.DB.prepare("INSERT INTO cron_state (key, value) VALUES (?, '1') ON CONFLICT(key) DO NOTHING").bind(key).run();
       if (claimed.meta.changes === 0) continue;
+      // The alert takes a support slot. Without one it is only logged: the key stays claimed, so it is skipped for the day.
+      if (!(await reserveEmailSlot(env.DB, "support", SUPPORT_EMAILS_PER_DAY))) {
+        console.warn(`[cf-usage] no support email slot left, skipping the ${metric} alert`);
+        continue;
+      }
       try {
         await sendUsageAlert(env, { metric, value: values[metric], limit });
       } catch (e) {
         console.error("cf usage alert failed", e);
-        // Release the claim so the next tick retries instead of losing the day's alert.
+        // Give the slot back and release the claim so the next tick retries instead of losing the day's alert.
+        await releaseEmailSlot(env.DB, "support");
         await env.DB.prepare("DELETE FROM cron_state WHERE key = ?").bind(key).run();
       }
     }

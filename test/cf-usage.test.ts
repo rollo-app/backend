@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getUsage, pollUsage } from "../src/lib/cf-usage";
 import { devSentUsageAlerts } from "../src/lib/email";
+import { SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
 import { api, makeSuperadmin } from "./helpers";
 
 const withToken = { ...env, CF_ANALYTICS_TOKEN: "t" } as typeof env;
@@ -71,6 +72,20 @@ describe("cf usage", () => {
     expect(devSentUsageAlerts[0]).toMatchObject({ metric: "workers_requests", value: 81_000, limit: 100_000 });
     await pollUsage(withToken, now + 86_400_000, f);
     expect(devSentUsageAlerts).toHaveLength(2);
+  });
+
+  it("takes a support slot per alert and skips it (only logging) when the support cap is exhausted", async () => {
+    const { f } = fakeFetch({ workers_requests: 81_000, d1_rows_read: 0, d1_rows_written: 0, r2_class_a: 0, r2_class_b: 0 });
+    const day = new Date().toISOString().slice(0, 10);
+    await env.DB.prepare("INSERT INTO email_counters (kind, day, count) VALUES ('support', ?, ?)").bind(day, SUPPORT_EMAILS_PER_DAY).run();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(pollUsage(withToken, Date.now(), f)).resolves.toBeUndefined();
+    expect(devSentUsageAlerts).toHaveLength(0);
+    expect(warn).toHaveBeenCalled();
+    // The claim stays, so the next tick does not retry.
+    await pollUsage(withToken, Date.now() + 300_000, f);
+    expect(devSentUsageAlerts).toHaveLength(0);
+    warn.mockRestore();
   });
 
   it("purges alert keys older than 2 days", async () => {
