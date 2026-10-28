@@ -1,6 +1,8 @@
 import type { Context } from "hono";
 import type { AppEnv } from "../../types";
 import type { ReportRow } from "./admin.repository";
+import { badRequest } from "../../shared/errors";
+import { DegradedModeBodySchema } from "./admin.schemas";
 import * as service from "./admin.service";
 
 type Person = { id: string; name: string | null; username: string | null; email: string };
@@ -40,4 +42,14 @@ export function me(c: Context<AppEnv>) {
   const user = c.get("adminUser");
   if (!user) return c.json({ id: null, email: null, name: null, appRole: "token" });
   return c.json({ id: user.id, email: user.email, name: user.name, appRole: user.app_role });
+}
+
+export async function getDegradedMode(c: Context<AppEnv>) {
+  return c.json(await service.getDegradedMode(c.env.DB));
+}
+
+export async function setDegradedMode(c: Context<AppEnv>) {
+  const parsed = DegradedModeBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw badRequest("Cuerpo inválido");
+  return c.json(await service.setDegradedMode(c.env.DB, parsed.data.on, c.get("adminUser")));
 }

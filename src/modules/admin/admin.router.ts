@@ -12,6 +12,8 @@ const admin = new Hono<AppEnv>();
 // Reads accept ADMIN_TOKEN or a superadmin session; destructive routes stay ADMIN_TOKEN-only.
 admin.get("/me", adminAuth({ session: true }), controller.me);
 admin.get("/reports", adminAuth({ session: true }), controller.listReports);
+admin.get("/degraded-mode", adminAuth({ session: true }), controller.getDegradedMode);
+admin.put("/degraded-mode", adminAuth({ session: true }), controller.setDegradedMode);
 admin.delete("/media/:mediaId", adminAuth({ session: false }), controller.deleteMedia);
 admin.delete("/users/:userId", adminAuth({ session: false }), controller.deleteUser);
 

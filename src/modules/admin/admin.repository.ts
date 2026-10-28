@@ -1,3 +1,4 @@
+import type { AppSetting } from "../../db/schema";
 import type { UserRow } from "../../types";
 
 export type ReportRow = {
@@ -32,4 +33,25 @@ export async function listReports(db: D1Database, limit: number): Promise<Report
     .bind(limit)
     .all<ReportRow>();
   return results;
+}
+
+export async function getSetting(db: D1Database, key: string): Promise<AppSetting | null> {
+  const row = await db
+    .prepare("SELECT key, value, updated_at AS updatedAt, updated_by_user_id AS updatedByUserId FROM app_settings WHERE key = ?")
+    .bind(key)
+    .first<AppSetting>();
+  return row ?? null;
+}
+
+export function setSetting(db: D1Database, s: { key: string; value: string; updatedAt: number; updatedByUserId: string | null }): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO app_settings (key, value, updated_at, updated_by_user_id) VALUES (?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by_user_id = excluded.updated_by_user_id`,
+    )
+    .bind(s.key, s.value, s.updatedAt, s.updatedByUserId);
+}
+
+export async function findUserEmail(db: D1Database, userId: string): Promise<{ id: string; email: string } | null> {
+  return db.prepare("SELECT id, email FROM users WHERE id = ?").bind(userId).first<{ id: string; email: string }>();
 }
