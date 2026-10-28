@@ -1,8 +1,9 @@
 import { createRoute } from "@hono/zod-openapi";
 import { requireAdmin, requireTripMember, requireUser } from "../../lib/auth";
+import { requireCreator } from "../../lib/creator";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { rateLimit } from "../../lib/rate-limit";
-import { TripCreatedSchema, TripDetailSchema, TripParams, TripResponseSchema } from "../../schemas";
+import { MemberSchema, TripCreatedSchema, TripDetailSchema, TripParams, TripResponseSchema } from "../../schemas";
 import * as controller from "./trips.controller";
 import {
   AddMembersResponseSchema,
@@ -64,6 +65,7 @@ export const updateTripRoute = createRoute({
   path: "/{tripId}",
   tags,
   summary: "Edit the trip (admin)",
+  description: "Any admin can rename the rollo (`name`). Everything else (dates, limits, private rollo) is only for the creator: 403 without applying anything if the body has more than `name`.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: {
@@ -73,13 +75,28 @@ export const updateTripRoute = createRoute({
   responses: { 200: json(TripResponseSchema, "Trip updated"), ...errors(400, 401, 403) },
 });
 
+export const deleteTripRoute = createRoute({
+  method: "delete",
+  path: "/{tripId}",
+  tags,
+  summary: "Delete the rollo for everyone (creator)",
+  description:
+    "Only whoever created it (403 otherwise). Removes the rollo, its members, photos, likes, comments and featured photos at once; the files " +
+    "in storage are purged later. Afterwards any route of that rollo answers 410 `{ error: \"Este rollo se borró\" }`. Cannot be undone.",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember, requireCreator] as const,
+  request: { params: TripParams },
+  responses: { 204: { description: "Rollo deleted" }, ...errors(401, 403, 410) },
+});
+
 export const revealRoute = createRoute({
   method: "post",
   path: "/{tripId}/reveal",
   tags,
-  summary: "Reveal the roll now (admin)",
+  summary: "Reveal the roll now (creator)",
+  description: "Only whoever created the rollo.",
   security: bearerAuth,
-  middleware: [requireUser, requireTripMember, requireAdmin] as const,
+  middleware: [requireUser, requireTripMember, requireCreator] as const,
   request: { params: TripParams },
   responses: { 200: json(TripResponseSchema, "Roll revealed"), ...errors(401, 403) },
 });
@@ -110,7 +127,7 @@ export const leaveRoute = createRoute({
   summary: "Leave the trip",
   description:
     "You lose access and the rollo leaves your list; your photos stay in the roll. You can come back with the code or " +
-    "if a friend adds you (before the reveal). The admin can't leave (409).",
+    "if a friend adds you (before the reveal). Any admin can leave and comes back as a regular member; the creator can't (409).",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
@@ -124,14 +141,15 @@ export const updateMyMembershipRoute = createRoute({
   summary: "Your settings in this rollo",
   description:
     "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). " +
-    "Turning it off removes them from other profiles; turning it on restores nothing.",
+    "Turning it off removes them from other profiles; turning it on restores nothing. " +
+    "`archived`: archive or unarchive the rollo for you only (409 if it is not revealed). Send at least one field.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateMyMembershipSchema } }, required: true },
   },
-  responses: { 200: json(MyMembershipSchema, "Updated"), ...errors(400, 401, 403) },
+  responses: { 200: json(MyMembershipSchema, "Updated"), ...errors(400, 401, 403, 409) },
 });
 
 export const removeMemberRoute = createRoute({
@@ -139,11 +157,35 @@ export const removeMemberRoute = createRoute({
   path: "/{tripId}/members/{memberId}",
   tags,
   summary: "Remove someone from the trip (admin)",
-  description: "They lose access to the rollo and cannot rejoin by code or through a regular member; only the admin can add them back as a friend. Their photos stay in the roll.",
+  description: "Admins remove regular members; only the creator removes other admins; nobody removes the creator (403). They lose access to the rollo and cannot rejoin by code or through a regular member; only the admin can add them back as a friend. Their photos stay in the roll.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: TripMemberParams },
   responses: { 204: { description: "Member removed" }, ...errors(400, 401, 403, 404) },
+});
+
+export const makeAdminRoute = createRoute({
+  method: "post",
+  path: "/{tripId}/members/{memberId}/admin",
+  tags,
+  summary: "Make a member admin (admin)",
+  description: "Any admin can. The target must be an active member (404 otherwise); if they are already admin it still answers 200.",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember, requireAdmin] as const,
+  request: { params: TripMemberParams },
+  responses: { 200: json(MemberSchema, "The member, now admin"), ...errors(401, 403, 404) },
+});
+
+export const removeAdminRoute = createRoute({
+  method: "delete",
+  path: "/{tripId}/members/{memberId}/admin",
+  tags,
+  summary: "Take the admin role away (creator)",
+  description: "Only the creator. The creator's own admin role can't be removed (400).",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember, requireCreator] as const,
+  request: { params: TripMemberParams },
+  responses: { 200: json(MemberSchema, "The member, now a regular member"), ...errors(400, 401, 403, 404) },
 });
 
 const trips = createApp();
@@ -151,11 +193,14 @@ const trips = createApp();
 trips.openapi(createTripRoute, controller.create);
 trips.openapi(joinTripRoute, controller.join);
 trips.openapi(getTripRoute, controller.detail);
+trips.openapi(deleteTripRoute, controller.remove);
 trips.openapi(updateTripRoute, controller.update);
 trips.openapi(revealRoute, controller.reveal);
 trips.openapi(addMembersRoute, controller.addMembers);
 trips.openapi(updateMyMembershipRoute, controller.updateMyMembership);
 trips.openapi(leaveRoute, controller.leave);
 trips.openapi(removeMemberRoute, controller.removeMember);
+trips.openapi(makeAdminRoute, controller.makeAdmin);
+trips.openapi(removeAdminRoute, controller.removeAdmin);
 
 export default trips;

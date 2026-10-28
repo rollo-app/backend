@@ -52,8 +52,9 @@ export function deleteTrip(db: D1Database, tripId: string): D1PreparedStatement 
   return db.prepare("DELETE FROM trips WHERE id = ?").bind(tripId);
 }
 
-export function promoteToAdmin(db: D1Database, memberId: string): D1PreparedStatement {
-  return db.prepare("UPDATE members SET role = 'admin' WHERE id = ?").bind(memberId);
+/** Sets the trip's creator to NULL if it is `userId` (a no-op otherwise). */
+export function clearCreatorIfUser(db: D1Database, tripId: string, userId: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET created_by_user_id = NULL WHERE id = ? AND created_by_user_id = ?").bind(tripId, userId);
 }
 
 /** Everything that hangs off the user row, in the order it must go (the user row last). */

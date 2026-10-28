@@ -96,6 +96,7 @@ describe("publicTrip", () => {
       momentMode: "off",
       momentWindowStart: 540,
       momentWindowEnd: 1380,
+      createdBy: null,
     });
   });
 });
