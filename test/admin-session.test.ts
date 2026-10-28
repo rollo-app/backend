@@ -43,4 +43,13 @@ describe("/admin with a session", () => {
     expect((await api("GET", "/admin/reports", { token: su.token })).status).toBe(200);
     expect((await api("GET", "/admin/reports", { env: ENV, headers: { authorization: "Bearer secret" } })).status).toBe(200);
   });
+
+  it("with ADMIN_TOKEN configured, a superadmin session still reads /admin/me and /admin/reports; a plain user gets 404", async () => {
+    const su = await makeSuperadmin();
+    const plain = await signUp();
+    for (const path of ["/admin/me", "/admin/reports"]) {
+      expect((await api("GET", path, { token: su.token, env: ENV })).status).toBe(200);
+      expect((await api("GET", path, { token: plain.token, env: ENV })).status).toBe(404);
+    }
+  });
 });
