@@ -446,6 +446,10 @@
           "role": {
             "$ref": "#/components/schemas/Role"
           },
+          "isCreator": {
+            "type": "boolean",
+            "description": "You created this rollo"
+          },
           "totalUploaded": {
             "type": "integer"
           },
@@ -475,6 +479,7 @@
           "revealAt",
           "revealed",
           "role",
+          "isCreator",
           "totalUploaded",
           "momentMode",
           "coverThumbhash"
@@ -1159,6 +1164,26 @@
           "momentWindowEnd": {
             "type": "integer",
             "description": "Moment window end, minutes from midnight in the rollo's time zone"
+          },
+          "createdBy": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "userId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "userId",
+              "name"
+            ],
+            "description": "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown"
           }
         },
         "required": [
@@ -1177,7 +1202,8 @@
           "totalPhotoLimit",
           "momentMode",
           "momentWindowStart",
-          "momentWindowEnd"
+          "momentWindowEnd",
+          "createdBy"
         ]
       },
       "Member": {
@@ -1213,6 +1239,10 @@
           "role": {
             "$ref": "#/components/schemas/Role"
           },
+          "isCreator": {
+            "type": "boolean",
+            "description": "Created the rollo: always an admin, can't leave and can't be removed"
+          },
           "blockedByMe": {
             "type": "boolean",
             "description": "Whether you blocked this member"
@@ -1229,6 +1259,7 @@
           "username",
           "avatarUrl",
           "role",
+          "isCreator",
           "blockedByMe"
         ]
       },
@@ -2888,7 +2919,7 @@
           "Profile"
         ],
         "summary": "Delete your account",
-        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you were the admin, the oldest remaining active member becomes admin. If no active members remain, the whole rollo is deleted with all its files. Your reports and blocks (made and received), push tokens, settings and likes (yours, and the ones on your photos) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
+        "description": "Permanently deletes the account. In every rollo you belong to (also those you were removed from), your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. If you created a rollo, the oldest remaining active admin becomes its creator (with no admins, the oldest active member, who is promoted). If no active members remain, the whole rollo is deleted with all its files. Your reports and blocks (made and received), push tokens, settings and likes (yours, and the ones on your photos) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). The same email can sign up again later as a brand-new user.",
         "security": [
           {
             "bearerAuth": []
@@ -4375,6 +4406,7 @@
           "Trips"
         ],
         "summary": "Edit the trip (admin)",
+        "description": "Any admin can rename the rollo (`name`). Everything else (dates, limits, private rollo) is only for the creator: 403 without applying anything if the body has more than `name`.",
         "security": [
           {
             "bearerAuth": []
@@ -4449,7 +4481,8 @@
         "tags": [
           "Trips"
         ],
-        "summary": "Reveal the roll now (admin)",
+        "summary": "Reveal the roll now (creator)",
+        "description": "Only whoever created the rollo.",
         "security": [
           {
             "bearerAuth": []
@@ -4675,7 +4708,7 @@
           "Trips"
         ],
         "summary": "Leave the trip",
-        "description": "You lose access and the rollo leaves your list; your photos stay in the roll. You can come back with the code or if a friend adds you (before the reveal). The admin can't leave (409).",
+        "description": "You lose access and the rollo leaves your list; your photos stay in the roll. You can come back with the code or if a friend adds you (before the reveal). Any admin can leave and comes back as a regular member; the creator can't (409).",
         "security": [
           {
             "bearerAuth": []
@@ -4734,7 +4767,7 @@
           "Trips"
         ],
         "summary": "Remove someone from the trip (admin)",
-        "description": "They lose access to the rollo and cannot rejoin by code or through a regular member; only the admin can add them back as a friend. Their photos stay in the roll.",
+        "description": "Admins remove regular members; only the creator removes other admins; nobody removes the creator (403). They lose access to the rollo and cannot rejoin by code or through a regular member; only the admin can add them back as a friend. Their photos stay in the roll.",
         "security": [
           {
             "bearerAuth": []
@@ -4761,6 +4794,162 @@
         "responses": {
           "204": {
             "description": "Member removed"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/members/{memberId}/admin": {
+      "post": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Make a member admin (admin)",
+        "description": "Any admin can. The target must be an active member (404 otherwise); if they are already admin it still answers 200.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The member, now admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Take the admin role away (creator)",
+        "description": "Only the creator. The creator's own admin role can't be removed (400).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "memberId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The member, now a regular member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid data",

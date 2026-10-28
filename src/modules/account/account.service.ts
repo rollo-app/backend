@@ -1,3 +1,4 @@
+import { BACKFILL_CREATOR_SQL } from "../../lib/creator";
 import type { Env, UserRow } from "../../types";
 import * as repo from "./account.repository";
 
@@ -8,7 +9,7 @@ async function deleteR2Keys(bucket: R2Bucket, rows: { original_key: string; thum
 }
 
 /**
- * Permanently deletes an account: its media and memberships (handing the admin role on, or deleting emptied trips),
+ * Permanently deletes an account: its media and memberships (handing the creator role on, or deleting emptied trips),
  * friendships, friend links, reports and blocks on both sides, push tokens, settings, likes, comments, avatar, sessions and login codes.
  */
 export async function deleteAccount(env: Env, user: UserRow): Promise<void> {
@@ -23,8 +24,9 @@ export async function deleteAccount(env: Env, user: UserRow): Promise<void> {
     if (next.length === 0) {
       await deleteR2Keys(MEDIA, await repo.listTripMediaKeys(DB, m.trip_id));
       await DB.batch([repo.deleteTripMedia(DB, m.trip_id), repo.deleteTripMembers(DB, m.trip_id), repo.deleteTrip(DB, m.trip_id)]);
-    } else if (m.role === "admin" && m.removed_at === null && m.left_at === null && !next.some((r) => r.role === "admin")) {
-      await repo.promoteToAdmin(DB, next[0]!.id).run();
+    } else if (await repo.clearCreatorIfUser(DB, m.trip_id, user.id)) {
+      // The creator is gone: the oldest active admin takes over (with none, the oldest active member, promoted to admin).
+      await DB.batch(BACKFILL_CREATOR_SQL.map((sql) => DB.prepare(sql).bind(m.trip_id)));
     }
   }
 

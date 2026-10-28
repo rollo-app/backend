@@ -77,7 +77,7 @@ export const deleteMeRoute = createRoute({
   description:
     "Permanently deletes the account. In every rollo you belong to (also those you were removed from), " +
     "your photos and videos are deleted (database rows and files, even after the reveal) and your membership is removed. " +
-    "If you were the admin, the oldest remaining active member becomes admin. " +
+    "If you created a rollo, the oldest remaining active admin becomes its creator (with no admins, the oldest active member, who is promoted). " +
     "If no active members remain, the whole rollo is deleted with all its files. " +
     "Your reports and blocks (made and received), push tokens, settings and likes (yours, and the ones on your photos) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
     "The same email can sign up again later as a brand-new user.",

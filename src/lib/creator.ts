@@ -1,3 +1,7 @@
+import { createMiddleware } from "hono/factory";
+import { HTTPException } from "hono/http-exception";
+import type { AppEnv, TripRow } from "../types";
+
 /**
  * Backfill of `trips.created_by_user_id` for rollos nobody can be attributed to (NULL).
  * Creator = oldest active admin; with none, the oldest active member, who is promoted to admin.
@@ -23,3 +27,16 @@ export const BACKFILL_CREATOR_SQL: readonly string[] = [
     SELECT m.user_id FROM members m WHERE m.trip_id = trips.id AND m.role = 'admin' AND ${ACTIVE} ORDER BY m.created_at, m.id LIMIT 1
   ) WHERE ${NEEDS_CREATOR}`,
 ];
+
+export const CREATOR_ONLY = "Solo quien creó el rollo puede hacer esto";
+
+/** Whether `userId` created the rollo (always an admin of it). */
+export function isCreator(trip: Pick<TripRow, "created_by_user_id">, userId: string): boolean {
+  return trip.created_by_user_id === userId;
+}
+
+/** Use after requireTripMember: only whoever created the rollo goes on. */
+export const requireCreator = createMiddleware<AppEnv>(async (c, next) => {
+  if (!isCreator(c.get("trip"), c.get("user").id)) throw new HTTPException(403, { message: CREATOR_ONLY });
+  await next();
+});

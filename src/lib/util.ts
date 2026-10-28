@@ -40,7 +40,7 @@ export function generateJoinCode(length = 6): string {
 }
 
 /** Public shape of a trip (what the app sees). */
-export function publicTrip(trip: TripRow, now = Date.now()) {
+export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId: string; name: string } | null = null) {
   return {
     id: trip.id,
     name: trip.name,
@@ -58,6 +58,7 @@ export function publicTrip(trip: TripRow, now = Date.now()) {
     momentMode: trip.moment_mode,
     momentWindowStart: trip.moment_window_start,
     momentWindowEnd: trip.moment_window_end,
+    createdBy,
   };
 }
 
@@ -90,7 +91,7 @@ export function publicUser(
 }
 
 /** Public shape of a membership (what the app sees as a trip member). */
-export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">, user: Pick<UserRow, "name" | "username" | "avatar_key">, blocked = false) {
+export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">, user: Pick<UserRow, "name" | "username" | "avatar_key">, blocked = false, isCreator = false) {
   return {
     id: member.id,
     userId: member.user_id,
@@ -99,6 +100,7 @@ export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">,
     avatarUrl: avatarUrl(member.user_id, user.avatar_key),
     role: member.role,
     blockedByMe: blocked,
+    isCreator,
   };
 }
 

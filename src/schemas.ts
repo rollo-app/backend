@@ -39,6 +39,10 @@ export const TripSchema = z
     momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     momentWindowStart: z.number().int().openapi({ description: "Moment window start, minutes from midnight in the rollo's time zone" }),
     momentWindowEnd: z.number().int().openapi({ description: "Moment window end, minutes from midnight in the rollo's time zone" }),
+    createdBy: z
+      .object({ userId: z.string().uuid(), name: z.string() })
+      .nullable()
+      .openapi({ description: "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown" }),
   })
   .openapi("Trip");
 
@@ -76,6 +80,7 @@ export const MemberSchema = z
     username: z.string().nullable().openapi({ example: "fede", description: "Unique handle without the @" }),
     avatarUrl: z.string().nullable(),
     role: RoleSchema,
+    isCreator: z.boolean().openapi({ description: "Created the rollo: always an admin, can't leave and can't be removed" }),
     blockedByMe: z.boolean().openapi({ description: "Whether you blocked this member" }),
     allowFeaturing: z.boolean().optional().openapi({ description: "Only on `me`: others may feature your photos of this rollo on their profile" }),
   })

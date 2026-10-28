@@ -1,5 +1,6 @@
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
+import { CREATOR_ONLY, isCreator } from "../../lib/creator";
 import { blockedIdsFor } from "../blocks/blocks.service";
 import { sendTripRevealed } from "./notices.service";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
@@ -105,6 +106,9 @@ export async function createTrip(
   return { trip, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
 }
 
+/** The rollo's creator as the API shows it (null if unknown). */
+export const getCreator = repo.findCreator;
+
 // ---------- Detail ----------
 
 export type TripDetail = {
@@ -150,7 +154,11 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
 // ---------- Edit (admin) ----------
 
 /** Applies the edit and returns the updated trip. */
-export async function updateTrip(db: D1Database, trip: TripRow, b: UpdateTripInput): Promise<TripRow> {
+export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: string, b: UpdateTripInput): Promise<TripRow> {
+  // Admins who didn't create the rollo may only rename it.
+  if (!isCreator(trip, actorUserId) && Object.keys(b).some((k) => k !== "name" && b[k as keyof UpdateTripInput] !== undefined)) {
+    throw forbidden(CREATOR_ONLY);
+  }
   // Only the fields being changed are checked, so a trip that already started can still be edited.
   const earliest = Date.now() - PAST_TOLERANCE_MS;
   if (b.endsAt !== undefined && b.endsAt < earliest) throw badRequest("El fin no puede ser en el pasado");

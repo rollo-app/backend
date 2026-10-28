@@ -1,9 +1,11 @@
+import { CREATOR_ONLY, isCreator } from "../../lib/creator";
 import { actorName, sendPush } from "../../lib/push";
-import { isRevealed, publicTrip } from "../../lib/util";
+import { isRevealed, publicMember } from "../../lib/util";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedByOthersOfMember } from "../featured/featured.repository";
+import { blockedIdsFor } from "../blocks/blocks.service";
 import { areFriends } from "../friends/friends.service";
 import * as repo from "./trips.repository";
 
@@ -68,7 +70,7 @@ export async function joinTrip(
   if (current?.removed_at != null) throw forbidden("El admin te sacó de este rollo");
   if (current && current.left_at === null) return { created: false, trip, member: current };
 
-  if (publicTrip(trip, now).revealed) throw conflict("Este rollo ya se reveló");
+  if (isRevealed(trip, now)) throw conflict("Este rollo ya se reveló");
 
   const added = await addMember(db, trip.id, user.id, null, now);
   if (added.status !== "added") throw forbidden("El admin te sacó de este rollo");
@@ -124,15 +126,47 @@ export async function setMyFeaturing(db: D1Database, member: MemberRow, allow: b
 
 // ---------- Leave ----------
 
-export async function leaveTrip(db: D1Database, member: MemberRow): Promise<void> {
-  if (member.role === "admin") throw conflict("Sos el admin: no podés salirte del rollo");
+/** The creator can't leave; any other admin can (and comes back as a regular member). */
+export async function leaveTrip(db: D1Database, trip: TripRow, member: MemberRow): Promise<void> {
+  if (isCreator(trip, member.user_id)) throw conflict("Creaste este rollo: no podés salirte");
   await repo.markLeft(db, member.id, Date.now()).run();
 }
 
 // ---------- Remove member (admin) ----------
 
-export async function removeMember(db: D1Database, trip: TripRow, adminMember: MemberRow, memberId: string): Promise<void> {
-  if (memberId === adminMember.id) throw badRequest("No te podés sacar a vos mismo");
+/** Admins remove regular members; only the creator removes other admins; nobody removes the creator. */
+export async function removeMember(db: D1Database, trip: TripRow, actor: MemberRow, memberId: string): Promise<void> {
+  if (memberId === actor.id) throw badRequest("No te podés sacar a vos mismo");
+  const target = await repo.findActiveMemberById(db, trip.id, memberId);
+  if (target) {
+    if (isCreator(trip, target.user_id)) throw forbidden("No podés sacar a quien creó el rollo");
+    if (target.role === "admin" && !isCreator(trip, actor.user_id)) throw forbidden(CREATOR_ONLY);
+  }
   const res = await repo.markRemoved(db, memberId, trip.id, Date.now()).run();
   if (!res.meta.changes) throw notFound("Miembro no encontrado");
+}
+
+// ---------- Admin role ----------
+
+/** Any admin makes an active member admin (already admin: no change). */
+export async function makeAdmin(db: D1Database, trip: TripRow, memberId: string): Promise<MemberRow> {
+  const target = await repo.findActiveMemberById(db, trip.id, memberId);
+  if (!target) throw notFound("Miembro no encontrado");
+  if (target.role !== "admin") await repo.setMemberRole(db, target.id, "admin").run();
+  return { ...target, role: "admin" };
+}
+
+/** Only the creator takes the admin role away; their own is permanent. */
+export async function removeAdmin(db: D1Database, trip: TripRow, memberId: string): Promise<MemberRow> {
+  const target = await repo.findActiveMemberById(db, trip.id, memberId);
+  if (!target) throw notFound("Miembro no encontrado");
+  if (isCreator(trip, target.user_id)) throw badRequest("El creador siempre es admin");
+  if (target.role === "admin") await repo.setMemberRole(db, target.id, "member").run();
+  return { ...target, role: "member" };
+}
+
+/** Public shape of `target` as `viewerId` sees it. */
+export async function memberView(db: D1Database, trip: TripRow, viewerId: string, target: MemberRow) {
+  const [user, blocked] = await Promise.all([repo.findUserCard(db, target.user_id), blockedIdsFor(db, viewerId)]);
+  return publicMember(target, user ?? { name: null, username: null, avatar_key: null }, blocked.has(target.user_id), isCreator(trip, target.user_id));
 }
