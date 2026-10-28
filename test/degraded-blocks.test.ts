@@ -44,4 +44,14 @@ describe("degraded mode blocks", () => {
     expect(fresh.status).toBe(503);
     expect(fresh.body.error).toBe(DEGRADED_MESSAGE);
   });
+
+  it("login start: every 503 for a new email spends one of the IP's daily new-user slots; after 20 the answer is 204", async () => {
+    await turnOn();
+    const headers = { "cf-connecting-ip": "203.0.113.50" };
+    const start = (email: string, h = headers) => api("POST", "/auth/email/start", { body: { email }, headers: h });
+    for (let i = 0; i < 20; i++) expect((await start(`sonda${i}@rollo.test`)).status).toBe(503);
+    expect((await start("sonda20@rollo.test")).status).toBe(204);
+    // Another IP still gets the 503.
+    expect((await start("sonda21@rollo.test", { "cf-connecting-ip": "203.0.113.51" })).status).toBe(503);
+  });
 });

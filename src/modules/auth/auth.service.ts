@@ -54,7 +54,6 @@ export async function startLogin(
   let ipKind: EmailKind | null = null;
   if (!isReview) {
     isNewUser = !(await repo.userExists(env.DB, email));
-    if (isNewUser && (await isDegraded(env))) throw unavailable(DEGRADED_MESSAGE);
     if (isNewUser) {
       // The new-user caps answer 204 like a success and send nothing: a 429 only for new emails would reveal whether an account exists.
       if (ip) {
@@ -64,6 +63,8 @@ export async function startLogin(
           return "sent";
         }
       }
+      // Degraded mode blocks new accounts. It is checked after the per-IP slot (which stays spent), so probing emails costs the IP its daily budget.
+      if (await isDegraded(env)) throw unavailable(DEGRADED_MESSAGE);
       if (!(await reserveEmailSlot(env.DB, "login_new", LOGIN_NEW_USER_EMAILS_PER_DAY))) {
         console.warn("[auth] daily login_new email cap reached");
         await alertCapReached(env, "login_new");
