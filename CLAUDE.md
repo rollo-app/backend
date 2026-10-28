@@ -175,11 +175,11 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 
 ```
 src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de errores, cron (scheduled)
-src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): account, admin, auth, avatars, blocks, comments, featured, friend-requests, friends, likes, me, media, moderation, moments, reports, settings, trips, users, usernames
+src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): account, admin, auth, avatars, blocks, comments, featured, friend-requests, friends, likes, me, media, metrics, moderation, moments, reports, settings, trips, users, usernames
 src/db/schema.ts       esquema Drizzle de toda la DB (camelCase en TS, columnas snake_case); las migraciones SQL siguen siendo la fuente de verdad y `npm run db:check-schema` falla si se desalinean
 src/shared/           db.ts (`orm`, `toStatement`), errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
 src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
-src/lib/              infra transversal: auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), zone (zona de ~5 km), settings (columnas y tipos puros de las preferencias), moments (cálculo puro de días y ventanas), push (Expo), storage, rate-limit, email, email-caps...
+src/lib/              infra transversal: auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), zone (zona de ~5 km), settings (columnas y tipos puros de las preferencias), moments (cálculo puro de días y ventanas), push (Expo), storage, rate-limit, email, email-caps, admin-auth (credencial del backoffice), paging (paginado), degraded (modo degradado), cf-usage (uso de Cloudflare)...
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -220,7 +220,7 @@ Reglas:
   los repos de `likes` y `reports`, para que la regla esté en un solo lugar. Nadie importa el router ni el
   controller de otro módulo.
 - **Middlewares** (sesión, membresía, admin, rate limit) van en el `middleware` de cada `createRoute`; su código
-  vive en `src/lib/auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
+  vive en `src/lib/auth.ts`, `src/lib/admin-auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
 - **`src/lib/`** es solo infra transversal y helpers puros (sesiones, R2, mail, push, storage, rate limit, fechas): sin
   SQL de dominio. El SQL vive en el repository del módulo dueño y la regla en su service: p. ej. `account/` (borrar
   cuenta), `settings/` (preferencias; `lib/push.ts` lee las notificaciones desde `settings.service`), `moderation/`
@@ -262,7 +262,7 @@ Reglas:
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 885 tests
+npm test              # suite completa (la corre el CI)
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
@@ -308,7 +308,7 @@ URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
 
 Hecho: cuentas por email (código y link mágico), perfil y username, amigos, viajes (crear, unirse, detalle,
 editar, revelar, sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar, archivar),
-destacadas, "me gusta", notificaciones push con cron, moderación, contrato OpenAPI, CI.
+destacadas, "me gusta", notificaciones push con cron, moderación, backoffice (rol superadmin, métricas, uso de Cloudflare, modo degradado, /admin/users), contrato OpenAPI, CI.
 
 **Producción** (deployado el 22/10/2026), todo en la cuenta de Cloudflare de Juani:
 
@@ -316,11 +316,11 @@ destacadas, "me gusta", notificaciones push con cron, moderación, contrato Open
   `develop` → `main`; el admin saltea la aprobación desde el PR).
 - D1 `rollo` (región ENAM, id en `wrangler.jsonc`) y bucket R2 `rollo-media`.
 - Secrets del Worker: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (token de R2 con Object
-  Read & Write sobre `rollo-media`) y `RESEND_API_KEY` (Sending access a `juanifraga.com`). Se cargan con
+  Read & Write sobre `rollo-media`) `RESEND_API_KEY` (Sending access a `juanifraga.com`) y `CF_ANALYTICS_TOKEN` (token de Cloudflare con "Account Analytics: Read"; sin él no se mide el uso, ver "Backoffice"). Se cargan con
   `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
 - Mail: dominio `juanifraga.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
   DMARC `p=none` en `_dmarc`), DNS en Cloudflare. Plan gratis: 100 mails por día y 3.000 por mes.
-- Secrets de moderación: `ADMIN_TOKEN` (habilita las rutas `/admin/*`; sin él dan 404) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
+- Secrets de moderación: `ADMIN_TOKEN` (habilita los dos `DELETE /admin/*` y el acceso por token; sin él esos `DELETE` dan 404, y las rutas de lectura y `PUT /admin/degraded-mode` quedan solo para la sesión de un superadmin) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
 - Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
 
 Para deployar una versión nueva, con `main` al día:
@@ -345,6 +345,12 @@ de Expo: si se activa "enhanced security" en expo.dev hay que sumarlo como secre
 **Límites para crear rollos** (`enforceCreateLimits` en `trips.service.ts`, migración `0027_unlimited_rollos.sql`, `users.unlimited_rollos`): `POST /trips` da **409** (con el mensaje para mostrar) si el usuario **creó** (es admin de) 2 rollos sin revelar (en curso + por empezar + terminados sin revelar: `revealed_at IS NULL AND reveal_at > ahora`) → "Ya tenés 2 rollos sin revelar. Esperá a que se revele uno para crear otro.", o 4 en los últimos 30 días (por `trips.created_at`, ventana móvil; el creador es `trips.created_by_user_id`, que se escribe una vez al crear y la migración rellena con el admin de los rollos viejos, porque el rol de admin se puede mover, por ej. al borrarse una cuenta) → "Ya creaste 4 rollos en los últimos 30 días. Vas a poder crear otro el 3 de noviembre." (el día en que el 4.º más reciente cumple 30 días, en la zona horaria del rollo nuevo). Los rollos a los que te sumaste o te sumaron no cuentan. Se chequea primero el de sin revelar. El chequeo es atómico: va dentro del `INSERT ... SELECT ... WHERE` del rollo (y el admin se inserta solo si existe el rollo), así dos pedidos a la vez no pasan el tope; si no se escribió nada se recalcula cuál tope pegó para el mensaje. Se eligió 409 (no 429) porque el uploader de la app trata el 429 como cupo de fotos. **Exentos** (sin límite), a mano con SQL, como las insignias, sin endpoint: `UPDATE users SET unlimited_rollos=1 WHERE email='...'` (`0` = con límites; aplicar con `npm run db:migrate:remote` **antes** de `npm run deploy`). El seed exenta a todos los usuarios de prueba menos `nuevo@rollo.test` (`LIMITED_ROLLOS` en `people.ts`), que sirve para probar los límites.
 
 **Insignias de perfil:** columna `users.badge` (migración `0015_user_badges.sql`, aplicar con `npm run db:migrate:remote` **antes** de `npm run deploy`). Se asignan **solo a mano con SQL**, no hay endpoint (`PATCH /me` la ignora): `UPDATE users SET badge='founder' WHERE email='...'`. Valores: `founder` ("Founder") y `first_edition` ("First Edition"); `NULL` = sin insignia. Salen como `badge` en `GET /me` y en `user` de `GET /users/{userId}` (pública, como el nombre); un valor desconocido en la DB sale como `null`.
+
+**Backoffice** (diseño: [`docs/decisiones/0002-backoffice.md`](docs/decisiones/0002-backoffice.md); todo fuera del contrato, no va a `openapi.json`): panel web `front-admin` contra rutas `/admin/*`. Credencial: `ADMIN_TOKEN` (Bearer) **o** una sesión normal de un usuario con `users.app_role='superadmin'` (`adminAuth` en `src/lib/admin-auth.ts`; todo fallo da 404). Los dos `DELETE /admin/*` siguen **solo con el token**. Superadmin se asigna a mano (migración `0030`): `UPDATE users SET app_role='superadmin' WHERE email='...'`. Rutas: `GET /admin/me`, `GET /admin/users?page&pageSize&sort&order&q` y `GET /admin/users/{id}` (paginado en `src/lib/paging.ts`), `GET /admin/reports`, `GET /admin/metrics?days`, `GET /admin/usage`, `GET/PUT /admin/degraded-mode`.
+- **Modo degradado** (`src/lib/degraded.ts`, `app_settings`, migración `0032`): prendido, `POST /trips/{id}/media`, `POST /me/avatar`, `POST /trips` y `POST /auth/email/start` para emails sin cuenta dan 503 "Rollo está en mantenimiento, probá más tarde"; lo demás sigue. Se lee con caché de 60 s por isolate, así que un cambio tarda hasta 1 min en verse.
+- **Métricas:** el cron `snapshotDailyMetrics` guarda una fila por día en `metrics_daily` (migración `0031`, `src/modules/metrics/`); `GET /admin/metrics?days` las devuelve.
+- **Uso de Cloudflare:** el cron `pollUsage` (cada 5 min, `src/lib/cf-usage.ts`) consulta la GraphQL Analytics API con `CF_ANALYTICS_TOKEN` y la var `D1_DATABASE_ID` y guarda el uso; al 80% de un límite manda un mail a soporte, una vez por métrica por día UTC. `GET /admin/usage` lo muestra. **Ojo:** los nombres de campo del GraphQL no se verificaron contra la API real hasta probar una vez con un token real; el mapeo tolera campos que falten y ante un error deja el último valor, así que revisar `/admin/usage` después del primer deploy.
+- **Deploy:** `npm run db:migrate:remote` → `npx wrangler secret put CF_ANALYTICS_TOKEN` → `npm run deploy` → asignar superadmin con `wrangler d1 execute rollo --remote --command "..."`.
 
 Logs en vivo: `npx wrangler tail rollo-api`.
 

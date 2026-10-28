@@ -9,9 +9,10 @@ import {
   releaseEmailSlot,
   reserveEmailSlot,
 } from "../../lib/email-caps";
+import { DEGRADED_MESSAGE, isDegraded } from "../../lib/degraded";
 import { ipKey } from "../../lib/ip";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../../lib/login-code";
-import { badRequest, rateLimited } from "../../shared/errors";
+import { badRequest, rateLimited, unavailable } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import * as repo from "./auth.repository";
 
@@ -62,6 +63,8 @@ export async function startLogin(
           return "sent";
         }
       }
+      // Degraded mode blocks new accounts. It is checked after the per-IP slot (which stays spent), so probing emails costs the IP its daily budget.
+      if (await isDegraded(env)) throw unavailable(DEGRADED_MESSAGE);
       if (!(await reserveEmailSlot(env.DB, "login_new", LOGIN_NEW_USER_EMAILS_PER_DAY))) {
         console.warn("[auth] daily login_new email cap reached");
         await alertCapReached(env, "login_new");

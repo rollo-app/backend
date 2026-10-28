@@ -44,10 +44,12 @@ export const users = sqliteTable(
     profileVisibility: text("profile_visibility", { enum: ["friends", "public"] }).notNull().default("friends"),
     badge: text("badge", { enum: ["founder", "first_edition"] }),
     unlimitedRollos: integer("unlimited_rollos").notNull().default(0),
+    appRole: text("app_role", { enum: ["user", "superadmin"] }).notNull().default("user"),
   },
   (t) => [
     uniqueIndex("idx_users_username").on(t.username),
     check("users_badge_check", sql`${t.badge} IN ('founder', 'first_edition')`),
+    check("users_app_role_check", sql`${t.appRole} IN ('user', 'superadmin')`),
   ],
 );
 
@@ -347,6 +349,23 @@ export const cronState = sqliteTable("cron_state", {
   value: text("value").notNull(),
 });
 
+export const metricsDaily = sqliteTable(
+  "metrics_daily",
+  {
+    day: text("day").notNull(),
+    metric: text("metric").notNull(),
+    value: integer("value").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.metric] })],
+);
+
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  updatedByUserId: text("updated_by_user_id"),
+});
+
 export const emailCounters = sqliteTable(
   "email_counters",
   {
@@ -481,5 +500,7 @@ export type PushReceipt = typeof pushReceipts.$inferSelect;
 export type NewPushReceipt = typeof pushReceipts.$inferInsert;
 export type CronState = typeof cronState.$inferSelect;
 export type NewCronState = typeof cronState.$inferInsert;
+export type MetricDaily = typeof metricsDaily.$inferSelect;
+export type AppSetting = typeof appSettings.$inferSelect;
 export type EmailCounter = typeof emailCounters.$inferSelect;
 export type NewEmailCounter = typeof emailCounters.$inferInsert;

@@ -1,34 +1,24 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../../types";
+import { adminAuth } from "../../lib/admin-auth";
 import * as controller from "./admin.controller";
 
 /**
- * Operator endpoints (curl with ADMIN_TOKEN). A plain Hono app on purpose: it is not part of openapi.json.
+ * Operator endpoints (curl with ADMIN_TOKEN, or a superadmin session for reads). A plain Hono app on purpose: it is not part of openapi.json.
  * Every failure to authenticate is a 404, so the routes look like they do not exist.
  */
 const admin = new Hono<AppEnv>();
 
-const sha256 = async (s: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
-
-/** Constant-time comparison: both sides are hashed to equal-length digests first. */
-async function safeEqual(a: string, b: string): Promise<boolean> {
-  const [x, y] = await Promise.all([sha256(a), sha256(b)]);
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i]! ^ y[i]!;
-  return diff === 0;
-}
-
-admin.use("*", async (c, next) => {
-  const token = c.env.ADMIN_TOKEN;
-  const header = c.req.header("authorization") ?? "";
-  // Always compare, so timing does not depend on whether the header is present.
-  const ok = await safeEqual(header, `Bearer ${token ?? ""}`);
-  if (!token || !ok) return c.json({ error: "No encontrado" }, 404);
-  return next();
-});
-
-admin.delete("/media/:mediaId", controller.deleteMedia);
-admin.delete("/users/:userId", controller.deleteUser);
-admin.get("/reports", controller.listReports);
+// Reads accept ADMIN_TOKEN or a superadmin session; destructive routes stay ADMIN_TOKEN-only.
+admin.get("/me", adminAuth({ session: true }), controller.me);
+admin.get("/reports", adminAuth({ session: true }), controller.listReports);
+admin.get("/degraded-mode", adminAuth({ session: true }), controller.getDegradedMode);
+admin.put("/degraded-mode", adminAuth({ session: true }), controller.setDegradedMode);
+admin.get("/metrics", adminAuth({ session: true }), controller.getMetrics);
+admin.get("/usage", adminAuth({ session: true }), controller.getUsage);
+admin.get("/users", adminAuth({ session: true }), controller.listUsers);
+admin.get("/users/:id", adminAuth({ session: true }), controller.getUser);
+admin.delete("/media/:mediaId", adminAuth({ session: false }), controller.deleteMedia);
+admin.delete("/users/:userId", adminAuth({ session: false }), controller.deleteUser);
 
 export default admin;

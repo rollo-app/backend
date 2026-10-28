@@ -27,6 +27,10 @@ export type Env = {
   LOGIN_LINK_URL?: string;
   /** R2 storage limit in bytes (decimal string). Defaults to 10 GB, R2's free tier; uploads stop at 95% of it. */
   STORAGE_LIMIT_BYTES?: string;
+  /** Cloudflare API token with Account Analytics read (secret): enables the usage poll. Without it the poll does nothing. */
+  CF_ANALYTICS_TOKEN?: string;
+  /** D1 database id, to filter the D1 analytics (var in wrangler.jsonc). */
+  D1_DATABASE_ID?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;
@@ -65,6 +69,9 @@ export type TripRow = {
   created_by_user_id: string | null;
 };
 
+/** Global backoffice role (distinct from the per-rollo `Role`). */
+export type AppRole = "user" | "superadmin";
+
 export type UserRow = {
   id: string;
   email: string;
@@ -76,6 +83,7 @@ export type UserRow = {
   badge: string | null;
   unlimited_rollos: number;
   profile_visibility: ProfileVisibility;
+  app_role: AppRole;
   created_at: number;
 };
 
@@ -140,6 +148,8 @@ export type AppEnv = {
   Bindings: Env;
   Variables: {
     user: UserRow;
+    /** Set by adminAuth: the superadmin behind the session, or null when ADMIN_TOKEN was used. */
+    adminUser: UserRow | null;
     sessionId: string;
     member: MemberRow;
     trip: TripRow;
