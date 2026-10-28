@@ -1,6 +1,7 @@
 import { rejectMomentFeaturing, rejectSelfieById } from "../moments/moments.service";
 import { canSeeProfile } from "../users/users.service";
-import { isRevealed } from "../../lib/util";
+import { decodeCursor, encodeCursor } from "../../lib/cursor";
+import { avatarUrl, isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
@@ -161,4 +162,45 @@ export async function blockFeature(db: D1Database, userId: string, mediaId: stri
 export async function unblockFeature(db: D1Database, userId: string, mediaId: string): Promise<void> {
   const id = await assertOwnMedia(db, userId, mediaId);
   await mediaRepo.unblockFeaturing(db, id).run();
+}
+
+export type FeaturedByItem = {
+  mediaId: string;
+  user: { id: string; name: string; username: string | null; avatarUrl: string | null; bio: string | null };
+  featuredAt: number;
+  thumbPath: string;
+  thumbHash: string | null;
+};
+
+/**
+ * "Destacaron tus fotos": the featurings of your photos by other users that you can see today, newest first
+ * (filtered in SQL, see `repo.listFeaturedBy`). The cursor's id packs the photo and the profile owner (both uuids, so `.` is safe).
+ */
+export async function listFeaturedBy(
+  db: D1Database,
+  viewerId: string,
+  opts: { cursor?: string; limit: number },
+): Promise<{ items: FeaturedByItem[]; nextCursor: string | null; total: number }> {
+  const now = Date.now();
+  let after: repo.FeaturedByCursor | null = null;
+  if (opts.cursor) {
+    const c = decodeCursor(opts.cursor);
+    const [mediaId, userId, ...rest] = c.id.split(".");
+    if (!mediaId || !userId || rest.length > 0) throw badRequest("Cursor inválido");
+    after = { featuredAt: c.at, mediaId, userId };
+  }
+  const [rows, total] = await Promise.all([repo.listFeaturedBy(db, viewerId, now, opts.limit + 1, after), repo.countFeaturedBy(db, viewerId, now)]);
+  const page = rows.slice(0, opts.limit);
+  const items = page.map(
+    (r): FeaturedByItem => ({
+      mediaId: r.media_id,
+      user: { id: r.user_id, name: r.name ?? "", username: r.username, avatarUrl: avatarUrl(r.user_id, r.avatar_key), bio: r.bio },
+      featuredAt: r.featured_at,
+      thumbPath: `/featured/${r.user_id}/${r.media_id}/thumb`,
+      thumbHash: r.thumbhash,
+    }),
+  );
+  const last = page[page.length - 1];
+  const nextCursor = rows.length > opts.limit && last ? encodeCursor({ at: last.featured_at, id: `${last.media_id}.${last.user_id}` }) : null;
+  return { items, nextCursor, total };
 }

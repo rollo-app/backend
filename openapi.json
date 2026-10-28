@@ -2080,6 +2080,76 @@
           "lng": -71.475
         }
       },
+      "FeaturedByList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeaturedByItem"
+            },
+            "description": "Newest first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many featurings you can see today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "FeaturedByItem": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Your photo"
+          },
+          "user": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Friend"
+              },
+              {
+                "description": "Who featured it"
+              }
+            ]
+          },
+          "featuredAt": {
+            "type": "integer",
+            "description": "When they featured it (epoch ms)"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/featured/<userId>/<mediaId>/thumb",
+            "description": "Served with the permission of that profile"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "mediaId",
+          "user",
+          "featuredAt",
+          "thumbPath",
+          "thumbHash"
+        ]
+      },
       "MyLikes": {
         "type": "object",
         "properties": {
@@ -5714,6 +5784,76 @@
           },
           "429": {
             "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/featured-by": {
+      "get": {
+        "tags": [
+          "Featured"
+        ],
+        "summary": "Who featured your photos",
+        "description": "Only yours. The times another user featured one of your photos on their profile, newest first, paginated with `cursor`. Only the ones you can see today: you can see that profile (friend or public), there is no block with that user in either direction and the photo is still featured there. Your own featuring of your own photos is not listed. Open one at `/featured/<user.id>/<mediaId>`; `thumbPath` is served with the permission of that profile.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of featurings of your photos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedByList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {

@@ -161,3 +161,55 @@ export function findVisibleFeaturedKeys(
     .bind(now, ownerId, mediaId, viewerId, viewerId)
     .first<Pick<MediaRow, "original_key" | "thumb_key">>();
 }
+
+export type FeaturedByRow = {
+  media_id: string;
+  featured_at: number;
+  thumbhash: string | null;
+  user_id: string;
+  name: string | null;
+  username: string | null;
+  avatar_key: string | null;
+  bio: string | null;
+};
+
+/**
+ * Rows where someone else featured a photo the viewer took, visible today: the featuring still shows on their profile
+ * (`VISIBLE_FROM`/`VISIBLE_WHERE`), no block either way and the viewer can see that profile (`canSeeProfile` in SQL:
+ * public or a friend). Binds, in order: now, viewer id (the photo's author).
+ */
+const FEATURED_BY_FROM = `
+  ${VISIBLE_FROM} JOIN users fu ON fu.id = f.user_id
+  WHERE ${VISIBLE_WHERE}
+    AND author.user_id = ? AND f.user_id != author.user_id
+    AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = f.user_id AND b.blocked_id = author.user_id) OR (b.blocker_id = author.user_id AND b.blocked_id = f.user_id))
+    AND (fu.profile_visibility = 'public'
+         OR EXISTS (SELECT 1 FROM friendships fr WHERE fr.user_a = MIN(f.user_id, author.user_id) AND fr.user_b = MAX(f.user_id, author.user_id)))`;
+
+export type FeaturedByCursor = { featuredAt: number; mediaId: string; userId: string };
+
+/** One page (`limit` rows), newest featuring first; ties broken by media id and profile owner so a cursor never skips or repeats. */
+export async function listFeaturedBy(
+  db: D1Database,
+  viewerId: string,
+  now: number,
+  limit: number,
+  after: FeaturedByCursor | null,
+): Promise<FeaturedByRow[]> {
+  const cursorSql = after ? "AND (f.created_at < ? OR (f.created_at = ? AND (m.id < ? OR (m.id = ? AND f.user_id < ?))))" : "";
+  const cursorBinds = after ? [after.featuredAt, after.featuredAt, after.mediaId, after.mediaId, after.userId] : [];
+  const { results } = await db
+    .prepare(
+      `SELECT m.id AS media_id, f.created_at AS featured_at, m.thumbhash, fu.id AS user_id, fu.name, fu.username, fu.avatar_key, fu.bio
+       FROM ${FEATURED_BY_FROM} ${cursorSql}
+       ORDER BY f.created_at DESC, m.id DESC, f.user_id DESC LIMIT ?`,
+    )
+    .bind(now, viewerId, ...cursorBinds, limit)
+    .all<FeaturedByRow>();
+  return results;
+}
+
+export async function countFeaturedBy(db: D1Database, viewerId: string, now: number): Promise<number> {
+  const row = await db.prepare(`SELECT COUNT(*) AS n FROM ${FEATURED_BY_FROM}`).bind(now, viewerId).first<{ n: number }>();
+  return row?.n ?? 0;
+}

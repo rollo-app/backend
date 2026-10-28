@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { nullableNumber, pathParam } from "../../schemas";
+import { FriendSchema, nullableNumber, pathParam } from "../../schemas";
 
 export const MAX_FEATURED = 60;
 
@@ -45,3 +45,35 @@ export const FeaturedFileParams = z.object({
   mediaId: pathParam("mediaId"),
   variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
 });
+
+export const DEFAULT_FEATURED_BY_PAGE = 60;
+export const MAX_FEATURED_BY_PAGE = 100;
+
+export const FeaturedByQuery = z.object({
+  cursor: z.string().optional().openapi({ param: { name: "cursor", in: "query" }, description: "`nextCursor` of the previous page" }),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_FEATURED_BY_PAGE)
+    .optional()
+    .openapi({ param: { name: "limit", in: "query" }, description: `Page size (default ${DEFAULT_FEATURED_BY_PAGE})` }),
+});
+
+export const FeaturedByItemSchema = z
+  .object({
+    mediaId: z.string().uuid().openapi({ description: "Your photo" }),
+    user: FriendSchema.openapi({ description: "Who featured it" }),
+    featuredAt: z.number().int().openapi({ description: "When they featured it (epoch ms)" }),
+    thumbPath: z.string().openapi({ example: "/featured/<userId>/<mediaId>/thumb", description: "Served with the permission of that profile" }),
+    thumbHash: z.string().nullable(),
+  })
+  .openapi("FeaturedByItem");
+
+export const FeaturedByListSchema = z
+  .object({
+    items: z.array(FeaturedByItemSchema).openapi({ description: "Newest first" }),
+    nextCursor: z.string().nullable().openapi({ description: "null on the last page" }),
+    total: z.number().int().openapi({ description: "How many featurings you can see today, across all pages" }),
+  })
+  .openapi("FeaturedByList");
