@@ -24,9 +24,10 @@ export async function deleteAccount(env: Env, user: UserRow): Promise<void> {
     if (next.length === 0) {
       await deleteR2Keys(MEDIA, await repo.listTripMediaKeys(DB, m.trip_id));
       await DB.batch([repo.deleteTripMedia(DB, m.trip_id), repo.deleteTripMembers(DB, m.trip_id), repo.deleteTrip(DB, m.trip_id)]);
-    } else if (await repo.clearCreatorIfUser(DB, m.trip_id, user.id)) {
-      // The creator is gone: the oldest active admin takes over (with none, the oldest active member, promoted to admin).
-      await DB.batch(BACKFILL_CREATOR_SQL.map((sql) => DB.prepare(sql).bind(m.trip_id)));
+    } else {
+      // If the creator is gone, the oldest active admin takes over (with none, the oldest active member, promoted to admin).
+      // One batch (a transaction): the backfill only touches trips whose creator is NULL.
+      await DB.batch([repo.clearCreatorIfUser(DB, m.trip_id, user.id), ...BACKFILL_CREATOR_SQL.map((sql) => DB.prepare(sql).bind(m.trip_id))]);
     }
   }
 

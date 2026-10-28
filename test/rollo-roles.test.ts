@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { BACKFILL_CREATOR_SQL } from "../src/lib/creator";
-import { api, DAY, joinAs, newTrip } from "./helpers";
+import { api, befriend, DAY, joinAs, newTrip } from "./helpers";
 
 const backfill = (tripId: string | null) =>
   env.DB.batch(BACKFILL_CREATOR_SQL.map((sql) => env.DB.prepare(sql).bind(tripId)));
@@ -55,7 +55,7 @@ async function setup() {
   const promote = (memberId: string) => api("POST", `/trips/${trip.tripId}/members/${memberId}/admin`, { token: trip.adminToken });
   return { trip, ana, beto, caro, promote };
 }
-const ADMIN_ONLY = "Solo quien creó el rollo puede hacer esto";
+const CREATOR_ONLY = "Solo quien creó el rollo puede hacer esto";
 
 describe("admins and the creator", () => {
   it("an admin makes a member admin", async () => {
@@ -81,7 +81,7 @@ describe("admins and the creator", () => {
     const path = (id: string) => `/trips/${trip.tripId}/members/${id}/admin`;
     const denied = await api("DELETE", path(beto.memberId), { token: ana.token });
     expect(denied.status).toBe(403);
-    expect(denied.body.error).toBe(ADMIN_ONLY);
+    expect(denied.body.error).toBe(CREATOR_ONLY);
     const ok = await api("DELETE", path(beto.memberId), { token: trip.adminToken });
     expect(ok.status).toBe(200);
     expect(ok.body.role).toBe("member");
@@ -98,7 +98,7 @@ describe("admins and the creator", () => {
     expect((await del(caro.memberId, ana.token)).status).toBe(204);
     const adminTarget = await del(beto.memberId, ana.token);
     expect(adminTarget.status).toBe(403);
-    expect(adminTarget.body.error).toBe(ADMIN_ONLY);
+    expect(adminTarget.body.error).toBe(CREATOR_ONLY);
     const creatorTarget = await del(trip.adminId, ana.token);
     expect(creatorTarget.status).toBe(403);
     expect(creatorTarget.body.error).toBe("No podés sacar a quien creó el rollo");
@@ -112,7 +112,7 @@ describe("admins and the creator", () => {
     expect((await patch(ana.token, { name: "Nuevo" })).status).toBe(200);
     const denied = await patch(ana.token, { name: "X", revealAt: Date.now() + 40 * DAY });
     expect(denied.status).toBe(403);
-    expect(denied.body.error).toBe(ADMIN_ONLY);
+    expect(denied.body.error).toBe(CREATOR_ONLY);
     const after = await api("GET", `/trips/${trip.tripId}`, { token: trip.adminToken });
     expect(after.body.trip.name).toBe("Nuevo");
     expect((await patch(trip.adminToken, { revealAt: Date.now() + 40 * DAY })).status).toBe(200);
@@ -124,6 +124,32 @@ describe("admins and the creator", () => {
     expect((await api("POST", `/trips/${trip.tripId}/reveal`, { token: ana.token })).status).toBe(403);
     expect((await api("PATCH", `/trips/${trip.tripId}`, { token: ana.token, body: { featuringDisabled: true } })).status).toBe(403);
     expect((await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken })).status).toBe(200);
+  });
+
+  it("the creator can toggle the private rollo", async () => {
+    const { trip } = await setup();
+    const res = await api("PATCH", `/trips/${trip.tripId}`, { token: trip.adminToken, body: { featuringDisabled: true } });
+    expect(res.status).toBe(200);
+    expect(res.body.trip.featuringDisabled).toBe(true);
+  });
+
+  it("a non-creator admin can't take the creator's admin role", async () => {
+    const { trip, ana, promote } = await setup();
+    await promote(ana.memberId);
+    const res = await api("DELETE", `/trips/${trip.tripId}/members/${trip.adminId}/admin`, { token: ana.token });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe(CREATOR_ONLY);
+  });
+
+  it("a removed admin comes back as a member when another admin adds them again", async () => {
+    const { trip, ana, beto, promote } = await setup();
+    await promote(ana.memberId);
+    await promote(beto.memberId);
+    expect((await api("DELETE", `/trips/${trip.tripId}/members/${beto.memberId}`, { token: trip.adminToken })).status).toBe(204);
+    await befriend(ana.token, beto.token);
+    const add = await api("POST", `/trips/${trip.tripId}/members`, { token: ana.token, body: { friendIds: [beto.userId] } });
+    expect(add.body.results).toEqual([{ userId: beto.userId, status: "added" }]);
+    expect((await roleOf(beto.memberId))!.role).toBe("member");
   });
 
   it("the creator can't leave; an admin who leaves comes back as a member", async () => {

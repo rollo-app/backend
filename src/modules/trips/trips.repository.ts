@@ -147,7 +147,7 @@ export function markLeft(db: D1Database, memberId: string, now: number): D1Prepa
 
 export function markRemoved(db: D1Database, memberId: string, tripId: string, now: number): D1PreparedStatement {
   return db
-    .prepare("UPDATE members SET removed_at = ? WHERE id = ? AND trip_id = ? AND removed_at IS NULL")
+    .prepare("UPDATE members SET removed_at = ?, role = 'member' WHERE id = ? AND trip_id = ? AND removed_at IS NULL")
     .bind(now, memberId, tripId);
 }
 
