@@ -35,3 +35,9 @@ export async function listReports(c: Context<AppEnv>) {
   const reports = await service.listReports(c.env.DB, limit);
   return c.json({ reports: reports.map(presentReport) });
 }
+
+export function me(c: Context<AppEnv>) {
+  const user = c.get("adminUser");
+  if (!user) return c.json({ id: null, email: null, name: null, appRole: "token" });
+  return c.json({ id: user.id, email: user.email, name: user.name, appRole: user.app_role });
+}

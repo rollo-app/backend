@@ -22,6 +22,22 @@ export async function hashToken(token: string): Promise<string> {
 export const SESSION_TTL = 365 * 24 * 60 * 60_000;
 const SESSION_TOUCH_INTERVAL = 24 * 60 * 60_000;
 
+/** The user behind a live (unexpired) session token, with the session's id and last use. Null if there is none. */
+export async function findSessionUser(
+  db: D1Database,
+  token: string,
+  now: number,
+): Promise<(UserRow & { session_id: string; last_used_at: number }) | null> {
+  return db
+    .prepare(
+      `SELECT s.id AS session_id, s.last_used_at, u.id, u.email, u.name, u.username, u.avatar_key, u.pending_avatar_key, u.bio, u.badge, u.unlimited_rollos, u.profile_visibility, u.app_role, u.created_at
+     FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND s.expires_at > ?`,
+    )
+    .bind(await hashToken(token), now)
+    .first<UserRow & { session_id: string; last_used_at: number }>();
+}
+
 /**
  * Requires `Authorization: Bearer <token>` of a valid session. Loads the user into the context.
  * `last_used_at` and the expiry (a year ahead) are refreshed at most once per day.
@@ -32,13 +48,7 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   if (!token) throw new HTTPException(401, { message: "Falta el token" });
 
   const now = Date.now();
-  const row = await c.env.DB.prepare(
-    `SELECT s.id AS session_id, s.last_used_at, u.id, u.email, u.name, u.username, u.avatar_key, u.pending_avatar_key, u.bio, u.badge, u.unlimited_rollos, u.profile_visibility, u.app_role, u.created_at
-     FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = ? AND s.expires_at > ?`,
-  )
-    .bind(await hashToken(token), now)
-    .first<UserRow & { session_id: string; last_used_at: number }>();
+  const row = await findSessionUser(c.env.DB, token, now);
   if (!row) throw new HTTPException(401, { message: "Sesión inválida, volvé a entrar" });
 
   if (now - row.last_used_at > SESSION_TOUCH_INTERVAL) {

@@ -142,6 +142,8 @@ export type AppEnv = {
   Bindings: Env;
   Variables: {
     user: UserRow;
+    /** Set by adminAuth: the superadmin behind the session, or null when ADMIN_TOKEN was used. */
+    adminUser: UserRow | null;
     sessionId: string;
     member: MemberRow;
     trip: TripRow;
