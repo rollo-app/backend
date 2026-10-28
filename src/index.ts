@@ -18,6 +18,7 @@ import avatars from "./modules/avatars/avatars.router";
 import me from "./modules/me/me.router";
 import media from "./modules/media/media.router";
 import { STATUS_BY_KIND, AppError } from "./shared/errors";
+import { pollUsage } from "./lib/cf-usage";
 import { checkStorage } from "./lib/storage";
 import { sweepOrphanAvatars } from "./lib/avatar-sweep";
 import { purgeOldEmailCounters } from "./lib/email-caps";
@@ -104,7 +105,7 @@ app.onError((err, c) => {
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), snapshotDailyMetrics(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

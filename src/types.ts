@@ -27,6 +27,10 @@ export type Env = {
   LOGIN_LINK_URL?: string;
   /** R2 storage limit in bytes (decimal string). Defaults to 10 GB, R2's free tier; uploads stop at 95% of it. */
   STORAGE_LIMIT_BYTES?: string;
+  /** Cloudflare API token with Account Analytics read (secret): enables the usage poll. Without it the poll does nothing. */
+  CF_ANALYTICS_TOKEN?: string;
+  /** D1 database id, to filter the D1 analytics (var in wrangler.jsonc). */
+  D1_DATABASE_ID?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;

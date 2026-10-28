@@ -37,6 +37,8 @@
 
   "vars": {
     "R2_BUCKET_NAME": "rollo-media",
+    // Secret (npx wrangler secret put CF_ANALYTICS_TOKEN): token con "Account Analytics: Read"; sin él no se mide el uso de Cloudflare.
+    "D1_DATABASE_ID": "13f35fe4-d442-4ff2-a0fc-e895537561ef",
     "EMAIL_FROM": "Rollo <rollo@juanifraga.com>"
   },
 

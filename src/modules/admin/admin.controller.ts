@@ -1,6 +1,8 @@
 import type { Context } from "hono";
 import type { AppEnv } from "../../types";
 import type { ReportRow } from "./admin.repository";
+import { getUsage as readUsage } from "../../lib/cf-usage";
+import { storageLimitBytes, storageUsage } from "../../lib/storage";
 import { badRequest } from "../../shared/errors";
 import { getMetrics as readMetrics } from "../metrics/metrics.service";
 import { DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
@@ -59,4 +61,9 @@ export async function getMetrics(c: Context<AppEnv>) {
   const parsed = MetricsQuerySchema.safeParse({ days: c.req.query("days") });
   if (!parsed.success) throw badRequest("Parámetros inválidos");
   return c.json(await readMetrics(c.env.DB, parsed.data.days));
+}
+
+export async function getUsage(c: Context<AppEnv>) {
+  const [usage, usedBytes] = await Promise.all([readUsage(c.env.DB), storageUsage(c.env)]);
+  return c.json({ usage, storage: { usedBytes, limitBytes: storageLimitBytes(c.env) } });
 }
