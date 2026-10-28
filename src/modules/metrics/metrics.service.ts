@@ -19,6 +19,9 @@ export async function computeDailyMetrics(env: Env, day: string): Promise<Record
   const start = Date.parse(`${day}T00:00:00.000Z`);
   const end = start + DAY_MS;
   const db = env.DB;
+  // `active_users` counts distinct users whose session was touched during the day, which approximates daily active
+  // users. It reads low: `requireUser` only renews `sessions.last_used_at` at most once per 24 h, so a user active on
+  // consecutive days may be counted only on some of them.
   const [users_total, users_new, trips_total, trips_new, trips_open, trips_revealed_total, media_total, media_new, active_users, storage_bytes] =
     await Promise.all([
       repo.countUsers(db, end),
@@ -48,8 +51,9 @@ export async function snapshotDailyMetrics(env: Env, now: number): Promise<boole
 export async function getMetrics(
   db: D1Database,
   days: number,
+  now: number = Date.now(),
 ): Promise<{ latestDay: string | null; series: { day: string; values: Partial<Record<Metric, number>> }[] }> {
-  const rows = await repo.listMetrics(db, utcDay(Date.now() - days * DAY_MS));
+  const rows = await repo.listMetrics(db, utcDay(now - days * DAY_MS));
   const byDay = new Map<string, Partial<Record<Metric, number>>>();
   for (const r of rows) {
     const values = byDay.get(r.day) ?? {};
