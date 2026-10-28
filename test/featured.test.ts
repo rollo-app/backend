@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { FeaturedPhotosSchema, FeedResponseSchema } from "../src/schemas";
+import { FeedResponseSchema } from "../src/modules/media/media.schemas";
+import { FeaturedPhotosSchema } from "../src/modules/featured/featured.schemas";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 import { BASELINE_JPEG, photoWithMetadata } from "./jpeg-fixture";
 
@@ -22,6 +23,8 @@ async function revealedTrip() {
   }
   await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken });
   const juani = { token: trip.adminToken, userId: trip.adminUserId };
+  // Featuring someone else's photo is for friends only.
+  await befriend(juani.token, fede.token);
   return { ...trip, juani, fede, juaniPhoto, fedePhoto, fedeVideo };
 }
 
@@ -254,8 +257,19 @@ describe("GET /users/{userId}/featured", () => {
     const res = await list(stranger.token, t.juani.userId);
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: PRIVATE });
-    // Sharing a rollo does not make you a friend either.
-    expect((await list(t.fede.token, t.juani.userId)).status).toBe(403);
+  });
+
+  it("403 for a member of the same rollo who is not a friend", async () => {
+    const t = await revealedTrip();
+    await feature(t.juani.token, t.fedePhoto);
+    // Joining by code is closed after the reveal: add the member straight into D1.
+    const member = await signUp(undefined, "Cami");
+    await env.DB.prepare("INSERT INTO members (id, trip_id, user_id, role, created_at) VALUES (?, ?, ?, 'member', ?)")
+      .bind(crypto.randomUUID(), t.tripId, member.userId, Date.now())
+      .run();
+    const res = await list(member.token, t.juani.userId);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: PRIVATE });
   });
 
   it("is visible to a stranger when the profile is public", async () => {

@@ -70,6 +70,10 @@ describe("POST /auth/email/start", () => {
 
   it("allows at most 20 codes per IP per hour", async () => {
     const headers = { "cf-connecting-ip": "203.0.113.7" };
+    // Existing accounts: new-signup emails have their own, smaller per-IP share (see rate-limit.test.ts).
+    for (const email of [...Array.from({ length: 20 }, (_, i) => `ip${i}@rollo.test`), "ip-extra@rollo.test"]) {
+      await env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind(crypto.randomUUID(), email, Date.now()).run();
+    }
     for (let i = 0; i < 20; i++) {
       expect((await start(`ip${i}@rollo.test`, { headers })).status).toBe(204);
     }
@@ -127,7 +131,7 @@ describe("POST /auth/email/verify", () => {
     expect(res.status).toBe(200);
     expect(res.body.token).toEqual(expect.any(String));
     expect(res.body.isNew).toBe(true);
-    expect(res.body.user).toEqual({ id: expect.any(String), email, name: null, username: null, avatarUrl: null, bio: null, profileVisibility: "friends" });
+    expect(res.body.user).toEqual({ id: expect.any(String), email, name: null, username: null, avatarUrl: null, bio: null, badge: null, profileVisibility: "friends" });
 
     expect((await api("GET", "/me", { token: res.body.token })).status).toBe(200);
   });

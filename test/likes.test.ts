@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
 import { flushPendingPushes } from "../src/lib/push";
-import { FeaturedPhotosSchema, FeedResponseSchema } from "../src/schemas";
+import { FeedResponseSchema } from "../src/modules/media/media.schemas";
+import { FeaturedPhotosSchema } from "../src/modules/featured/featured.schemas";
 import { MINUTE, api, befriend, joinAs, mockExpo, newTrip, registerToken, signUp, uploadMedia } from "./helpers";
 
 /** Revealed trip: Juani (admin) and Fede, one photo each and one video by Fede. */
@@ -35,6 +36,7 @@ async function feedItem(tripId: string, token: string, mediaId: string) {
 /** Juani features Fede's photo on her profile (private by default). */
 async function featuredByJuani() {
   const t = await revealedTrip();
+  await befriend(t.juani.token, t.fede.token);
   expect((await api("PUT", `/me/featured/${t.fedePhoto}`, { token: t.juani.token })).status).toBe(204);
   await flushPendingPushes();
   return t;
@@ -122,6 +124,7 @@ describe("PUT /media/{mediaId}/like — who can like", () => {
 
     // Fede features Juani's photo on his public profile, then leaves the rollo (the admin can't leave).
     await api("DELETE", `/media/${t.fedePhoto}/feature-block`, { token: t.fede.token });
+    await befriend(t.juani.token, t.fede.token);
     expect((await api("PUT", `/me/featured/${t.juaniPhoto}`, { token: t.fede.token })).status).toBe(204);
     await api("PATCH", "/me", { token: t.fede.token, body: { profileVisibility: "public" } });
     expect((await like(stranger.token, t.juaniPhoto)).status).toBe(204);

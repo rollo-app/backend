@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { flushPendingPushes } from "../src/lib/push";
-import { tripRevealedMessage, tripStartedMessage } from "../src/lib/trip-notices";
+import { tripRevealedMessage, tripStartedMessage } from "../src/modules/trips/notices.service";
 import { DAY, HOUR, MINUTE, api, befriend, joinAs, mockExpo, newTrip, registerToken, signUp, uploadMedia } from "./helpers";
 
 /** Runs the Worker's Cron Trigger the way Cloudflare does and waits for everything it started. */
@@ -26,11 +26,17 @@ async function tripRow(tripId: string) {
 
 describe("trip notice messages", () => {
   it("started: names the rollo and today's photos", () => {
-    expect(tripStartedMessage({ id: "t1", name: "Bariloche", daily_photo_limit: 10 })).toEqual({
+    expect(tripStartedMessage({ id: "t1", name: "Bariloche", daily_photo_limit: 10, photo_limit_mode: "daily", total_photo_limit: null })).toEqual({
       body: "Arrancó Bariloche. Tenés 10 fotos hoy.",
       url: "/roll?trip=t1",
     });
-    expect(tripStartedMessage({ id: "t1", name: "Bariloche", daily_photo_limit: 1 }).body).toBe("Arrancó Bariloche. Tenés 1 foto hoy.");
+    expect(tripStartedMessage({ id: "t1", name: "Bariloche", daily_photo_limit: 1, photo_limit_mode: "daily", total_photo_limit: null }).body).toBe("Arrancó Bariloche. Tenés 1 foto hoy.");
+  });
+
+  it("started: counts the whole rollo in total mode", () => {
+    expect(
+      tripStartedMessage({ id: "t1", name: "Bariloche", daily_photo_limit: 10, photo_limit_mode: "total", total_photo_limit: 20 }).body,
+    ).toBe("Arrancó Bariloche. Tenés 20 fotos en el rollo.");
   });
 
   it("revealed: names the rollo and opens the reveal", () => {
@@ -137,6 +143,7 @@ describe("photoFeatured", () => {
     const mediaId = await uploadMedia(t.tripId, t.adminToken);
     const ownId = await uploadMedia(t.tripId, cami.token);
     await api("POST", `/trips/${t.tripId}/reveal`, { token: t.adminToken });
+    await befriend(t.adminToken, cami.token);
     await flushPendingPushes();
     return { t, cami, mediaId, ownId };
   }

@@ -14,27 +14,44 @@ Decisiones de producto que el backend tiene que respetar:
   devuelve un token de sesión (365 días desde el último uso: se renueva sola, al usarla, como máximo una vez por día). El nombre (y después el avatar) vive en el perfil (`/me`) y es
   el mismo en todos los rollos, sin ser único. El perfil tiene además una **descripción** opcional (`bio`, `PATCH /me`: se guarda con trim, vacía → `null`, hasta 150 caracteres y 3 renglones; `\r\n` cuenta como un salto) que es **pública** (`Friend.bio`, `GET /users/{id}`). El perfil es **privado (`friends`, default) o público** (`profileVisibility`, `PATCH /me`): las destacadas y la lista de amigos completa las ven vos, tus amigos o, si es público, cualquiera con sesión; nombre, @, foto, descripción y cantidad de amigos se ven siempre. `GET /users/{id}` es el perfil de cualquier usuario (`canSee`, `isFriend`, `friendCount`, `mutualCount`: amigos en común, 0 para vos). `GET /users/{id}/friends` → `{ scope: "all" | "mutual", friends }` (solo `id, name, username, avatarUrl`, por nombre): todos si `canSee`, si no solo los amigos en común. También hay un **username único** (`@juanifraga`, minúsculas, `a-z 0-9 . _`, 3–30; `src/lib/username.ts`). Crear un viaje o unirse requiere nombre y username en el perfil; unirse es solo
   el código de 6 caracteres (idempotente; si el admin te sacó, 403). Cuenta de App Review: `REVIEW_EMAIL`/`REVIEW_CODE`.
-- **Amigos** (`src/routes/friends.ts`, `src/lib/friend-code.ts`): la amistad es simétrica y se crea **sin aceptación**
+- **Amigos** (`src/modules/friends/`, `src/lib/friend-code.ts`): la amistad es simétrica y se crea **sin aceptación**
   (`friendships`, par ordenado `user_a < user_b`). `POST /friends/link` genera un código de 8 caracteres (guardado hasheado) que vale
   **1 hora**, es multiuso y se reemplaza al generar otro. `POST /friend-links/claim` (**sin sesión**) devuelve un `claimToken`
   (24 h) para canjear después de registrarse; `POST /friends/redeem` canjea con `code` o `claimToken`. Cualquier falla es el mismo 400
   genérico; 10 fallas por usuario o IP en una hora → 429 (`friend_attempts`). Cualquier miembro suma **a sus amigos** a un rollo
   (`POST /trips/{id}/members`, respuesta por amigo, no si ya se reveló). `members.left_at` (se salió: `DELETE /trips/{id}/members/me`,
-  puede volver por código o por amigos, sus fotos quedan) es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
-- **Destacadas** (`src/routes/featured.ts`, `src/lib/zone.ts`): cada uno elige hasta **60 fotos** (no videos) de rollos **revelados**
-  donde es miembro activo, suyas o de otros, para su perfil (`PUT/DELETE /me/featured/{mediaId}`, tabla `featured`). El autor puede
+  puede volver por código o por amigos, sus fotos quedan)
+  **Solicitudes de amistad** (`src/modules/friend-requests/`, tabla `friend_requests`): desde el perfil de otra persona, `POST/DELETE /users/{id}/friend-request`, `GET /me/friend-requests` y `POST /me/friend-requests/{id}/accept|reject`; `GET /users/{id}` suma `friendRequest` (`none|sent|received`). Solicitud cruzada o a quien ya te pidió → amigos al toque; rechazar es silencioso (el que la mandó sigue viendo `sent`, y recién a los 30 días puede reenviar); 30 por día; bloquear las borra; push `friendRequest` (abre `/friends`) y `newFriend` al aceptar.
+  es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
+- **Destacadas** (`src/modules/featured/`, `src/lib/zone.ts`): cada uno elige hasta **60 fotos** (no videos) de rollos **revelados**
+  donde es miembro activo, **suyas o de un amigo** (solo fotos de amigos actuales; si no, 409 "Solo podés destacar fotos tuyas o de tus amigos"), para su perfil (`PUT/DELETE /me/featured/{mediaId}`, tabla `featured`). El autor puede
   no dejar que otros la destaquen (`PUT/DELETE /media/{id}/feature-block`, `media.feature_blocked_at`): borra las de otros y las nuevas dan
   409; él sí puede. `GET /users/{id}/featured` (permiso del perfil, si no 403 "Este perfil es privado") **nunca** devuelve el rollo, el
   caption ni la coordenada exacta: solo una **zona** (centro de la celda de 0.05°, ~5 km) y el autor si no es el dueño. Los archivos se
   sirven por `/featured/{userId}/{mediaId}/{variant}` con el permiso del perfil, no del rollo. No se ven (ni sus archivos) si la foto se
-  borró, se bloqueó o el dueño ya no es miembro activo de ese rollo. El feed revelado trae `featuredByMe` y `featureBlocked`, y todo
+  borró, se bloqueó o el dueño ya no es miembro activo de ese rollo. El feed revelado trae `featuredByMe`, `featureBlocked` y `canFeature`, y todo
   ítem del feed trae `author.userId`.
-- **Notificaciones push** (`src/lib/push.ts`, `src/lib/trip-notices.ts`): se mandan con Expo Push Service
+  **Adónde pueden ir tus fotos** (`featuring` en `src/modules/featured/featured.service.ts`, la regla en un solo lugar: `featuringDenial` / `canFeature`): cuatro niveles, gana el más
+  restrictivo. (1) cuenta: `user_settings.allow_featuring`, `PATCH /me/settings` `{ privacy: { allowFeaturing } }` (también en `GET`); (2) rollo:
+  `members.allow_featuring`, `PATCH /trips/{id}/members/me` `{ allowFeaturing }` (`me.allowFeaturing` en el detalle); (3) foto: `feature-block`;
+  (4) rollo privado: `trips.featuring_disabled` (`featuringDisabled` al crear y en `PATCH /trips/{id}`, solo admin; está en `Trip`): nadie
+  destaca sus fotos, **ni el autor**. El autor siempre puede con las suyas salvo en el rollo privado. Destacar da 409 si algún nivel lo frena.
+  **Solo amigos** (`authorIsFriend` en `FeaturingFacts`, también en `FEATURING_ALLOWED_SQL` y en `canFeature` del feed): la foto de otro solo se destaca si el
+  autor es amigo actual de quien destaca. **Al terminar la amistad** (cualquiera de los dos la borra, `removeFriend`) **o al bloquear** (`blockUser`, quien bloquee)
+  se borran, en el mismo `batch`, de **los dos perfiles** las destacadas de fotos del otro (`deleteFeaturedBetween` en `featured.repository`); volver a ser amigos no las devuelve.
+  La migración `0028_featured_only_friends.sql` borró las existentes cuyo autor no era ni el dueño del perfil ni su amigo. El seed solo destaca fotos de amigos de Juani.
+- **"Tu actividad" → `GET /me/featured-by?cursor&limit`** (`featured.service.ts`/`featured.repository.ts`, `FeaturedByList`): las veces que **otra** persona destacó una foto tuya,
+  de la más nueva a la más vieja (`featuredAt`, cursor `src/lib/cursor.ts`, `limit` 1–100, default 60), con `total`. Solo si **hoy** podés ver ese perfil (amigo o público, `canSeeProfile`
+  en SQL), no hay bloqueo en ningún sentido y la foto sigue destacada (`VISIBLE_FROM`/`VISIBLE_WHERE`); lo tuyo en tu propio perfil no sale. Cada ítem trae `user` (como en Amigos),
+  `thumbPath` `/featured/{userId}/{mediaId}/thumb` y `thumbHash`.
+  **Al apagar un nivel se limpia** (en un `batch` con el cambio): cuenta → las fotos del autor de todos los rollos salen de los perfiles ajenos;
+  rollo → las de esa membresía; rollo privado → todas las del rollo, también las del autor. Prender no restaura nada.
+- **Notificaciones push** (`src/lib/push.ts`, `src/modules/trips/notices.service.ts`): se mandan con Expo Push Service
   (`POST https://exp.host/--/api/v2/push/send`, lotes de 100, sin access token). `sendPush(env, userIds, kind, message, { actorId })`
   es el único lugar que manda: saca al actor, a quien tenga un bloqueo con él (cualquier sentido) y a quien apagó ese tipo
   (`user_settings`); cada push lleva `data.url` (deep link de la app). Nunca tira error: en las rutas se corre con `deferPush(c, ...)`
   (`waitUntil`) **después** de guardar. Eventos: sumar a un rollo (`addedToTrip`), canjear tu link (`newFriend`), destacar una foto
-  ajena (`photoFeatured`), revelado manual (`tripRevealed`, al resto de los miembros activos). El **Cron Trigger** (cada 5 min,
+  ajena (`photoFeatured`), subir el momento del día (`momentPosted`, ver "Momento del día"), revelado manual (`tripRevealed`, al resto de los miembros activos). El **Cron Trigger** (cada 5 min,
   `scheduled` en `src/index.ts`) manda "Arrancó" y "Se reveló" a los miembros activos y revisa los recibos de Expo (`push_receipts`,
   ~15 min después) para borrar tokens con `DeviceNotRegistered`. Para no avisar dos veces se "reclama" el rollo con
   `started_notified_at` / `revealed_notified_at` en un solo `UPDATE ... WHERE ... IS NULL`; un rollo ya revelado (o terminado)
@@ -42,10 +59,10 @@ Decisiones de producto que el backend tiene que respetar:
   `flushPendingPushes()` espera las push diferidas.
   **Tokens:** `PUT /me/push-tokens/{token}` (idempotente; si el token era de otra cuenta pasa a esta: mismo celular, otra
   sesión) y `DELETE` al cerrar sesión; borrar la cuenta los borra todos (tabla `push_tokens`). **Preferencias:**
-  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked } }`
-  (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/lib/settings.ts`).
+  `GET/PATCH /me/settings` → `{ notifications: { addedToTrip, newFriend, tripStarted, tripRevealed, photoFeatured, photoLiked, photoCommented, friendRequest, dailyMoment, momentPosted } }`
+  (tabla `user_settings`, una columna `notify_*` por tipo, 1 por defecto; sin fila = todo prendido; `src/modules/settings/`, con las columnas y los tipos puros en `src/lib/settings.ts`).
   `profileVisibility` sigue en `users`.
-- **"Me gusta"** (`src/routes/likes.ts`, `src/lib/likes.ts`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
+- **"Me gusta"** (`src/modules/likes/`, tabla `likes`): `PUT/DELETE /media/{mediaId}/like`, 204 e
   idempotentes. Solo fotos. Puede dar "me gusta" **quien puede ver la foto**: miembro activo de su rollo ya revelado, o quien puede
   ver (`canSeeProfile`) un perfil donde la foto se ve destacada **ahora** (mismas reglas que `VISIBLE_FROM/WHERE` de
   `featured.ts`: no borrada, no bloqueada por el autor, el dueño sigue en el rollo). Si no, o si hay bloqueo con el autor o la
@@ -57,11 +74,77 @@ Decisiones de producto que el backend tiene que respetar:
   sumándolos ("A Cami y 3 más les gustó tu foto"). La decisión es un `UPDATE ... WHERE like_notified_at IS NULL OR <= now - 30 min`
   en un batch con la lectura del contador, así dos "me gusta" a la vez no avisan los dos. Sacar un "me gusta" no avisa ni
   descuenta los callados; si nadie más da "me gusta" después de la ventana, los callados no se avisan.
+- **"Tu actividad" → `GET /me/likes?cursor&limit`** (`likes.service.ts`/`likes.repository.ts`): las fotos que te gustaron y **hoy** podés abrir,
+  de la más reciente a la más vieja (`likedAt`, desempate por id; cursor opaco, `limit` 1–100, default 60), con `total` (campo extra) para la
+  cantidad. Filtra el server, en SQL: miembro activo del rollo revelado (`source: { kind: "trip", tripId }`) o dueño de un perfil que ves
+  (`canSeeProfile` en SQL) donde sigue destacada (`{ kind: "featured", userId }`, sin rollo; si valen las dos, gana `trip`). Nunca salen
+  denunciadas, de autores bloqueados (en ningún sentido) ni videos; el me gusta queda guardado y la foto vuelve si recuperás el acceso.
+  Sin migración (un índice `(user_id, created_at)` queda para cuando haga falta).
+- **Comentarios** (`src/modules/comments/`, tabla `comments`): `GET/POST /media/{mediaId}/comments` y `DELETE /comments/{commentId}`.
+  Solo fotos (un video da 400 al comentar y lista vacía) y **solo miembros activos del rollo ya revelado** (excepción: la foto principal de un momento del día se comenta apenas se sube, con las mismas reglas; una foto normal da 404 antes del revelado y la imagen vinculada 400): sin camino por perfiles (los comentarios
+  muestran nombres y charla del rollo), si no 404; tampoco si hay bloqueo con el autor de la foto o la denunciaste. Texto plano de 1 a 500 caracteres
+  (con trim). Borra el autor del comentario, el de la foto o el admin del rollo (soft delete, `deleted_at`; otro miembro 403). No se ven los de usuarios bloqueados (cualquier
+  sentido), los borrados ni los que denunciaste; el feed revelado trae `commentCount` con esa misma regla (`commentCountSql`). Se denuncia con
+  `POST /reports { commentId }` (`reports.comment_id`, `media_id` queda null para no ocultar la foto; solo miembros activos; el mail a soporte lleva el
+  texto). Push `photoCommented` ("Cami comentó tu foto" al autor y "Cami también comentó una foto" a quienes ya comentaron) con la misma ventana de 30 min
+  por foto que los "me gusta" (`media.comment_notified_at` / `comments_since_notified`); abre `/photo/<id>?tripId=<trip>&comments=1`. Borrar la cuenta borra sus comentarios.
+- **"Tu actividad" → `GET /me/comments?cursor&limit`** (`comments.service.ts`/`comments.repository.ts`, `MyComments`): tus comentarios vivos en fotos que **hoy** podés abrir en la galería
+  (miembro activo de un rollo revelado, foto no borrada ni archivada por otro —la tuya sí—, sin bloqueo con el autor ni denuncia tuya; videos y la imagen vinculada de un momento no),
+  del más nuevo al más viejo (cursor `src/lib/cursor.ts`, `limit` 1–100, default 60), con `total`. Items `{ commentId, mediaId, tripId, text, createdAt, thumbPath, thumbHash }`
+  (`thumbPath` = `/trips/{tripId}/media/{mediaId}/thumb`). Sin migración.
+- **Archivar y eliminar tus fotos y videos** (`media.service.ts`: `archiveMedia`, `unarchiveMedia`, `deleteMedia`; migración `0026_media_archived.sql`, `media.archived_at`):
+  solo el **autor** (fotos y videos; los rollos viejos tienen videos), solo con el rollo **revelado** (antes 409) y siendo miembro activo (si no, 404; otro miembro 403).
+  `POST /media/{id}/archive` y `/unarchive` (204, idempotentes): archivada, **solo la ve su autor** (en su feed con `archived: true`; el campo va en todo
+  ítem revelado); para el resto no existe en ningún camino: feed/galería/mapa/historias, descarga por id (404), "me gusta" (404), `GET /me/likes`,
+  comentarios (404), denuncias (404), destacadas y su mapa (`VISIBLE_WHERE` pide `m.archived_at IS NULL`), y `totalUploaded` / tapa de `GET /me/trips` y del
+  detalle (cuenta solo para el autor). Archivar **borra todas las filas de `featured`** de la foto (un video no se destaca ni tiene me gusta ni comentarios) (también la del autor) y desarchivar no las devuelve (se
+  puede volver a destacar); destacar una archivada da 404 a otros y 409 al autor, y en el feed del autor trae `canFeature: false`. El autor sí puede denunciar comentarios ajenos en su foto archivada. Si el autor comenta su foto archivada no se avisa a nadie.
+  `DELETE /media/{id}`: **antes del revelado** es el borrado del admin de siempre (cualquier otro 403); **después**, el autor la elimina para siempre
+  (archivos de R2, `deleted_at`, sus `likes` y `featured` se borran y sus comentarios quedan con `deleted_at`); otro miembro 403 y el admin con fotos
+  ajenas 409, como antes. En un momento, archivar/desarchivar/eliminar la principal arrastra la vinculada y el id de la vinculada da 400.
+- **Momento del día** (`src/modules/moments/`, `src/lib/moments.ts`, migración `0024_daily_moment.sql`): un aviso por día a una hora al azar
+  de cada miembro, con 15 minutos para sacar la foto (`MOMENT_WINDOW_MS`), estilo BeReal. El rollo lo elige al crearse: `trips.moment_mode`
+  (`off` por default, para rollos viejos y el build viejo, `photo` o `photo_selfie`) y la franja `moment_window_start`/`end` (540 y 1380
+  minutos desde medianoche en `trip.timezone`, o sea 9:00 a 23:00). Tabla `trip_moments` (trip, user, day, `notify_at`, `media_id`,
+  `selfie_media_id`, `taken_at`, `in_window`); en `media`, `moment_day` y `paired_media_id`; en `user_settings`, `notify_daily_moment`
+  (`notifications.dailyMoment`). `lib/moments.ts` (`tripDays`/`dayWindow`/`drawNotifyAt`): la ventana de cada día es la franja ∩
+  [`startsAt`, `endsAt` − 5 min] con el offset de **ese** día; si dura menos de 30 min (`MIN_DAY_WINDOW_MS`) ese día no hay momento.
+  **`GET /me/moments`** (`{ trips: [{ tripId, tripName, momentMode, moments }] }`, módulo `moments`, `getAllMyMoments`) es lo mismo para todos los rollos en una llamada: un SELECT de los rollos donde sos miembro activo, con momento prendido, sin revelar y en la ventana de la app (de 3 días antes del inicio hasta el fin: `MOMENT_PREFETCH_MS`), ordenados por id, y por cada uno la misma lógica de `getMyMoments` (sortea y guarda solo la primera vez; `moments: []` si el endpoint por rollo daría vacío, p. ej. `dailyMoment` apagado). El de por rollo sigue por los builds viejos.
+  `GET /trips/{tripId}/moments` devuelve **solo los del que pregunta** (403 si no es miembro, como `GET /trips/{id}`); sortea de forma
+  perezosa e idempotente (**hoy** nunca se sortea en el pasado: desde `max(inicio, ahora + 1 min)` y si queda menos de 30 min ese día no hay momento; lo ya guardado no se re-sortea) a lo sumo los próximos 31 días locales del rollo (`MOMENT_DRAW_DAYS`) y da `[]` con el modo `off`, con
+  `dailyMoment` apagado o con el rollo terminado o revelado. **Subida:** `RegisterMedia` acepta `momentDay` y `pairedMediaId`; la foto de
+  momento y la selfie **nunca cuentan para el cupo** (ni diario ni total); una principal y una selfie por momento (409 si ya está, el
+  slot se reclama fail-closed); la selfie solo en `photo_selfie` y tiene que ir pareada con la foto de ese slot; se acepta aunque pasen
+  días y queda `in_window` (la app avisa "Se pasó tu momento"). **Feed:** los ítems traen `momentDay` y `selfie`; `GET /me/trips` trae `momentMode` de cada rollo; el admin que borra la foto principal de un momento borra también su selfie; la selfie nunca es un
+  ítem propio (tampoco para clientes viejos), sus archivos son `null` antes del revelado y los totales no la cuentan; me gusta
+  y comentarios rechazan el id de una selfie (400; los comentarios sí valen en la principal antes del revelado); **el momento no se destaca en el perfil**: `PUT /me/featured` rechaza con 400 ("Las fotos del momento no se pueden agregar a tu perfil.") la principal y la vinculada (`moment_day` o `paired_media_id`), y el feed revelado trae `canFeature: false` en la principal; **la primera foto que se saca es la principal** (trasera o frontal) y la vinculada es la otra cámara (el nombre `selfie` del contrato significa "la imagen vinculada"); denunciar una selfie sí se puede y oculta solo la selfie para quien denunció.
+  **El momento se ve apenas se sube** (excepción a "nadie ve nada hasta el revelado"): antes del revelado el feed trae `files`, `width` y `height` **solo** en la foto principal del momento (`moment_day` y sin `paired_media_id`) y en `selfie` (la imagen vinculada), a miembros activos (la ruta ya lo exige); una foto normal sigue sin nada. **Comentarios desde que se sube:** la principal trae `commentCount` antes del revelado y `GET/POST /media/{id}/comments`, `DELETE /comments/{id}` y denunciar funcionan para miembros activos (`visiblePhoto` deja pasar `moment_day`/`paired_media_id`; la vinculada sigue con 400; el push `photoCommented` abre `/photo/<id>?tripId=<trip>&comments=1`). Los demás campos de después del revelado (`likeCount`, `featuredByMe`, `canFeature`...) siguen ausentes. `GET /trips/{tripId}/media/{id}/{thumb|original}` deja bajar esas dos imágenes antes del revelado (`getDownloadKey`; una normal da 403; la regla de bloqueos/denuncias es la de después del revelado: el feed las esconde, la descarga por id no mira). Me gusta y destacar siguen dando error antes del revelado (404: sin revelado no hay camino por rollo ni por perfil). Push **`momentPosted`** (`notifications.momentPosted`, `notify_moment_posted`, migración 0025) a los demás miembros activos al **completar** la subida de la principal (`POST /media/{id}/complete`): título "{Nombre} subió su momento", cuerpo = nombre del rollo, abre `/photo/<id>?tripId=<trip>`; una vez por momento (el `UPDATE ... WHERE status != 'uploaded'` de `markUploaded` decide el ganador: reintentos y completes simultáneos no reenvían), nunca para la vinculada, ni al autor ni entre bloqueados (lo hace `sendPush`), ni con el rollo ya revelado.
+- **Rate limiting** (`src/lib/rate-limit.ts`, `src/lib/email-caps.ts`, bindings `ratelimits` en `wrangler.jsonc`): Workers Rate Limiting, todo → 429 `{ error: "Estás yendo muy rápido. Probá de nuevo en un minuto." }`.
+  `RL_GLOBAL` 120/60 s para toda request (middleware de la app, antes de las rutas; salta `/openapi.json`, `/docs` y `/dev/upload`), con clave = hash del token Bearer
+  (una por sesión) o la IP si no hay token; como el token no se valida ahí, con token también corre `RL_IP` (600/60 s por IP, contra tokens inventados).
+  `RL_EXPENSIVE` 20/60 s por usuario (`rateLimit("RL_EXPENSIVE")` después de `requireUser`): registrar/completar media, avatar y su complete, "me gusta" (PUT) y sumar amigos al rollo;
+  `RL_FILES` 300/60 s por usuario para descargas (rollo y destacadas). **Fail open:** sin el binding (o si falla) la request pasa y se loguea una vez. Los límites del contador son por ubicación de Cloudflare.
+  Topes diarios globales (día UTC, tabla `email_counters`, `reserveEmailSlot`): **80** mails de login (`/auth/email/start` → 429 "Hay muchos pedidos de código ahora. Probá en un rato."), de los cuales
+  **40** como máximo para emails sin cuenta (altas nuevas; así el spam de direcciones falsas no deja afuera a los usuarios existentes; la cuenta de App Review no cuenta), y **20** por IP por día (un grupo de amigos se registra junto desde el mismo Wi-Fi) (toda clave por IP usa `ipKey`, `src/lib/ip.ts`: IPv6 se corta al /64, IPv4 y `::ffff:a.b.c.d` quedan como IPv4; vale también para el límite de `auth_codes` y `friend_attempts`); al pasarse de cualquiera de los dos topes de altas nuevas **responde 204 igual que un éxito y no manda nada** (un 429 solo para emails nuevos revelaría si existe la cuenta) y **20** mails de soporte
+  (denuncias/bloqueos). La primera vez que cada día se llega a un tope de login, un mail de alerta a soporte (`alertCapReached`, usa un cupo de soporte). Cada usuario puede usar **3** mails de soporte por 24 h (denuncias + bloqueos)
+  del tope global; el resto se guarda igual pero sin mail (`reports.unemailed` / `blocks.unemailed` quedan en 1; se limpian al salir el mail). El cron (`sendModerationSummary`) manda **un** mail por día UTC a soporte
+  (puede pasarse del tope de soporte) con las denuncias y bloqueos que quedaron sin mail (> 10 min de antigüedad), con los curl de admin, y los marca; solo si hay alguno. Además 50 denuncias y 50 bloqueos por usuario cada 24 h (429).
+  El cron borra los `email_counters` de más de 2 días. Resend gratis: 100/día. En tests los bindings reales tienen límites enormes (`vitest.config.ts`); los tests de límite usan un binding falso por request.
 - **Revelado:** automático en `revealAt` o manual por el admin. Antes del revelado el feed devuelve
   **solo metadata** (autor, hora, lugar, epígrafe) para el mapa en vivo y el feed de epígrafes. Nunca
   URLs ni archivos, tampoco los propios.
-- **Límite diario por persona**, por tipo, según la fecha local en la zona horaria del viaje
-  (default 10 fotos, 3 videos). Las pendientes también cuentan.
+- **Límites de subida:** al registrar el celular declara `sizeBytes` y `thumbSizeBytes` (exactos; tope foto 12 MB, video 30 MB, thumb 2 MB) y las URLs de R2 se firman con ese `Content-Length` (header firmado con `allHeaders` de aws4fetch; en dev el `PUT /dev/upload` chequea el largo del body). `complete` compara los tamaños reales con los declarados (o con los topes): si no coinciden borra ambos archivos, da 400 y el registro queda pendiente. El cron borra los pendientes de más de 7 días con sus archivos (`src/lib/pending-cleanup.ts`). Avatar: `POST /me/avatar` pide `sizeBytes` (firmado, hasta 2 MB), borra el pendiente anterior y el cron barre los huérfanos de `avatars/` con más de 1 h, hasta 1000 objetos por corrida y retomando donde quedó la anterior (`cron_state`, clave `avatar_sweep_after`; al llegar al final arranca de nuevo) (`src/lib/avatar-sweep.ts`).
+- **Límite de fotos por persona**, según el modo del rollo (`photo_limit_mode`, se elige al crearlo): `daily` (default, `daily_photo_limit`
+  por día local en la zona horaria del viaje, default 10) o `total` (`total_photo_limit`, 1–500, para todo el rollo; en `daily` queda `null`).
+  Las pendientes y las borradas por el admin también cuentan. `today.photosLeft` del detalle es lo que queda hoy (`daily`) o en todo el
+  rollo (`total`), 0 fuera de las fechas. **Sin videos en rollos nuevos:** `dailyVideoLimit` es opcional al crear (default 0) y sigue en las
+  respuestas por compatibilidad con el build viejo; con 0, subir un video da 400 "Este rollo no admite videos". Los videos de rollos viejos se siguen sirviendo.
+- **Tope de almacenamiento** (`src/lib/storage.ts`): R2 gratis llega a 10 GB y no puede cobrarse nada. El uso es el máximo entre
+  la estimación de D1 (`size_bytes + thumb_size_bytes` de lo no borrado, pendientes incluidas, + 2 MB por usuario con avatar) y la
+  última medición real del bucket (`cron_state`). Al 95% de `STORAGE_LIMIT_BYTES` (default 10 GB decimales) los registros nuevos
+  (`POST /trips/{id}/media`, no los reintentos) y `POST /me/avatar` dan 503; leer nunca se frena. El cron mide el bucket entero
+  como mucho una vez por hora y manda un mail a soporte al cruzar 70%, 85% y 95% (una vez por umbral; se rearma al bajar de 70%).
+  En tests el tope se baja con `api(..., { env: { STORAGE_LIMIT_BYTES } })` o se siembra `storage_measured_bytes` en `cron_state`.
 - **Videos de hasta 15 s.** Fotos a resolución completa (~4000 px, para imprimir) + thumbnail ~800 px.
   La compresión y el thumbnail los hace el celular, no el Worker.
 - **Offline first:** el celular genera el UUID de cada foto y la hora al disparar. Registrar es
@@ -82,19 +165,76 @@ La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 - **Auth:** `Authorization: Bearer <token de sesión>`; en D1 solo se guarda el SHA-256 del token (`sessions`) y del código (`auth_codes`). Un middleware de membresía carga `member`/`trip` en las rutas con `{tripId}`.
 
 ```
-src/index.ts          app, /openapi.json, /docs, manejo de errores
-src/schemas.ts        contrato (zod + OpenAPI)
-src/lib/              auth, openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), profile-access (areFriends, canSeeProfile), zone (zona de ~5 km), settings (preferencias), push (Expo), trip-notices (avisos del cron), likes (anti-spam y texto de "me gusta")
-src/routes/           auth.ts, me.ts, users.ts, friends.ts, trips.ts, media.ts, featured.ts, likes.ts, blocks.ts, reports.ts, admin.ts
+src/index.ts          app, montaje de routers, /openapi.json, /docs, manejo de errores, cron (scheduled)
+src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): account, admin, auth, avatars, blocks, comments, featured, friend-requests, friends, likes, me, media, moderation, moments, reports, settings, trips, users, usernames
+src/db/schema.ts       esquema Drizzle de toda la DB (camelCase en TS, columnas snake_case); las migraciones SQL siguen siendo la fuente de verdad y `npm run db:check-schema` falla si se desalinean
+src/shared/           db.ts (`orm`, `toStatement`), errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
+src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
+src/lib/              infra transversal: auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), zone (zona de ~5 km), settings (columnas y tipos puros de las preferencias), moments (cálculo puro de días y ventanas), push (Expo), storage, rate-limit, email, email-caps...
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
 ```
 
+### Arquitectura por capas
+
+Cada módulo vive en `src/modules/<mod>/` con cuatro capas más sus schemas (sin `repository` o `schemas` si no hay
+nada que poner). El modelo es `src/modules/media/`. Un módulo nuevo se crea con la misma forma; un refactor de
+estructura no cambia comportamiento ni contrato (`openapi.json` idéntico, tests sin cambios más allá de imports).
+
+| Archivo | Hace | No hace |
+|---|---|---|
+| `<mod>.router.ts` | `createRoute` (contrato, middlewares, respuestas documentadas), exporta cada ruta y la monta con `router.openapi(route, controller.fn)` | lógica |
+| `<mod>.controller.ts` | handlers `RouteHandler<typeof xRoute, AppEnv>`: leen el input validado y el contexto (`user`, `trip`, `member`), llaman al service, mapean a la respuesta (presenters) y eligen el status | SQL, reglas de negocio |
+| `<mod>.service.ts` | toda la lógica de negocio: permisos finos, validaciones de estado, orquestar repos, decidir los `batch`, disparar push | importar `hono`, `HTTPException`, `Context` |
+| `<mod>.repository.ts` | todo el SQL. Primer argumento `db: D1Database` | decidir nada |
+| `<mod>.schemas.ts` | schemas zod que usa solo ese módulo | — |
+
+Reglas:
+- **Escrituras como sentencias:** en el repository las lecturas ejecutan y devuelven filas tipadas; las escrituras
+  devuelven un `D1PreparedStatement` sin ejecutar. El service hace `.run()` o las junta en `db.batch([...])`. Es
+  porque D1 no tiene transacciones interactivas: `batch` es la única forma de que varias escrituras sean atómicas, y
+  qué va junto es una decisión de negocio.
+- **Errores de dominio:** el service tira `badRequest` / `forbidden` / `notFound` / `conflict` / `rateLimited` /
+  `unavailable` (`src/shared/errors.ts`) con el mensaje en español para el usuario; `onError` los traduce a
+  400/403/404/409/429/503. Así un service se puede llamar desde el cron sin HTTP de por medio. Un status sin kind
+  (500 al no poder generar un código de rollo, 502 si Resend falla) lo tira el controller como `HTTPException`
+  a partir de lo que devuelve el service.
+- **Push:** `deferPush` necesita el contexto de Hono (`waitUntil`). El service arma el push completo (destinatarios,
+  texto, url, actor) y lo devuelve como `notify: AfterResponse` (`src/shared/after-response.ts`: una función que
+  todavía no arrancó, o `null`); el controller solo hace `if (notify) deferPush(c, notify())`. Los mails de
+  moderación se esperan en el service, no se difieren.
+- **Entre módulos:** un service puede llamar a services de otros módulos (ej. `admin` usa `deleteTripMedia` de
+  media, `me` usa el chequeo de username de `usernames`) y pedir *sentencias de escritura* a repos de otros módulos
+  solo para armar un `batch` atómico (ej. `media` borra destacadas con `featured.repository`). Las reglas de
+  visibilidad de una foto destacada (`VISIBLE_FROM` / `VISIBLE_WHERE`) viven en `featured.repository` y las importan
+  los repos de `likes` y `reports`, para que la regla esté en un solo lugar. Nadie importa el router ni el
+  controller de otro módulo.
+- **Middlewares** (sesión, membresía, admin, rate limit) van en el `middleware` de cada `createRoute`; su código
+  vive en `src/lib/auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
+- **`src/lib/`** es solo infra transversal y helpers puros (sesiones, R2, mail, push, storage, rate limit, fechas): sin
+  SQL de dominio. El SQL vive en el repository del módulo dueño y la regla en su service: p. ej. `account/` (borrar
+  cuenta), `settings/` (preferencias; `lib/push.ts` lee las notificaciones desde `settings.service`), `moderation/`
+  (topes y mail de resumen), `friends/` (`areFriends`), `users/` (`canSeeProfile`), `blocks/` (`isBlockedEitherWay`),
+  `moments/` (reglas de la foto vinculada) y `trips/notices.service.ts` (avisos del cron). Los fragmentos SQL de
+  "oculto para el viewer" (`hiddenMediaSql`, `notHiddenFor`) viven en `reports.repository`.
+- **PRs:** un refactor de estructura que toca varios módulos puede ir en un solo PR, con un commit por módulo o
+  grupo, para no encadenar conflictos en `src/index.ts` y `src/schemas.ts`.
+- **Sin interfaces por capa:** services y repos son módulos de funciones tipadas; el contrato es la firma exportada.
+  Interfaces explícitas solo donde hay más de una implementación (storage, mail, push).
+- **Comentarios explicativos** (por qué una regla es así) van junto a la lógica, o sea, en el service.
+
 ## Cómo trabajamos
 
+- **Decisiones grandes** (stack, proveedores, arquitectura) se discuten con Juani, con alternativas, antes de
+  implementarlas, y quedan en `docs/decisiones/NNNN-tema.md` (contexto, criterios, alternativas, decisión,
+  consecuencias, cuándo revisarla). La del stack: [`docs/decisiones/0001-stack.md`](docs/decisiones/0001-stack.md).
 - **TDD siempre:** primero el test, verlo fallar, código mínimo, refactor.
   Escenarios con los helpers de `test/helpers.ts` (`signUp`, `newTrip`, `joinAs`, `uploadMedia`...). Los códigos de login se leen de `devSentCodes` (y los links mágicos de `devSentLinks`) (`src/lib/email.ts`), que se llena cuando no hay `RESEND_API_KEY`.
+  **Correr tests sin ahogar la Mac** (cada worker levanta su `workerd` y varias sesiones a la vez se quedaban sin RAM):
+  corré **solo los tests de lo que tocaste**, nunca la suite completa, y siempre con `--maxWorkers=2`
+  (`npx vitest run test/<archivo>.test.ts --maxWorkers=2` o `npx vitest related <archivos> --run --maxWorkers=2`). La suite
+  completa la corre el CI, o se corre solo si el usuario la pide. `vitest.config.ts` ya fija `maxWorkers: 2`.
 - **Si tocás la API:** `npm run openapi` y commiteá `openapi.json`. Hay un test que falla si quedó
   desactualizado. Después la app corre `npm run api:generate`.
 - **Ramas:** `develop` es la default. Features en `feature/*` (o `fix/*`, `chore/*`) desde `develop`,
@@ -113,24 +253,28 @@ openapi.json          contrato versionado — regenerar con `npm run openapi`
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 544 tests
+npm test              # 885 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
 npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
 npm run dev -- --test-scheduled   # + correr el cron a mano: curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"
-npm run seed          # 9 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
+npm run seed          # (levanta solo un server local sin rate limits, ~2 min) 10 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
 npm run seed -- --reset   # borra rollos y usuarios de prueba de D1 local (con amistades, links y descripciones) y los recrea (cambian los códigos)
 npm run email:preview   # escribe login-email-preview.html (git-ignored) con el mail del código, para abrirlo en el navegador
 ```
 
 **Seed** (`scripts/seed.ts`, `scripts/seed/{lib,scenarios,people,avatars,featured,likes}.ts`; lo puro de `people.ts` tiene tests en
-`test/seed-people.test.ts`). Necesita el server local corriendo (`npm run dev:lan` con `DEV_LOCAL_UPLOADS=1`); con
-`SEED_API_URL` y `SEED_PERSIST_TO` corre contra otro server/estado aislado. Al final chequea `GET /friends/{id}` de cada amigo
+`test/seed-people.test.ts`). `npm run seed` (`scripts/seed-with-server.ts`) aplica las migraciones, levanta su propio `wrangler dev`
+en el puerto 8788 con una config de desarrollo generada de `wrangler.jsonc` **sin** `ratelimits`, rutas ni cron (`wrangler.seed.generated.jsonc`,
+git-ignored; sin binding el limitador deja pasar todo, así el seed completo tarda ~2 min y no ~45), corre el seed y lo apaga; la config de producción
+y `npm run deploy` no cambian. Necesita `DEV_LOCAL_UPLOADS=1` en `.dev.vars`. Con `SEED_API_URL` corre contra un server que levantaste vos
+(`npm run seed:only` hace lo mismo sin levantar nada; ahí valen los límites y el seed espera y reintenta ante un 429); `SEED_PERSIST_TO` aísla el estado. Al final chequea `GET /friends/{id}` de cada amigo
 de Juani y falla si los rollos en común no son los esperados, y chequea las destacadas (las de Juani como amiga y como desconocido, las de
 Tomi como desconocido). Cuentas:
 - `juani@rollo.test`: en todos los rollos menos "Escapada sin Juani"; **admin** de "Finde en Tandil" (empieza mañana). Perfil privado
   con **5 destacadas** de Bariloche (3 suyas, 2 de Tomi y Fede).
+- Insignias: Juani `founder`; Cami y Lu `first_edition`; el resto sin insignia (`SEED_BADGES` en `people.ts`).
 - Destacadas: **Tomi** tiene perfil **público** (3 destacadas, se ven sin ser amigo); **Cami** no deja destacar su primera foto de Bariloche.
   Se rehacen en cada corrida (`planFeatured` en `people.ts`).
 - "Me gusta" en Bariloche (`planLikes` en `people.ts`, se rehacen y chequean en cada corrida): la primera foto de Juani tiene 5
@@ -140,7 +284,7 @@ Tomi como desconocido). Cuentas:
   (solo Tandil en común; también está en "Escapada sin Juani", que no tiene que aparecer), Pilar (ningún rollo), Rama (se salió
   de Tandil, `left_at`) y Vicky (Juani la sacó de Tandil, `removed_at`): estos tres sin rollos en común.
 - Lu, Nacho, Sofi... comparten rollos con Juani pero no son amigos. Lu tiene un **link de amistad** nuevo en cada corrida (1 h,
-  se imprime el código y `rollo://friends/<CODE>`) y el seed la des-amiga de Juani para poder canjearlo otra vez.
+  se imprime el código y `rollo://friends/<CODE>`; el link público es `https://rollo.juanifraga.com/friends#<CODE>` y `rollo://friends/<CODE>` también vale) y el seed la des-amiga de Juani para poder canjearlo otra vez.
 - `nuevo@rollo.test`: sin rollos ni amigos (estados vacíos; el seed le borra los amigos en cada corrida). `rocio@rollo.test`: tiene
   nombre pero no `@usuario` (la app la manda a "Completá tu perfil"). Sin foto: Lu, Mateo, Nuevo y Rocío.
 
@@ -153,9 +297,9 @@ URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
 
 ## Estado (octubre 2026)
 
-Hecho: cuentas por email, perfil y username, amigos, viajes (crear, unirse, detalle, editar, revelar,
-sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar),
-contrato OpenAPI, CI.
+Hecho: cuentas por email (código y link mágico), perfil y username, amigos, viajes (crear, unirse, detalle,
+editar, revelar, sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar, archivar),
+destacadas, "me gusta", notificaciones push con cron, moderación, contrato OpenAPI, CI.
 
 **Producción** (deployado el 22/10/2026), todo en la cuenta de Cloudflare de Juani:
 
@@ -167,7 +311,7 @@ contrato OpenAPI, CI.
   `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
 - Mail: dominio `juanifraga.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
   DMARC `p=none` en `_dmarc`), DNS en Cloudflare. Plan gratis: 100 mails por día y 3.000 por mes.
-- Secrets de moderación: `ADMIN_TOKEN` (habilita las rutas `/admin/*`; sin él dan 404) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/routes/admin.ts`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
+- Secrets de moderación: `ADMIN_TOKEN` (habilita las rutas `/admin/*`; sin él dan 404) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
 - Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
 
 Para deployar una versión nueva, con `main` al día:
@@ -184,14 +328,14 @@ verifier mal o ausente cuenta como intento fallido). Así un link del atacante a
 atacante (login CSRF) y otra app que registre `rollo://` y lo intercepte no puede usarlo. Sin `linkChallenge` (builds viejas) no se genera
 link: el mail trae solo el código y `verify-link` siempre falla. `/auth/email/verify` (el código) no cambia.
 
-**Link mágico (pendiente de aplicar en producción):** migración `0014_auth_magic_link.sql` (columnas `link_hash` y `link_challenge` en `auth_codes`), con `npm run db:migrate:remote` **antes** de `npm run deploy`. Opcional: var `LOGIN_LINK_URL` (default `https://rollo.juanifraga.com/entrar`).
+**Link mágico, notificaciones y "me gusta"** están en producción desde el 22/10/2026 (migraciones `0012`–`0014` aplicadas).
+`LOGIN_LINK_URL` no está seteada (usa el default `https://rollo.juanifraga.com/entrar`). El deploy registra el Cron Trigger
+(`*/5 * * * *`, `triggers.crons` en `wrangler.jsonc`); se ve en el dashboard del Worker → Settings → Triggers. Sin access token
+de Expo: si se activa "enhanced security" en expo.dev hay que sumarlo como secret.
 
-**Notificaciones y "me gusta" (pendiente de aplicar en producción):** migraciones `0012_notifications.sql` (`push_tokens`,
-`user_settings`, `likes`, columnas de anti-spam en `media` y `started_notified_at`/`revealed_notified_at` en `trips`; marca como
-avisados los rollos que ya arrancaron o se revelaron, así no avisan al deployar) y `0013_push_receipts.sql` (recibos de Expo).
-Se aplican con `npm run db:migrate:remote` **antes** de `npm run deploy`. El deploy registra el Cron Trigger (`*/5 * * * *`,
-`triggers.crons` en `wrangler.jsonc`); se ve en el dashboard del Worker → Settings → Triggers. Sin access token de Expo: si se
-activa "enhanced security" en expo.dev hay que sumarlo como secret.
+**Límites para crear rollos** (`enforceCreateLimits` en `trips.service.ts`, migración `0027_unlimited_rollos.sql`, `users.unlimited_rollos`): `POST /trips` da **409** (con el mensaje para mostrar) si el usuario **creó** (es admin de) 2 rollos sin revelar (en curso + por empezar + terminados sin revelar: `revealed_at IS NULL AND reveal_at > ahora`) → "Ya tenés 2 rollos sin revelar. Esperá a que se revele uno para crear otro.", o 4 en los últimos 30 días (por `trips.created_at`, ventana móvil; el creador es `trips.created_by_user_id`, que se escribe una vez al crear y la migración rellena con el admin de los rollos viejos, porque el rol de admin se puede mover, por ej. al borrarse una cuenta) → "Ya creaste 4 rollos en los últimos 30 días. Vas a poder crear otro el 3 de noviembre." (el día en que el 4.º más reciente cumple 30 días, en la zona horaria del rollo nuevo). Los rollos a los que te sumaste o te sumaron no cuentan. Se chequea primero el de sin revelar. El chequeo es atómico: va dentro del `INSERT ... SELECT ... WHERE` del rollo (y el admin se inserta solo si existe el rollo), así dos pedidos a la vez no pasan el tope; si no se escribió nada se recalcula cuál tope pegó para el mensaje. Se eligió 409 (no 429) porque el uploader de la app trata el 429 como cupo de fotos. **Exentos** (sin límite), a mano con SQL, como las insignias, sin endpoint: `UPDATE users SET unlimited_rollos=1 WHERE email='...'` (`0` = con límites; aplicar con `npm run db:migrate:remote` **antes** de `npm run deploy`). El seed exenta a todos los usuarios de prueba menos `nuevo@rollo.test` (`LIMITED_ROLLOS` en `people.ts`), que sirve para probar los límites.
+
+**Insignias de perfil:** columna `users.badge` (migración `0015_user_badges.sql`, aplicar con `npm run db:migrate:remote` **antes** de `npm run deploy`). Se asignan **solo a mano con SQL**, no hay endpoint (`PATCH /me` la ignora): `UPDATE users SET badge='founder' WHERE email='...'`. Valores: `founder` ("Founder") y `first_edition` ("First Edition"); `NULL` = sin insignia. Salen como `badge` en `GET /me` y en `user` de `GET /users/{userId}` (pública, como el nombre); un valor desconocido en la DB sale como `null`.
 
 Logs en vivo: `npx wrangler tail rollo-api`.
 
@@ -199,7 +343,7 @@ Logs en vivo: `npx wrangler tail rollo-api`.
 
 1. Probar una subida real a R2 en producción (con el primer build de TestFlight).
 2. Lo que pida la etapa de cámara y subida de la app (probablemente nada nuevo).
-3. **Modo viaje:** tabla `prompts`, registro de push tokens de Expo por miembro, cron que cada noche
+3. **Modo viaje:** tabla `prompts` (los push tokens y el cron ya existen), un cron que cada noche
    sortea para cada miembro un horario del día siguiente (ventana ~10–21 h en la zona del viaje,
    separados entre sí para que no coincidan) y otro cron que manda el push con un disparador
    ("un detalle que nadie más esté mirando"). Se apaga solo al terminar el viaje. El "momento" es

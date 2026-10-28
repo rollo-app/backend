@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { devSentBlocks } from "../src/lib/email";
-import { hiddenMediaSql } from "../src/lib/moderation";
+import { hiddenMediaSql } from "../src/modules/reports/reports.repository";
 import { photoWithMetadata } from "./jpeg-fixture";
 import { api, befriend, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 
@@ -199,6 +199,7 @@ describe("blocks hide content", () => {
     const own = await uploadMedia(trip.tripId, a.token);
     await env.MEDIA.put(`trips/${trip.tripId}/${photo}/thumb.jpg`, photoWithMetadata("x", "Beto"));
     await api("POST", `/trips/${trip.tripId}/reveal`, { token: a.token });
+    await befriend(a.token, b.token);
     await api("PUT", `/me/featured/${photo}`, { token: a.token });
     await api("PUT", `/me/featured/${own}`, { token: a.token });
     for (const u of [c, d]) await befriend(a.token, u.token);
@@ -278,6 +279,7 @@ describe("blocking and featured photos / emails", () => {
     await env.MEDIA.put(`trips/${trip.tripId}/${photo}/thumb.jpg`, photoWithMetadata("x", "Beto"));
     await env.MEDIA.put(`trips/${trip.tripId}/${own}/thumb.jpg`, photoWithMetadata("x", "Ana"));
     await api("POST", `/trips/${trip.tripId}/reveal`, { token: a.token });
+    await befriend(a.token, b.token);
     await api("PUT", `/me/featured/${photo}`, { token: a.token });
     await api("PUT", `/me/featured/${own}`, { token: a.token });
     await befriend(a.token, d.token);

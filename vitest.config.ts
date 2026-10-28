@@ -1,6 +1,6 @@
 import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [
@@ -8,6 +8,13 @@ export default defineConfig({
       // Usa los mismos bindings que producción (D1 y R2), pero locales y aislados.
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
+        // Tests share one IP key and sign up many users: the real limits would trip them. The limit tests use their own low-limit stand-ins.
+        ratelimits: Object.fromEntries(
+          [["RL_GLOBAL", "1001"], ["RL_IP", "1002"], ["RL_EXPENSIVE", "1003"], ["RL_FILES", "1004"]].map(([name, namespace_id]) => [
+            name,
+            { namespace_id, simple: { limit: 1_000_000, period: 60 as const } },
+          ]),
+        ),
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, "migrations")),
           R2_ACCOUNT_ID: "test-account",
@@ -20,6 +27,9 @@ export default defineConfig({
     })),
   ],
   test: {
+    // Each worker spins up its own workerd: keep it low so parallel agent sessions don't run the Mac out of RAM.
+    maxWorkers: 2,
     setupFiles: ["./test/setup.ts"],
+    exclude: [...configDefaults.exclude, ".claude/**"],
   },
 });

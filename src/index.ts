@@ -1,25 +1,37 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { HTTPException } from "hono/http-exception";
 import { createApp } from "./lib/openapi";
+import { globalRateLimit } from "./lib/rate-limit";
 import { checkPushReceipts } from "./lib/push";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
-import { runTripNotices } from "./lib/trip-notices";
-import admin from "./routes/admin";
-import auth from "./routes/auth";
-import blocks from "./routes/blocks";
-import featured from "./routes/featured";
-import friends, { friendLinks } from "./routes/friends";
-import likes from "./routes/likes";
-import avatars from "./routes/avatars";
-import me from "./routes/me";
-import media from "./routes/media";
-import reports from "./routes/reports";
-import trips from "./routes/trips";
-import users from "./routes/users";
-import usernames from "./routes/usernames";
+import { runTripNotices } from "./modules/trips/notices.service";
+import admin from "./modules/admin/admin.router";
+import auth from "./modules/auth/auth.router";
+import blocks from "./modules/blocks/blocks.router";
+import featured from "./modules/featured/featured.router";
+import { meFriendRequests, userFriendRequests } from "./modules/friend-requests/friend-requests.router";
+import friends, { friendLinks } from "./modules/friends/friends.router";
+import comments from "./modules/comments/comments.router";
+import likes from "./modules/likes/likes.router";
+import avatars from "./modules/avatars/avatars.router";
+import me from "./modules/me/me.router";
+import media from "./modules/media/media.router";
+import { STATUS_BY_KIND, AppError } from "./shared/errors";
+import { checkStorage } from "./lib/storage";
+import { sweepOrphanAvatars } from "./lib/avatar-sweep";
+import { purgeOldEmailCounters } from "./lib/email-caps";
+import { sendModerationSummary } from "./modules/moderation/moderation.service";
+import { cleanupStalePending } from "./lib/pending-cleanup";
+import reports from "./modules/reports/reports.router";
+import moments, { meMoments } from "./modules/moments/moments.router";
+import trips from "./modules/trips/trips.router";
+import users from "./modules/users/users.router";
+import usernames from "./modules/usernames/usernames.router";
 import type { Env } from "./types";
 
 const app = createApp();
+
+app.use("*", globalRateLimit);
 
 app.get("/", (c) => c.json({ ok: true, service: "rollo-api" }));
 
@@ -31,18 +43,23 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 
 app.route("/admin", admin);
 app.route("/auth", auth);
+app.route("/me", meFriendRequests);
+app.route("/me", meMoments);
 app.route("/me", me);
 app.route("/avatars", avatars);
 app.route("/usernames", usernames);
+app.route("/users", userFriendRequests);
 app.route("/users", users);
 app.route("/friends", friends);
 app.route("/blocks", blocks);
 app.route("/reports", reports);
 app.route("/friend-links", friendLinks);
+app.route("/trips", moments);
 app.route("/trips", trips);
 app.route("/", media);
 app.route("/", featured);
 app.route("/", likes);
+app.route("/", comments);
 
 // Contract: the mobile app generates its typed client from here.
 app.doc31("/openapi.json", {
@@ -62,27 +79,31 @@ app.get("/docs", swaggerUI({ url: "/openapi.json", title: "Rollo API" }));
 app.put(`${DEV_UPLOAD_PREFIX}*`, async (c, next) => {
   if (!devUploadsEnabled(c.env)) return next();
   const key = decodeURIComponent(new URL(c.req.url).pathname.slice(DEV_UPLOAD_PREFIX.length));
-  if (!(await verifyDevUpload(c.env, key, c.req.query("exp"), c.req.query("sig")))) {
-    return c.json({ error: "Firma inválida o vencida" }, 403);
-  }
+  const verified = await verifyDevUpload(c.env, key, c.req.query("exp"), c.req.query("sig"), c.req.query("size"));
+  if (!verified) return c.json({ error: "Firma inválida o vencida" }, 403);
   const contentType = c.req.header("content-type");
-  await c.env.MEDIA.put(key, await c.req.arrayBuffer(), contentType ? { httpMetadata: { contentType } } : undefined);
+  const bytes = await c.req.arrayBuffer();
+  if (verified.size !== null && bytes.byteLength !== verified.size) {
+    return c.json({ error: "El tamaño del archivo no coincide con el firmado" }, 403);
+  }
+  await c.env.MEDIA.put(key, bytes, contentType ? { httpMetadata: { contentType } } : undefined);
   return c.body(null, 200);
 });
 
 app.notFound((c) => c.json({ error: "No encontrado" }, 404));
 
 app.onError((err, c) => {
+  if (err instanceof AppError) return c.json({ error: err.message }, STATUS_BY_KIND[err.kind]);
   if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
   console.error(err);
   return c.json({ error: "Error interno" }, 500);
 });
 
-/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes and the Expo receipts check. */
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads and the sweep of orphan avatar files. */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

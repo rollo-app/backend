@@ -2,15 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   AuthSessionSchema,
   ErrorSchema,
-  FeedResponseSchema,
-  MediaRegisteredSchema,
-  MediaStatusSchema,
-  MyTripsSchema,
   TripCreatedSchema,
   TripDetailSchema,
   TripResponseSchema,
   UserSchema,
 } from "../src/schemas";
+import { MyTripsSchema } from "../src/modules/me/me.schemas";
+import { FeedResponseSchema, MediaRegisteredSchema, MediaStatusSchema } from "../src/modules/media/media.schemas";
 import { api, joinAs, newTrip, photoBody, requestCode, signUp, uploadMedia } from "./helpers";
 
 type OpenAPIDoc = {
@@ -53,6 +51,7 @@ const PROTECTED_ENDPOINTS = [
   ["post", "/friends/redeem"],
   ["post", "/trips/{tripId}/members"],
   ["delete", "/trips/{tripId}/members/me"],
+  ["patch", "/trips/{tripId}/members/me"],
   ["get", "/friends"],
   ["delete", "/friends/{userId}"],
   ["get", "/users/{userId}"],

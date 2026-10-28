@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
 import { NO_AVATAR, renderAvatar } from "./avatars";
-import { NO_USERNAME, PUBLIC_PROFILES, SEED_BIOS } from "./people";
+import { LIMITED_ROLLOS, NO_USERNAME, PUBLIC_PROFILES, SEED_BADGES, SEED_BIOS } from "./people";
 
 /** Seed helpers: API, local D1, images (disk-cached), times and daily quota. */
 
@@ -29,11 +29,22 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   };
-  // The synchronous wrangler calls can leave a keep-alive socket stale: retry once on a network error.
-  const res = await fetch(`${API}${path}`, init).catch(() => fetch(`${API}${path}`, init));
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${JSON.stringify(data)}`);
-  return data as T;
+  // The local rate limits (src/lib/rate-limit.ts) are real: on a 429 wait (Retry-After, else ~12 s) and retry, a bounded number of times.
+  const MAX_ATTEMPTS = 8;
+  for (let attempt = 1; ; attempt++) {
+    // The synchronous wrangler calls can leave a keep-alive socket stale: retry once on a network error.
+    const res = await fetch(`${API}${path}`, init).catch(() => fetch(`${API}${path}`, init));
+    const data = await res.json().catch(() => null);
+    if (res.status === 429 && attempt < MAX_ATTEMPTS) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 12_000;
+      console.log(`  429 on ${method} ${path}: waiting ${Math.round(waitMs / 1000)} s (attempt ${attempt}/${MAX_ATTEMPTS})`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+    if (!res.ok) throw new Error(`${method} ${path} → ${res.status} ${JSON.stringify(data)}`);
+    return data as T;
+  }
 }
 
 // ---------- Local D1 (via wrangler) ----------
@@ -84,6 +95,8 @@ export function ensureUser(name: string): Promise<string> {
         userId = randomUUID();
         d1(`INSERT INTO users (id, email, name, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${username}, ${now})`);
       }
+      const badge = SEED_BADGES[name];
+      d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"}, unlimited_rollos = ${LIMITED_ROLLOS.has(name) ? 0 : 1} WHERE id = ${sqlStr(userId)}`);
       const token = randomBytes(32).toString("base64url");
       const hash = createHash("sha256").update(token).digest("hex");
       d1(
@@ -103,7 +116,7 @@ export function ensureUser(name: string): Promise<string> {
 /** Real avatar flow: POST /me/avatar → PUT the JPEG → POST /me/avatar/complete (the API deletes the previous avatar). */
 async function uploadAvatar(name: string, token: string) {
   const jpeg = await renderAvatar(name, avatarIndex(name));
-  const { upload } = await api<{ upload: string }>("POST", "/me/avatar", undefined, token);
+  const { upload } = await api<{ upload: string }>("POST", "/me/avatar", { sizeBytes: jpeg.length }, token);
   await put(upload, jpeg, "image/jpeg");
   await api("POST", "/me/avatar/complete", undefined, token);
 }
@@ -291,6 +304,7 @@ export async function uploadShot(tripId: string, token: string, shot: Shot, imgI
       width: img.width,
       height: img.height,
       sizeBytes: img.original.length,
+      thumbSizeBytes: img.thumb.length,
       thumbhash: img.thumbhash,
       ...(isVideo && { durationS: Math.round(rand(3, 14.5) * 10) / 10 }),
     },

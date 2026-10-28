@@ -6,8 +6,8 @@ import { runScenario, resetScenarios, SCENARIOS, type Row } from "./seed/scenari
 
 /**
  * Test trips with real photos against the local server: `npm run seed`.
- * Needs `npm run dev:lan` running with DEV_LOCAL_UPLOADS=1 in `.dev.vars`
- * (otherwise the upload URLs point at the real R2).
+ * `npm run seed` starts its own throwaway server from a dev-only config without the rate limits (scripts/seed-with-server.ts)
+ * and needs DEV_LOCAL_UPLOADS=1 in `.dev.vars`; `npm run seed:only` runs this file against a server you started (`SEED_API_URL`).
  *
  * Idempotent: if a scenario's trip already exists in local D1, it is not recreated.
  * `npm run seed -- --reset` deletes those trips and the @rollo.test users (media, members, trips, friendships, friend
@@ -60,15 +60,15 @@ async function main() {
 
   console.log("\n=== Cuentas (el código de login aparece en la consola de wrangler) ===");
   const accounts: [string, string][] = [
-    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros). Su primera foto de Bariloche tiene 5 me gusta."],
-    ["Cami", "Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche."],
+    [JUANI, "La principal: está en todos los rollos menos \"Escapada sin Juani\"; admin de \"Finde en Tandil\". Descripción corta. Perfil privado con 5 destacadas de Bariloche (2 de otros). Su primera foto de Bariloche tiene 5 me gusta. Insignia Founder."],
+    ["Cami", "Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche. Insignia First Edition."],
     ["Tomi", "Amigo con varios rollos en común; descripción de 150 caracteres justos (el tope). Perfil PÚBLICO con 3 destacadas."],
     ["Fede", "Amigo con varios rollos en común; descripción de 3 renglones."],
     ["Bruno", "Amigo: 1 rollo en común (Tandil) y otro sin Juani (Escapada) que NO tiene que aparecer; descripción de 2 renglones."],
     ["Pilar", "Amiga sin ningún rollo: perfil sin rollos en común; \"Sumar a un rollo\" ofrece los de Juani sin revelar."],
     ["Rama", "Amigo que se salió de Tandil (left_at): sin rollos en común. Juani lo puede volver a sumar."],
     ["Vicky", "Amiga que Juani (admin) sacó de Tandil (removed_at): sin rollos en común; solo el admin la vuelve a sumar."],
-    ["Lu", "NO es amiga de Juani pero comparte rollos; sin foto. Su link de amistad está abajo (se rehace en cada corrida)."],
+    ["Lu", "NO es amiga de Juani pero comparte rollos; sin foto. Insignia First Edition. Su link de amistad está abajo (se rehace en cada corrida)."],
     ["Nuevo", "Cuenta nueva sin rollos ni amigos, sin foto: estados vacíos (Rollo, Amigos, Perfil)."],
     ["Rocío", "Tiene nombre pero NO @usuario (cuenta de antes de los usernames): la app la manda a \"Completá tu perfil\"."],
   ];

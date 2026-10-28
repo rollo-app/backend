@@ -52,6 +52,12 @@ export function publicTrip(trip: TripRow, now = Date.now()) {
     revealed: isRevealed(trip, now),
     dailyPhotoLimit: trip.daily_photo_limit,
     dailyVideoLimit: trip.daily_video_limit,
+    featuringDisabled: trip.featuring_disabled !== 0,
+    photoLimitMode: trip.photo_limit_mode,
+    totalPhotoLimit: trip.total_photo_limit,
+    momentMode: trip.moment_mode,
+    momentWindowStart: trip.moment_window_start,
+    momentWindowEnd: trip.moment_window_end,
   };
 }
 
@@ -60,9 +66,16 @@ export function avatarUrl(userId: string, avatarKey: string | null): string | nu
   return avatarKey ? `/avatars/${userId}/${avatarKey.split("/").pop()}` : null;
 }
 
+const BADGES = new Set(["founder", "first_edition"]);
+
+/** A stored badge, or null if none or if the DB holds a value this version does not know. */
+export function toBadge(value: string | null | undefined): "founder" | "first_edition" | null {
+  return value && BADGES.has(value) ? (value as "founder" | "first_edition") : null;
+}
+
 /** Public shape of a user. */
 export function publicUser(
-  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "profile_visibility">,
+  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility">,
 ) {
   return {
     id: user.id,
@@ -71,6 +84,7 @@ export function publicUser(
     username: user.username,
     avatarUrl: avatarUrl(user.id, user.avatar_key),
     bio: user.bio,
+    badge: toBadge(user.badge),
     profileVisibility: user.profile_visibility,
   };
 }

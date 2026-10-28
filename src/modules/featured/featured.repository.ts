@@ -1,0 +1,232 @@
+import { hiddenMediaSql } from "../reports/reports.repository";
+import type { MediaRow, TripRow, UserRow } from "../../types";
+
+// Reads execute and return rows; writes return an unexecuted statement so the service decides
+// whether to `.run()` it or group it with others in `db.batch([...])`.
+
+/**
+ * The same rule as `featuringDenial`, for SQL: use inside a query that has `media m`, `trips t` and the author's
+ * membership `members author`, with three binds (the viewer's user id, three times). Lets a write re-check the rule in the
+ * very statement that inserts, so a level turned off (or a friendship ended) in between can't be slipped past.
+ */
+export const FEATURING_ALLOWED_SQL = `(t.featuring_disabled = 0 AND (author.user_id = ?
+    OR (EXISTS (SELECT 1 FROM friendships fr WHERE fr.user_a = MIN(author.user_id, ?) AND fr.user_b = MAX(author.user_id, ?))
+        AND m.feature_blocked_at IS NULL AND author.allow_featuring != 0
+        AND COALESCE((SELECT us.allow_featuring FROM user_settings us WHERE us.user_id = author.user_id), 1) != 0)))`;
+
+/**
+ * Featured rows (`f`) that are visible on their owner's profile: an uploaded, not deleted photo of a revealed
+ * rollo the owner is still an active member of, not blocked by its author (unless the owner is the author).
+ * VISIBLE_FROM joins `m` (media), `t` (trips) and `author` (the author's membership); VISIBLE_WHERE binds `now`.
+ * Also used by the likes and reports modules.
+ */
+export const VISIBLE_FROM = `
+  featured f
+  JOIN media m ON m.id = f.media_id
+  JOIN trips t ON t.id = m.trip_id
+  JOIN members author ON author.id = m.member_id
+  JOIN members owner ON owner.trip_id = m.trip_id AND owner.user_id = f.user_id
+                    AND owner.removed_at IS NULL AND owner.left_at IS NULL`;
+export const VISIBLE_WHERE = `
+  m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL AND m.archived_at IS NULL
+  AND (t.revealed_at IS NOT NULL OR t.reveal_at <= ?)
+  AND (m.feature_blocked_at IS NULL OR author.user_id = f.user_id)`;
+
+export type FeaturableMedia = Pick<MediaRow, "id" | "type" | "feature_blocked_at" | "paired_media_id" | "moment_day" | "archived_at"> &
+  Pick<TripRow, "revealed_at" | "reveal_at" | "featuring_disabled"> & {
+    author_user_id: string;
+    /** 1 when the author is a current friend of the viewer. */
+    author_is_friend: number;
+    member_allow_featuring: number;
+    account_allow_featuring: number;
+  };
+
+export type FeaturedPhotoRow = {
+  id: string; taken_at: number; width: number | null; height: number | null; thumbhash: string | null;
+  lat: number | null; lng: number | null;
+  author_user_id: string; author_name: string | null; author_username: string | null; author_avatar_key: string | null;
+  like_count: number; liked_by_me: number;
+};
+
+/** The media if it exists, is uploaded and not deleted, and `userId` is an active member of its rollo. */
+export function findFeaturableMedia(db: D1Database, userId: string, mediaId: string): Promise<FeaturableMedia | null> {
+  return db
+    .prepare(
+      `SELECT m.id, m.type, m.feature_blocked_at, m.paired_media_id, m.moment_day, m.archived_at, author.user_id AS author_user_id,
+            t.revealed_at, t.reveal_at, t.featuring_disabled,
+            EXISTS (SELECT 1 FROM friendships fr WHERE fr.user_a = MIN(author.user_id, ?) AND fr.user_b = MAX(author.user_id, ?)) AS author_is_friend,
+            author.allow_featuring AS member_allow_featuring,
+            COALESCE(author_settings.allow_featuring, 1) AS account_allow_featuring
+     FROM media m
+     JOIN trips t ON t.id = m.trip_id
+     JOIN members author ON author.id = m.member_id
+     LEFT JOIN user_settings author_settings ON author_settings.user_id = author.user_id
+     JOIN members me ON me.trip_id = m.trip_id AND me.user_id = ? AND me.removed_at IS NULL AND me.left_at IS NULL
+     WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL`,
+    )
+    .bind(userId, userId, userId, mediaId)
+    .first<FeaturableMedia>();
+}
+
+export async function isFeatured(db: D1Database, userId: string, mediaId: string): Promise<boolean> {
+  const row = await db.prepare("SELECT 1 FROM featured WHERE user_id = ? AND media_id = ?").bind(userId, mediaId).first();
+  return row !== null;
+}
+
+/**
+ * One statement, so two concurrent requests can't both slip past the cap.
+ * Only photos that still show on the profile count: stale rows can't be removed from the app.
+ */
+export function insertFeaturedUnderCap(db: D1Database, userId: string, mediaId: string, now: number, max: number): D1PreparedStatement {
+  // The featuring levels are checked again here (same statement): a level turned off after the service read it blocks the insert.
+  return db
+    .prepare(
+      `INSERT OR IGNORE INTO featured (user_id, media_id, created_at)
+     SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM ${VISIBLE_FROM} WHERE ${VISIBLE_WHERE} AND f.user_id = ?) < ?
+       AND EXISTS (SELECT 1 FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
+                   WHERE m.id = ? AND m.archived_at IS NULL AND ${FEATURING_ALLOWED_SQL})`,
+    )
+    .bind(userId, mediaId, now, now, userId, max, mediaId, userId, userId, userId);
+}
+
+export function deleteFeatured(db: D1Database, userId: string, mediaId: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM featured WHERE user_id = ? AND media_id = ?").bind(userId, mediaId);
+}
+
+/** Removes the photo from every profile, the author's included (archiving or deleting it). */
+export function deleteFeaturedOfMedia(db: D1Database, mediaId: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM featured WHERE media_id = ?").bind(mediaId);
+}
+
+/**
+ * Two users stopped being friends or one blocked the other: each profile loses the other's photos (nobody's own stay).
+ * Being friends again does not bring them back.
+ */
+export function deleteFeaturedBetween(db: D1Database, userA: string, userB: string): D1PreparedStatement {
+  return db
+    .prepare(
+      `DELETE FROM featured WHERE (user_id = ?1 AND media_id IN (SELECT m.id FROM media m JOIN members mem ON mem.id = m.member_id WHERE mem.user_id = ?2))
+         OR (user_id = ?2 AND media_id IN (SELECT m.id FROM media m JOIN members mem ON mem.id = m.member_id WHERE mem.user_id = ?1))`,
+    )
+    .bind(userA, userB);
+}
+
+/** Removes the photo from everyone else's profile (the author keeps theirs). */
+export function deleteFeaturedByOthers(db: D1Database, mediaId: string, authorUserId: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM featured WHERE media_id = ? AND user_id != ?").bind(mediaId, authorUserId);
+}
+
+// Cleanups for the featuring levels: turning a level off removes what it now blocks from other profiles.
+
+/** Account level: others' profiles lose every photo `authorUserId` took, in any rollo. */
+export function deleteFeaturedByOthersOfAuthor(db: D1Database, authorUserId: string): D1PreparedStatement {
+  return db
+    .prepare(
+      `DELETE FROM featured WHERE user_id != ? AND media_id IN (
+         SELECT m.id FROM media m JOIN members mem ON mem.id = m.member_id WHERE mem.user_id = ?)`,
+    )
+    .bind(authorUserId, authorUserId);
+}
+
+/** Member level: others' profiles lose the photos of one membership. */
+export function deleteFeaturedByOthersOfMember(db: D1Database, memberId: string, authorUserId: string): D1PreparedStatement {
+  return db
+    .prepare("DELETE FROM featured WHERE user_id != ? AND media_id IN (SELECT id FROM media WHERE member_id = ?)")
+    .bind(authorUserId, memberId);
+}
+
+/** Private rollo: every profile loses the rollo's photos, the authors' own included. */
+export function deleteFeaturedOfTrip(db: D1Database, tripId: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM featured WHERE media_id IN (SELECT id FROM media WHERE trip_id = ?)").bind(tripId);
+}
+
+export function findProfileOwner(db: D1Database, userId: string): Promise<Pick<UserRow, "id" | "profile_visibility"> | null> {
+  return db
+    .prepare("SELECT id, profile_visibility FROM users WHERE id = ?")
+    .bind(userId)
+    .first<Pick<UserRow, "id" | "profile_visibility">>();
+}
+
+export async function listVisibleFeatured(db: D1Database, viewerId: string, ownerId: string, now: number): Promise<FeaturedPhotoRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT m.id, m.taken_at, m.width, m.height, m.thumbhash, m.lat, m.lng,
+            author.user_id AS author_user_id, u.name AS author_name, u.username AS author_username, u.avatar_key AS author_avatar_key,
+            (SELECT COUNT(*) FROM likes l WHERE l.media_id = m.id) AS like_count,
+            EXISTS (SELECT 1 FROM likes ml WHERE ml.media_id = m.id AND ml.user_id = ?) AS liked_by_me
+     FROM ${VISIBLE_FROM} JOIN users u ON u.id = author.user_id
+     WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND ${hiddenMediaSql("m", "author")}
+     ORDER BY m.taken_at DESC, m.id`,
+    )
+    .bind(viewerId, now, ownerId, viewerId, viewerId)
+    .all<FeaturedPhotoRow>();
+  return results;
+}
+
+export function findVisibleFeaturedKeys(
+  db: D1Database,
+  viewerId: string,
+  ownerId: string,
+  mediaId: string,
+  now: number,
+): Promise<Pick<MediaRow, "original_key" | "thumb_key"> | null> {
+  return db
+    .prepare(
+      `SELECT m.original_key, m.thumb_key FROM ${VISIBLE_FROM}
+     WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND f.media_id = ? AND ${hiddenMediaSql("m", "author")}`,
+    )
+    .bind(now, ownerId, mediaId, viewerId, viewerId)
+    .first<Pick<MediaRow, "original_key" | "thumb_key">>();
+}
+
+export type FeaturedByRow = {
+  media_id: string;
+  featured_at: number;
+  thumbhash: string | null;
+  user_id: string;
+  name: string | null;
+  username: string | null;
+  avatar_key: string | null;
+  bio: string | null;
+};
+
+/**
+ * Rows where someone else featured a photo the viewer took, visible today: the featuring still shows on their profile
+ * (`VISIBLE_FROM`/`VISIBLE_WHERE`), no block either way and the viewer can see that profile (`canSeeProfile` in SQL:
+ * public or a friend). Binds, in order: now, viewer id (the photo's author).
+ */
+const FEATURED_BY_FROM = `
+  ${VISIBLE_FROM} JOIN users fu ON fu.id = f.user_id
+  WHERE ${VISIBLE_WHERE}
+    AND author.user_id = ? AND f.user_id != author.user_id
+    AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = f.user_id AND b.blocked_id = author.user_id) OR (b.blocker_id = author.user_id AND b.blocked_id = f.user_id))
+    AND (fu.profile_visibility = 'public'
+         OR EXISTS (SELECT 1 FROM friendships fr WHERE fr.user_a = MIN(f.user_id, author.user_id) AND fr.user_b = MAX(f.user_id, author.user_id)))`;
+
+export type FeaturedByCursor = { featuredAt: number; mediaId: string; userId: string };
+
+/** One page (`limit` rows), newest featuring first; ties broken by media id and profile owner so a cursor never skips or repeats. */
+export async function listFeaturedBy(
+  db: D1Database,
+  viewerId: string,
+  now: number,
+  limit: number,
+  after: FeaturedByCursor | null,
+): Promise<FeaturedByRow[]> {
+  const cursorSql = after ? "AND (f.created_at < ? OR (f.created_at = ? AND (m.id < ? OR (m.id = ? AND f.user_id < ?))))" : "";
+  const cursorBinds = after ? [after.featuredAt, after.featuredAt, after.mediaId, after.mediaId, after.userId] : [];
+  const { results } = await db
+    .prepare(
+      `SELECT m.id AS media_id, f.created_at AS featured_at, m.thumbhash, fu.id AS user_id, fu.name, fu.username, fu.avatar_key, fu.bio
+       FROM ${FEATURED_BY_FROM} ${cursorSql}
+       ORDER BY f.created_at DESC, m.id DESC, f.user_id DESC LIMIT ?`,
+    )
+    .bind(now, viewerId, ...cursorBinds, limit)
+    .all<FeaturedByRow>();
+  return results;
+}
+
+export async function countFeaturedBy(db: D1Database, viewerId: string, now: number): Promise<number> {
+  const row = await db.prepare(`SELECT COUNT(*) AS n FROM ${FEATURED_BY_FROM}`).bind(now, viewerId).first<{ n: number }>();
+  return row?.n ?? 0;
+}

@@ -112,6 +112,18 @@
             "example": "Viajando por el sur",
             "description": "Profile description (up to 3 lines); null if none"
           },
+          "badge": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "founder",
+              "first_edition",
+              null
+            ],
+            "description": "Profile badge assigned by hand (founder = Founder, first_edition = First Edition); null if none"
+          },
           "profileVisibility": {
             "$ref": "#/components/schemas/ProfileVisibility"
           }
@@ -123,6 +135,7 @@
           "username",
           "avatarUrl",
           "bio",
+          "badge",
           "profileVisibility"
         ]
       },
@@ -179,6 +192,153 @@
           "token"
         ]
       },
+      "ReceivedFriendRequests": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceivedFriendRequest"
+            },
+            "description": "Pending requests to you, most recent first"
+          }
+        },
+        "required": [
+          "requests"
+        ]
+      },
+      "ReceivedFriendRequest": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/Friend"
+          },
+          "createdAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "When the request was sent",
+            "example": 1767225600000
+          }
+        },
+        "required": [
+          "user",
+          "createdAt"
+        ]
+      },
+      "Friend": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Viajando por el sur",
+            "description": "Profile description (up to 3 lines); null if none"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl",
+          "bio"
+        ]
+      },
+      "FriendResponse": {
+        "type": "object",
+        "properties": {
+          "friend": {
+            "$ref": "#/components/schemas/Friend"
+          }
+        },
+        "required": [
+          "friend"
+        ]
+      },
+      "AllMyMoments": {
+        "type": "object",
+        "properties": {
+          "trips": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tripId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "tripName": {
+                  "type": "string"
+                },
+                "momentMode": {
+                  "type": "string",
+                  "enum": [
+                    "photo",
+                    "photo_selfie"
+                  ]
+                },
+                "moments": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Moment"
+                  }
+                }
+              },
+              "required": [
+                "tripId",
+                "tripName",
+                "momentMode",
+                "moments"
+              ]
+            }
+          }
+        },
+        "required": [
+          "trips"
+        ]
+      },
+      "Moment": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "Local date of the trip (YYYY-MM-DD)",
+            "example": "2027-01-12"
+          },
+          "notifyAt": {
+            "type": "integer",
+            "description": "Epoch ms when the moment starts; the user has 15 minutes from then"
+          }
+        },
+        "required": [
+          "day",
+          "notifyAt"
+        ]
+      },
       "UpdateProfileRequest": {
         "type": "object",
         "properties": {
@@ -219,6 +379,20 @@
         "required": [
           "upload",
           "expiresIn"
+        ]
+      },
+      "AvatarUploadRequest": {
+        "type": "object",
+        "properties": {
+          "sizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2097152,
+            "description": "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length"
+          }
+        },
+        "required": [
+          "sizeBytes"
         ]
       },
       "MyTrips": {
@@ -275,6 +449,15 @@
           "totalUploaded": {
             "type": "integer"
           },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "Daily moment: off, a photo, or a photo plus a selfie"
+          },
           "coverThumbhash": {
             "type": [
               "string",
@@ -293,6 +476,7 @@
           "revealed",
           "role",
           "totalUploaded",
+          "momentMode",
           "coverThumbhash"
         ]
       },
@@ -308,10 +492,14 @@
         "properties": {
           "notifications": {
             "$ref": "#/components/schemas/NotificationSettings"
+          },
+          "privacy": {
+            "$ref": "#/components/schemas/PrivacySettings"
           }
         },
         "required": [
-          "notifications"
+          "notifications",
+          "privacy"
         ]
       },
       "NotificationSettings": {
@@ -340,6 +528,22 @@
           "photoLiked": {
             "type": "boolean",
             "description": "Someone likes a photo of yours"
+          },
+          "photoCommented": {
+            "type": "boolean",
+            "description": "Someone comments on a photo of yours, or on one you commented on"
+          },
+          "friendRequest": {
+            "type": "boolean",
+            "description": "Someone sends you a friend request"
+          },
+          "dailyMoment": {
+            "type": "boolean",
+            "description": "It is your moment of the day in a rollo with the daily moment on"
+          },
+          "momentPosted": {
+            "type": "boolean",
+            "description": "Someone in a rollo you are in uploaded their daily moment"
           }
         },
         "required": [
@@ -348,7 +552,23 @@
           "tripStarted",
           "tripRevealed",
           "photoFeatured",
-          "photoLiked"
+          "photoLiked",
+          "photoCommented",
+          "friendRequest",
+          "dailyMoment",
+          "momentPosted"
+        ]
+      },
+      "PrivacySettings": {
+        "type": "object",
+        "properties": {
+          "allowFeaturing": {
+            "type": "boolean",
+            "description": "Others may feature any of your photos on their profile (on by default)"
+          }
+        },
+        "required": [
+          "allowFeaturing"
         ]
       },
       "UpdateUserSettingsRequest": {
@@ -380,6 +600,32 @@
               "photoLiked": {
                 "type": "boolean",
                 "description": "Someone likes a photo of yours"
+              },
+              "photoCommented": {
+                "type": "boolean",
+                "description": "Someone comments on a photo of yours, or on one you commented on"
+              },
+              "friendRequest": {
+                "type": "boolean",
+                "description": "Someone sends you a friend request"
+              },
+              "dailyMoment": {
+                "type": "boolean",
+                "description": "It is your moment of the day in a rollo with the daily moment on"
+              },
+              "momentPosted": {
+                "type": "boolean",
+                "description": "Someone in a rollo you are in uploaded their daily moment"
+              }
+            },
+            "additionalProperties": false
+          },
+          "privacy": {
+            "type": "object",
+            "properties": {
+              "allowFeaturing": {
+                "type": "boolean",
+                "description": "Others may feature any of your photos on their profile (on by default)"
               }
             },
             "additionalProperties": false
@@ -402,6 +648,22 @@
         "required": [
           "available",
           "username"
+        ]
+      },
+      "SendFriendRequestResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "friends"
+            ],
+            "description": "sent: the request is pending (or was rejected, which the sender never sees); friends: you are friends now (they had asked you too, or you already were)"
+          }
+        },
+        "required": [
+          "status"
         ]
       },
       "UserProfile": {
@@ -436,6 +698,15 @@
           "mutualCount": {
             "type": "integer",
             "description": "How many of your friends are also this user's friends (0 for yourself)"
+          },
+          "friendRequest": {
+            "type": "string",
+            "enum": [
+              "none",
+              "sent",
+              "received"
+            ],
+            "description": "Pending friend request between you and this user: sent (you sent one, also after they rejected it: they never tell), received (they sent you one you have not answered), none (also for friends, yourself and blocks)"
           }
         },
         "required": [
@@ -446,7 +717,8 @@
           "profileVisibility",
           "canSee",
           "friendCount",
-          "mutualCount"
+          "mutualCount",
+          "friendRequest"
         ]
       },
       "PublicUser": {
@@ -482,6 +754,18 @@
             ],
             "example": "Viajando por el sur",
             "description": "Profile description; null if none. Always public, whatever canSee says"
+          },
+          "badge": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "founder",
+              "first_edition",
+              null
+            ],
+            "description": "Profile badge assigned by hand (founder = Founder, first_edition = First Edition); null if none"
           }
         },
         "required": [
@@ -489,7 +773,8 @@
           "name",
           "username",
           "avatarUrl",
-          "bio"
+          "bio",
+          "badge"
         ]
       },
       "UserFriends": {
@@ -556,7 +841,7 @@
           "code": {
             "type": "string",
             "example": "K7M2QX9A",
-            "description": "8-character code; the link is rollo://friends/<code>"
+            "description": "8-character code; the link is https://rollo.juanifraga.com/friends#<code> (rollo://friends/<code> is also accepted)"
           },
           "expiresAt": {
             "type": "integer",
@@ -568,60 +853,6 @@
         "required": [
           "code",
           "expiresAt"
-        ]
-      },
-      "FriendResponse": {
-        "type": "object",
-        "properties": {
-          "friend": {
-            "$ref": "#/components/schemas/Friend"
-          }
-        },
-        "required": [
-          "friend"
-        ]
-      },
-      "Friend": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "User id"
-          },
-          "name": {
-            "type": "string",
-            "example": "Cami"
-          },
-          "username": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "cami",
-            "description": "Unique handle without the @"
-          },
-          "avatarUrl": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "bio": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "Viajando por el sur",
-            "description": "Profile description (up to 3 lines); null if none"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "username",
-          "avatarUrl",
-          "bio"
         ]
       },
       "RedeemFriendRequest": {
@@ -737,6 +968,12 @@
             "minLength": 1,
             "maxLength": 64,
             "description": "Person to report"
+          },
+          "commentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Comment to report (on a photo of a rollo you are in)"
           }
         },
         "required": [
@@ -810,6 +1047,20 @@
           "code"
         ]
       },
+      "MyMoments": {
+        "type": "object",
+        "properties": {
+          "moments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Moment"
+            }
+          }
+        },
+        "required": [
+          "moments"
+        ]
+      },
       "TripCreated": {
         "type": "object",
         "properties": {
@@ -870,7 +1121,44 @@
             "type": "integer"
           },
           "dailyVideoLimit": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Legacy: new rollos have no videos (0)"
+          },
+          "featuringDisabled": {
+            "type": "boolean",
+            "description": "Private rollo: nobody can feature its photos on a profile, not even their author"
+          },
+          "photoLimitMode": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "total"
+            ],
+            "description": "daily: dailyPhotoLimit per person per local day; total: totalPhotoLimit per person for the whole rollo"
+          },
+          "totalPhotoLimit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Photos per person in the whole rollo; null in daily mode"
+          },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "Daily moment: off, a photo, or a photo plus a selfie"
+          },
+          "momentWindowStart": {
+            "type": "integer",
+            "description": "Moment window start, minutes from midnight in the rollo's time zone"
+          },
+          "momentWindowEnd": {
+            "type": "integer",
+            "description": "Moment window end, minutes from midnight in the rollo's time zone"
           }
         },
         "required": [
@@ -883,7 +1171,13 @@
           "revealAt",
           "revealed",
           "dailyPhotoLimit",
-          "dailyVideoLimit"
+          "dailyVideoLimit",
+          "featuringDisabled",
+          "photoLimitMode",
+          "totalPhotoLimit",
+          "momentMode",
+          "momentWindowStart",
+          "momentWindowEnd"
         ]
       },
       "Member": {
@@ -922,6 +1216,10 @@
           "blockedByMe": {
             "type": "boolean",
             "description": "Whether you blocked this member"
+          },
+          "allowFeaturing": {
+            "type": "boolean",
+            "description": "Only on `me`: others may feature your photos of this rollo on their profile"
           }
         },
         "required": [
@@ -976,7 +1274,51 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 20,
-            "default": 3
+            "default": 0,
+            "description": "Legacy: rollos have no videos, omit it"
+          },
+          "featuringDisabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Private rollo: nobody can feature its photos on a profile, not even their author"
+          },
+          "photoLimitMode": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "total"
+            ],
+            "default": "daily"
+          },
+          "totalPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise"
+          },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "default": "off",
+            "description": "Daily moment: off, a photo, or a photo plus a selfie. Cannot be changed after creating the rollo"
+          },
+          "momentWindowStart": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "default": 540,
+            "description": "Start of the daily moment window, in minutes from midnight in the rollo's time zone (default 540 = 9:00)"
+          },
+          "momentWindowEnd": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "default": 1380,
+            "description": "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)"
           }
         },
         "required": [
@@ -1026,7 +1368,7 @@
               },
               "photosLeft": {
                 "type": "integer",
-                "description": "0 outside the rollo's dates"
+                "description": "Photos left today (daily mode) or in the whole rollo (total mode); 0 outside the rollo's dates"
               },
               "videosLeft": {
                 "type": "integer",
@@ -1089,6 +1431,16 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 20
+          },
+          "featuringDisabled": {
+            "type": "boolean",
+            "description": "Private rollo. Turning it on removes every photo of the rollo from every profile; turning it off restores nothing"
+          },
+          "totalPhotoLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Only for rollos in total mode"
           }
         }
       },
@@ -1143,6 +1495,29 @@
           "friendIds"
         ]
       },
+      "MyMembership": {
+        "type": "object",
+        "properties": {
+          "allowFeaturing": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allowFeaturing"
+        ]
+      },
+      "UpdateMyMembershipRequest": {
+        "type": "object",
+        "properties": {
+          "allowFeaturing": {
+            "type": "boolean",
+            "description": "Others may feature your photos of this rollo. Turning it off removes them from other profiles; turning it on restores nothing"
+          }
+        },
+        "required": [
+          "allowFeaturing"
+        ]
+      },
       "MediaRegistered": {
         "type": "object",
         "properties": {
@@ -1162,12 +1537,12 @@
               "original": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT of the original file"
+                "description": "PUT of the original file; send exactly `sizeBytes` bytes as Content-Length"
               },
               "thumb": {
                 "type": "string",
                 "format": "uri",
-                "description": "PUT of the JPEG thumbnail (~800px)"
+                "description": "PUT of the JPEG thumbnail (~800px); send exactly `thumbSizeBytes` bytes as Content-Length"
               }
             },
             "required": [
@@ -1285,14 +1660,38 @@
           },
           "sizeBytes": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "Exact byte size of the original file; the upload URL is signed for exactly this Content-Length"
+          },
+          "thumbSizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length"
+          },
+          "momentDay": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Trip-local date (YYYY-MM-DD) of the daily moment this photo answers. The member must have a moment for that day (409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
+            "example": "2027-01-12"
+          },
+          "pairedMediaId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Marks this photo as the selfie of a moment: the id of the member's own moment photo in the same rollo (400 otherwise). The selfie takes its moment day from that photo and doesn't use the photo quota."
           }
         },
         "required": [
           "id",
           "type",
           "takenAt",
-          "sizeBytes"
+          "sizeBytes",
+          "thumbSizeBytes"
         ]
       },
       "MediaType": {
@@ -1414,14 +1813,14 @@
               "number",
               "null"
             ],
-            "description": "Only after the reveal"
+            "description": "Only after the reveal (and for the photos of a daily moment, right away)"
           },
           "height": {
             "type": [
               "number",
               "null"
             ],
-            "description": "Only after the reveal"
+            "description": "Only after the reveal (and for the photos of a daily moment, right away)"
           },
           "files": {
             "type": "object",
@@ -1437,7 +1836,7 @@
               "thumb",
               "original"
             ],
-            "description": "Download paths; only after the reveal"
+            "description": "Download paths; only after the reveal, except for the photos of a daily moment (main and linked image), which any active member gets as soon as they are uploaded"
           },
           "featuredByMe": {
             "type": "boolean",
@@ -1447,6 +1846,10 @@
             "type": "boolean",
             "description": "Only after the reveal: the author does not let others feature it (they still can)"
           },
+          "canFeature": {
+            "type": "boolean",
+            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, if its author is neither you nor one of your friends, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)"
+          },
           "likeCount": {
             "type": "integer",
             "description": "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos"
@@ -1454,6 +1857,78 @@
           "likedByMe": {
             "type": "boolean",
             "description": "Only after the reveal: you like it"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Only after the reveal: its author archived it. Archived items only reach their author (everyone else never gets them), so it is only ever true in your own feed"
+          },
+          "commentCount": {
+            "type": "integer",
+            "description": "After the reveal, and before it on a daily moment's photo: how many comments you see on it (not the deleted ones, nor those of blocked users or ones you reported). Always 0 for videos"
+          },
+          "momentDay": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Trip-local date (YYYY-MM-DD) when this photo is the answer to a daily moment; absent for ordinary photos"
+          },
+          "selfie": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "width": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "height": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "thumbhash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "files": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "thumb": {
+                    "type": "string"
+                  },
+                  "original": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "thumb",
+                  "original"
+                ],
+                "description": "Download paths (the linked image of a moment is visible to active members as soon as it is uploaded)"
+              }
+            },
+            "required": [
+              "id",
+              "width",
+              "height",
+              "thumbhash",
+              "files"
+            ],
+            "description": "Only on moment photos: the selfie taken with it (null if there is none yet). Selfies are never items of their own. it comes with files and dimensions right away"
           }
         },
         "required": [
@@ -1604,6 +2079,376 @@
           "lat": -41.075,
           "lng": -71.475
         }
+      },
+      "FeaturedByList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeaturedByItem"
+            },
+            "description": "Newest first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many featurings you can see today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "FeaturedByItem": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Your photo"
+          },
+          "user": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Friend"
+              },
+              {
+                "description": "Who featured it"
+              }
+            ]
+          },
+          "featuredAt": {
+            "type": "integer",
+            "description": "When they featured it (epoch ms)"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/featured/<userId>/<mediaId>/thumb",
+            "description": "Served with the permission of that profile"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "mediaId",
+          "user",
+          "featuredAt",
+          "thumbPath",
+          "thumbHash"
+        ]
+      },
+      "MyLikes": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LikedPhoto"
+            },
+            "description": "Most recent like first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many liked photos you can see today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "LikedPhoto": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "likedAt": {
+            "type": "integer",
+            "description": "When you liked it (epoch ms)"
+          },
+          "authorUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "avatarUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "username",
+              "avatarUrl"
+            ],
+            "description": "Who took it (for the badge on the thumbnail)"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/trips/<tripId>/media/<mediaId>/thumb"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/LikedPhotoSource"
+          }
+        },
+        "required": [
+          "mediaId",
+          "likedAt",
+          "authorUserId",
+          "author",
+          "thumbPath",
+          "thumbHash",
+          "source"
+        ]
+      },
+      "LikedPhotoSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "trip"
+                ]
+              },
+              "tripId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "kind",
+              "tripId"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "featured"
+                ]
+              },
+              "userId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Owner of the profile where it is featured"
+              }
+            },
+            "required": [
+              "kind",
+              "userId"
+            ]
+          }
+        ],
+        "description": "Where you can open the photo today. `trip`: you are an active member of its revealed rollo. `featured`: you see it on that profile (the rollo is never revealed). If both work, it is `trip`."
+      },
+      "CommentList": {
+        "type": "object",
+        "properties": {
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            }
+          }
+        },
+        "required": [
+          "comments"
+        ]
+      },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Epoch milliseconds"
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "userId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "username": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "avatarUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "userId",
+              "name",
+              "username",
+              "avatarUrl"
+            ]
+          },
+          "canDelete": {
+            "type": "boolean",
+            "description": "You wrote it, the photo is yours, or you are the rollo admin"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "createdAt",
+          "author",
+          "canDelete"
+        ]
+      },
+      "CreateCommentRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Plain text, trimmed, 1 to 500 characters"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "MyComments": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyComment"
+            },
+            "description": "Newest comment first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many of your comments you can open today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "MyComment": {
+        "type": "object",
+        "properties": {
+          "commentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mediaId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The photo you commented on"
+          },
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Its rollo, to open it in the gallery"
+          },
+          "text": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "When you wrote it (epoch ms)"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/trips/<tripId>/media/<mediaId>/thumb"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "commentId",
+          "mediaId",
+          "tripId",
+          "text",
+          "createdAt",
+          "thumbPath",
+          "thumbHash"
+        ]
       }
     },
     "parameters": {}
@@ -1615,7 +2460,7 @@
           "Auth"
         ],
         "summary": "Request a login code by email",
-        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. Using either one consumes both. A new request invalidates the previous codes. Rate limited per email and per IP. Works for new and existing users alike.",
+        "description": "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. Using either one consumes both. A new request invalidates the previous codes. Rate limited per email and per IP, and capped globally per day (429). Works for new and existing users alike.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1773,6 +2618,173 @@
         }
       }
     },
+    "/me/friend-requests": {
+      "get": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Friend requests you received",
+        "description": "Pending ones only (the ones you rejected are gone), most recent first.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Received requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedFriendRequests"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/friend-requests/{userId}/accept": {
+      "post": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Accept a friend request",
+        "description": "Makes you friends and notifies whoever sent it (`newFriend`). 404 if there is no pending request from that user.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new friend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/friend-requests/{userId}/reject": {
+      "post": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Reject a friend request",
+        "description": "Silent: the sender is not notified and keeps seeing it as sent. Also 204 if there was none.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Request rejected"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/moments": {
+      "get": {
+        "tags": [
+          "Moments"
+        ],
+        "summary": "My daily moments in all my rollos",
+        "description": "The moments of the caller for every rollo where they are an active member, the moment is on, the rollo is not revealed and it is within the scheduling window (from 3 days before the start until the end). One call instead of one `GET /trips/{tripId}/moments` per rollo. Each rollo carries exactly what that endpoint would return for it, possibly empty (so the app can cancel old notifications). Like the per-rollo endpoint, the first time it draws and stores the missing moments and never re-draws. Ordered by rollo id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "My moments in all my rollos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllMyMoments"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me": {
       "get": {
         "tags": [
@@ -1905,12 +2917,22 @@
           "Profile"
         ],
         "summary": "Get a URL to upload your avatar",
-        "description": "Returns a signed URL to PUT a JPEG straight to R2. Then call POST /me/avatar/complete. Each call generates a new random file name, so the avatar URL changes when you replace it.",
+        "description": "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /me/avatar/complete. 503 when the storage limit is reached. A previous upload that was never completed is discarded. Each call generates a new random file name, so the avatar URL changes when you replace it.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvatarUploadRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Upload URL",
@@ -1922,8 +2944,38 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
             "content": {
               "application/json": {
                 "schema": {
@@ -1970,6 +3022,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -2317,6 +3379,119 @@
         }
       }
     },
+    "/users/{userId}/friend-request": {
+      "post": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Send a friend request",
+        "description": "Asks to become friends with someone whose profile you can open. They are friends only once the receiver accepts. If they already sent you one, you become friends at once (`friends`). Sending again while it is pending, or to a friend, is not an error. A request the receiver rejected is silent: you still get `sent`, nothing reaches them until 30 days after the rejection. Notifies the receiver (`friendRequest`). 400 to yourself, 404 if the user does not exist or there is a block in either direction, 429 past 30 sent requests in 24 hours.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendFriendRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Friend requests"
+        ],
+        "summary": "Cancel a friend request you sent",
+        "description": "Also 204 if there was none.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Request cancelled"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/users/{userId}": {
       "get": {
         "tags": [
@@ -2435,7 +3610,7 @@
           "Friends"
         ],
         "summary": "Generate a friend link",
-        "description": "Returns an 8-character code (the link is rollo://friends/<code>) valid for 1 hour and reusable while it lives. Generating a new one invalidates the previous links of the user.",
+        "description": "Returns an 8-character code (the link is https://rollo.juanifraga.com/friends#<code>; rollo://friends/<code> is still accepted) valid for 1 hour and reusable while it lives. Generating a new one invalidates the previous links of the user.",
         "security": [
           {
             "bearerAuth": []
@@ -2702,7 +3877,7 @@
           "Blocks"
         ],
         "summary": "Block a user",
-        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 10 reports and blocks per user per 24 hours are emailed).",
+        "description": "Idempotent and one-directional. Also removes the friendship in both directions. Does not remove anyone from a rollo. Also removes the blocked user's photos from your featured list. A new block is emailed to support (at most 3 reports and blocks per user per 24 hours, and 20 per day overall, are emailed). More than 50 blocks per user per 24 hours is a 429.",
         "security": [
           {
             "bearerAuth": []
@@ -2744,6 +3919,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -2797,8 +3982,8 @@
         "tags": [
           "Reports"
         ],
-        "summary": "Report a photo or a person",
-        "description": "Send `mediaId` or `userId`. Idempotent: reporting the same photo or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos). At most 10 reports and blocks per user per 24 hours are emailed to support; the rest are stored without email. 404 if the photo is not one the reporter can see; 400 if it is theirs.",
+        "summary": "Report a photo, a comment or a person",
+        "description": "Send exactly one of `mediaId`, `commentId` or `userId`. Idempotent: reporting the same photo, comment or person again is a 204 and does not email support again. A reported photo disappears from the reporter's own views (and from their featured photos); a reported comment, from their comment lists and counts. At most 3 reports and blocks per user per 24 hours (and 20 per day overall) are emailed to support; the rest are stored without email. More than 50 reports per user per 24 hours is a 429. 404 if the photo or comment is not one the reporter can see (a comment: only active members of its rollo); 400 if it is theirs.",
         "security": [
           {
             "bearerAuth": []
@@ -2840,6 +4025,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -2902,13 +4097,69 @@
         }
       }
     },
+    "/trips/{tripId}/moments": {
+      "get": {
+        "tags": [
+          "Moments"
+        ],
+        "summary": "My daily moments",
+        "description": "The moments of the caller for each remaining day of the trip, from today (trip local date) to the end, that can still be taken. The server draws and stores them the first time they are asked for and never re-draws. The app schedules local notifications from them. Empty when the trip has the moment off, is over or revealed, or the user turned `dailyMoment` off. Non-members and ex-members get 403, like `GET /trips/{tripId}`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "My moments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyMoments"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/trips": {
       "post": {
         "tags": [
           "Trips"
         ],
         "summary": "Create a trip",
-        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code.",
+        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show.",
         "security": [
           {
             "bearerAuth": []
@@ -3330,11 +4581,95 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
     "/trips/{tripId}/members/me": {
+      "patch": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Your settings in this rollo",
+        "description": "`allowFeaturing`: whether others may feature your photos of this rollo on their profile (on by default). Turning it off removes them from other profiles; turning it on restores nothing.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMyMembershipRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyMembership"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Trips"
@@ -3476,7 +4811,7 @@
           "Media"
         ],
         "summary": "Register a photo or video",
-        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2. Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota.",
+        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. 503 when the storage limit is reached (new registrations only, never retries).",
         "security": [
           {
             "bearerAuth": []
@@ -3579,6 +4914,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3589,7 +4934,7 @@
           "Media"
         ],
         "summary": "Confirm the files were uploaded",
-        "description": "Checks that the original and the thumbnail are in R2. Only then does the photo show up in the feed.",
+        "description": "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
         "security": [
           {
             "bearerAuth": []
@@ -3645,6 +4990,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3655,7 +5010,7 @@
           "Media"
         ],
         "summary": "Trip feed",
-        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, and its likes (`likeCount`, `likedByMe`). Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
+        "description": "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`; before the reveal only a daily moment's photo has `commentCount`). Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
         "security": [
           {
             "bearerAuth": []
@@ -3710,8 +5065,8 @@
         "tags": [
           "Media"
         ],
-        "summary": "Download a file (only after the reveal)",
-        "description": "Streamed from R2 with the same Bearer token.",
+        "summary": "Download a file (only after the reveal, except daily moment photos)",
+        "description": "Streamed from R2 with the same Bearer token. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
         "security": [
           {
             "bearerAuth": []
@@ -3794,6 +5149,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3803,8 +5168,8 @@
         "tags": [
           "Media"
         ],
-        "summary": "Delete a photo or video from the trip (admin, before the reveal)",
-        "description": "Once sent, a photo can be neither deleted nor retaken. The exception is the admin, in case someone sends something inappropriate: they can delete any photo of the trip before the reveal. The files are deleted but the quota is **not given back** to anyone, and the id cannot be registered again.",
+        "summary": "Delete a photo or video: the admin before the reveal, the author after it",
+        "description": "**Before the reveal** only the admin can delete (in case someone sends something inappropriate): any photo or video of the trip; anyone else gets 403. The files are deleted but the quota is **not given back** to anyone, and the id cannot be registered again. **After the reveal** only the author can delete their own photo or video, for good: it disappears for everyone, with its files, likes, comments and every profile that featured it. Another member gets 403 (the admin 409, as before). Deleting a daily moment's main photo deletes its linked image too; the linked image's own id is 400.",
         "security": [
           {
             "bearerAuth": []
@@ -3823,6 +5188,174 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{mediaId}/archive": {
+      "post": {
+        "tags": [
+          "Media"
+        ],
+        "summary": "Archive your photo: only you keep seeing it",
+        "description": "It disappears for everyone else everywhere (feed, downloads, likes, comments, \"Tu actividad\", profiles), right away. It leaves every profile where it was featured, yours included, and unarchiving does not put it back. In your own feed it comes with `archived: true`. Author only (photos and videos), once the rollo is revealed, and while you are an active member (else 404). Another member gets 403; before the reveal 409. A daily moment's main photo takes its linked image along; the linked image's own id is 400. Idempotent.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Archived"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{mediaId}/unarchive": {
+      "post": {
+        "tags": [
+          "Media"
+        ],
+        "summary": "Unarchive your photo: everyone sees it again",
+        "description": "It is not featured again anywhere (it can be featured again). Author only (photos and videos), once the rollo is revealed, and while you are an active member (else 404). Another member gets 403; before the reveal 409. A daily moment's main photo takes its linked image along; the linked image's own id is 400. Idempotent.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unarchived"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid session token",
@@ -3989,7 +5522,7 @@
           "Featured"
         ],
         "summary": "Feature a photo on your profile",
-        "description": "A photo (not a video) of a revealed rollo you are an active member of, yours or someone else's. Idempotent. 404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author does not let others feature it (unless you took it) or if you already have 60; 400 for a video.",
+        "description": "A photo (not a video) of a revealed rollo you are an active member of: yours or a current friend's. Idempotent. 404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author is someone who is not your friend, if its author does not let others feature it (unless you took it) or if you already have 60; 400 for a video. When a friendship ends (either side) or one of the two blocks the other, each profile loses the other's photos and they do not come back if the two become friends again.",
         "security": [
           {
             "bearerAuth": []
@@ -4248,6 +5781,86 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/featured-by": {
+      "get": {
+        "tags": [
+          "Featured"
+        ],
+        "summary": "Who featured your photos",
+        "description": "Only yours. The times another user featured one of your photos on their profile, newest first, paginated with `cursor`. Only the ones you can see today: you can see that profile (friend or public), there is no block with that user in either direction and the photo is still featured there. Your own featuring of your own photos is not listed. Open one at `/featured/<user.id>/<mediaId>`; `thumbPath` is served with the permission of that profile.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of featurings of your photos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedByList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4307,6 +5920,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -4334,6 +5957,345 @@
         "responses": {
           "204": {
             "description": "Not liked anymore"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/likes": {
+      "get": {
+        "tags": [
+          "Likes"
+        ],
+        "summary": "Photos you liked",
+        "description": "Only yours. The photos you liked and can open today, most recent like first, paginated with `cursor`. Filtered by the server: a photo drops out if its rollo is not revealed or you left it and no profile you can see still features it, the profile became private, you are not friends anymore, the photo was un-featured, there is a block with its author or you reported it (the like is kept and the photo comes back if you regain access). `source` says where to open it: the rollo wins over a profile.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of liked photos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyLikes"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{mediaId}/comments": {
+      "get": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "List the comments of a photo",
+        "description": "Oldest first. Only active members of the photo's rollo, once it is revealed: otherwise 404 (also with a block with the photo's author). Leaves out deleted comments, comments of users blocked in either direction and the ones you reported. A video has none (empty list).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "Comment on a photo",
+        "description": "Plain text, up to 500 characters. Same permissions as listing; 400 for a video. Notifies the photo's author and whoever commented before (`photoCommented`), at most once every 30 minutes per photo: the comments in between are counted and added to the next push.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new comment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/comments/{commentId}": {
+      "delete": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "Delete a comment",
+        "description": "The author of the comment or the author of its photo. Another member of the rollo gets 403. 404 if the comment does not exist, is already deleted, or you can't see its photo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "commentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/comments": {
+      "get": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "Comments you wrote",
+        "description": "Only yours. Your live comments on photos you can open today in a rollo gallery, newest first, paginated with `cursor`. Filtered by the server: a comment drops out if you deleted it, its photo was deleted, archived by its author (yours stay), its rollo is not revealed or you left it, there is a block with the photo's author or you reported the photo (it comes back if you regain access). Open it at `/photo/<mediaId>?tripId=<tripId>&comments=1`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of your comments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyComments"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid session token",

@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { areFriends, canSeeProfile } from "../src/lib/profile-access";
+import { areFriends } from "../src/modules/friends/friends.service";
+import { canSeeProfile } from "../src/modules/users/users.service";
 import { api, befriend, signUp } from "./helpers";
 
 async function setVisibility(token: string, profileVisibility: "friends" | "public") {
@@ -63,7 +64,7 @@ describe("GET /users/{userId}", () => {
     const res = await api("GET", `/users/${o.userId}`, { token: o.token });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña" },
+      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña", badge: null },
       isFriend: false,
       blockedByMe: false,
       reportedByMe: false,
@@ -71,6 +72,7 @@ describe("GET /users/{userId}", () => {
       canSee: true,
       friendCount: 0,
       mutualCount: 0,
+      friendRequest: "none",
     });
   });
 
@@ -90,7 +92,7 @@ describe("GET /users/{userId}", () => {
     const res = await api("GET", `/users/${o.userId}`, { token: v.token });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña" },
+      user: { id: o.userId, name: "Cami", username: expect.any(String), avatarUrl: null, bio: "Fotos de montaña", badge: null },
       isFriend: false,
       blockedByMe: false,
       reportedByMe: false,
@@ -98,6 +100,7 @@ describe("GET /users/{userId}", () => {
       canSee: false,
       friendCount: 0,
       mutualCount: 0,
+      friendRequest: "none",
     });
   });
 
@@ -143,7 +146,7 @@ describe("GET /users/{userId}", () => {
   it("does not leak the email", async () => {
     const o = await owner();
     const res = await api("GET", `/users/${o.userId}`, { token: o.token });
-    expect(Object.keys(res.body.user).sort()).toEqual(["avatarUrl", "bio", "id", "name", "username"]);
+    expect(Object.keys(res.body.user).sort()).toEqual(["avatarUrl", "badge", "bio", "id", "name", "username"]);
   });
 
   it("returns 404 for an unknown user", async () => {

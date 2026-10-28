@@ -1,4 +1,12 @@
+/** Workers Rate Limiting binding (`ratelimits` in wrangler.jsonc). */
+export type RateLimitBinding = { limit(options: { key: string }): Promise<{ success: boolean }> };
+
 export type Env = {
+  /** Rate limiters (see `src/lib/rate-limit.ts`); optional so a missing binding fails open. */
+  RL_GLOBAL?: RateLimitBinding;
+  RL_IP?: RateLimitBinding;
+  RL_EXPENSIVE?: RateLimitBinding;
+  RL_FILES?: RateLimitBinding;
   DB: D1Database;
   MEDIA: R2Bucket;
   R2_BUCKET_NAME: string;
@@ -17,6 +25,8 @@ export type Env = {
   ADMIN_TOKEN?: string;
   /** Base URL of the login magic link (default https://rollo.juanifraga.com/entrar); token and email go in its fragment. */
   LOGIN_LINK_URL?: string;
+  /** R2 storage limit in bytes (decimal string). Defaults to 10 GB, R2's free tier; uploads stop at 95% of it. */
+  STORAGE_LIMIT_BYTES?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;
@@ -38,11 +48,21 @@ export type TripRow = {
   revealed_at: number | null;
   daily_photo_limit: number;
   daily_video_limit: number;
+  photo_limit_mode: "daily" | "total";
+  total_photo_limit: number | null;
   created_at: number;
   /** When the "rollo started" push was sent (or the trip had already started when notifications shipped). */
   started_notified_at: number | null;
   /** When the "rollo revealed" push was sent (or the trip had already revealed when notifications shipped). */
   revealed_notified_at: number | null;
+  /** Private rollo: nobody can feature its photos (0/1). */
+  featuring_disabled: number;
+  /** Daily moment: 'off' | 'photo' | 'photo_selfie'. */
+  moment_mode: "off" | "photo" | "photo_selfie";
+  /** Moment window, minutes from midnight in the trip's time zone. */
+  moment_window_start: number;
+  moment_window_end: number;
+  created_by_user_id: string | null;
 };
 
 export type UserRow = {
@@ -53,6 +73,8 @@ export type UserRow = {
   avatar_key: string | null;
   pending_avatar_key: string | null;
   bio: string | null;
+  badge: string | null;
+  unlimited_rollos: number;
   profile_visibility: ProfileVisibility;
   created_at: number;
 };
@@ -66,6 +88,8 @@ export type MemberRow = {
   removed_at: number | null;
   left_at: number | null;
   added_by_user_id: string | null;
+  /** Others may feature this member's photos of the rollo (0/1). */
+  allow_featuring: number;
 };
 
 export type MediaType = "photo" | "video";
@@ -74,6 +98,8 @@ export type MediaRow = {
   id: string;
   trip_id: string;
   member_id: string;
+  moment_day: string | null;
+  paired_media_id: string | null;
   type: MediaType;
   taken_at: number;
   local_date: string;
@@ -86,6 +112,8 @@ export type MediaRow = {
   width: number | null;
   height: number | null;
   size_bytes: number | null;
+  /** Exact byte size of the thumbnail the upload URL is signed for (null: legacy row). */
+  thumb_size_bytes: number | null;
   original_key: string;
   thumb_key: string;
   status: "pending" | "uploaded";
@@ -98,6 +126,12 @@ export type MediaRow = {
   like_notified_at: number | null;
   /** Likes since like_notified_at that did not send a push. */
   likes_since_notified: number;
+  /** Last time a comment on this photo sent a push (anti-spam window). */
+  comment_notified_at: number | null;
+  /** Comments since comment_notified_at that did not send a push. */
+  comments_since_notified: number;
+  /** The author archived it (after the reveal): only they still see it. */
+  archived_at: number | null;
 };
 
 export type AppEnv = {

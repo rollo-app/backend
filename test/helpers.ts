@@ -143,9 +143,14 @@ export async function joinAs(code: string, name: string): Promise<{ token: strin
   return { token: user.token, memberId, userId: user.userId };
 }
 
+/** The bytes `putFiles` stores, so the sizes declared at registration match what is "uploaded". */
+export const originalContent = (mediaId: string) => `original-${mediaId}`;
+export const thumbContent = (mediaId: string) => `thumb-${mediaId}`;
+
 export function photoBody(overrides: Record<string, unknown> = {}) {
+  const id = (overrides.id as string | undefined) ?? crypto.randomUUID();
   return {
-    id: crypto.randomUUID(),
+    id,
     type: "photo",
     takenAt: Date.now() - MINUTE,
     lat: -49.33,
@@ -154,20 +159,21 @@ export function photoBody(overrides: Record<string, unknown> = {}) {
     caption: "no puedo creer este viento",
     width: 4032,
     height: 3024,
-    sizeBytes: 2_500_000,
+    sizeBytes: originalContent(id).length,
+    thumbSizeBytes: thumbContent(id).length,
     ...overrides,
   };
 }
 
 export function videoBody(overrides: Record<string, unknown> = {}) {
-  return photoBody({ type: "video", durationS: 12, sizeBytes: 8_000_000, caption: null, ...overrides });
+  return photoBody({ type: "video", durationS: 12, caption: null, ...overrides });
 }
 
 /** Simulates the phone uploading the files to R2 (in tests the signed PUT never hits the network). */
 export async function putFiles(tripId: string, mediaId: string, type: "photo" | "video" = "photo") {
   const base = `trips/${tripId}/${mediaId}`;
-  await env.MEDIA.put(`${base}/original.${type === "video" ? "mp4" : "jpg"}`, `original-${mediaId}`);
-  await env.MEDIA.put(`${base}/thumb.jpg`, `thumb-${mediaId}`);
+  await env.MEDIA.put(`${base}/original.${type === "video" ? "mp4" : "jpg"}`, originalContent(mediaId));
+  await env.MEDIA.put(`${base}/thumb.jpg`, thumbContent(mediaId));
 }
 
 /** Registers, "uploads" and confirms a photo or video. Returns the id. */
