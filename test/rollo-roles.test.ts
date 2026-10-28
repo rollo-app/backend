@@ -7,13 +7,18 @@ const backfill = (tripId: string | null) =>
   env.DB.batch(BACKFILL_CREATOR_SQL.map((sql) => env.DB.prepare(sql).bind(tripId)));
 const creatorOf = (tripId: string) =>
   env.DB.prepare("SELECT created_by_user_id c FROM trips WHERE id = ?").bind(tripId).first<{ c: string | null }>();
+/** Explicit, ordered created_at so "oldest" never depends on same-millisecond inserts. */
+async function setAges(ids: string[]) {
+  for (const [i, id] of ids.entries()) await env.DB.prepare("UPDATE members SET created_at = ? WHERE id = ?").bind(1000 + i, id).run();
+}
 const roleOf = (memberId: string) =>
   env.DB.prepare("SELECT role FROM members WHERE id = ?").bind(memberId).first<{ role: string }>();
 
 describe("migration 0029 backfill", () => {
   it("migration backfills a missing creator with the oldest active admin", async () => {
     const trip = await newTrip();
-    await joinAs(trip.code, "Ana");
+    const ana = await joinAs(trip.code, "Ana");
+    await setAges([trip.adminId, ana.memberId]);
     await env.DB.prepare("UPDATE trips SET created_by_user_id = NULL WHERE id = ?").bind(trip.tripId).run();
     await backfill(null);
     expect((await creatorOf(trip.tripId))!.c).toBe(trip.adminUserId);
@@ -23,6 +28,7 @@ describe("migration 0029 backfill", () => {
     const trip = await newTrip();
     const ana = await joinAs(trip.code, "Ana");
     const beto = await joinAs(trip.code, "Beto");
+    await setAges([trip.adminId, ana.memberId, beto.memberId]);
     await env.DB.prepare("UPDATE trips SET created_by_user_id = NULL WHERE id = ?").bind(trip.tripId).run();
     // The admin left; Ana is the oldest active member.
     await env.DB.prepare("UPDATE members SET left_at = 1 WHERE id = ?").bind(trip.adminId).run();
@@ -51,7 +57,7 @@ async function setup() {
   const beto = await joinAs(trip.code, "Beto");
   const caro = await joinAs(trip.code, "Caro");
   const order = [trip.adminId, ana.memberId, beto.memberId, caro.memberId];
-  for (const [i, id] of order.entries()) await env.DB.prepare("UPDATE members SET created_at = ? WHERE id = ?").bind(1000 + i, id).run();
+  await setAges(order);
   const promote = (memberId: string) => api("POST", `/trips/${trip.tripId}/members/${memberId}/admin`, { token: trip.adminToken });
   return { trip, ana, beto, caro, promote };
 }
