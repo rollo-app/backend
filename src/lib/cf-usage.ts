@@ -97,7 +97,10 @@ export async function fetchUsage(
   if (!res.ok) throw new Error(`Cloudflare GraphQL ${res.status}`);
   const body = (await res.json()) as { data?: { viewer?: { accounts?: Account[] } }; errors?: { message: string }[] | null };
   if (body.errors?.length) throw new Error(`Cloudflare GraphQL: ${body.errors.map((e) => e.message).join("; ")}`);
-  return mapAccount(body.data?.viewer?.accounts?.[0]);
+  const account = body.data?.viewer?.accounts?.[0];
+  // No account means a wrong token or accountTag: a misconfiguration, not a reading of zeros.
+  if (!account) throw new Error("Cloudflare GraphQL: no account in the response (check token and account id)");
+  return mapAccount(account);
 }
 
 const setState = (db: D1Database, key: string, value: string) =>
@@ -105,33 +108,44 @@ const setState = (db: D1Database, key: string, value: string) =>
 
 /**
  * Cron: stores the latest usage in `cron_state` and emails support once per metric per UTC day when it reaches 80% of
- * the free limit. Without CF_ANALYTICS_TOKEN it does nothing; if the API fails it logs and keeps the previous values.
+ * the free limit. Without CF_ANALYTICS_TOKEN it does nothing. It never throws: if the API or the DB fails it logs and
+ * keeps the previous values; if an alert email fails its day key is released so the next tick retries.
  */
 export async function pollUsage(env: Env, now: number, fetchImpl?: typeof fetch): Promise<void> {
   if (!env.CF_ANALYTICS_TOKEN) return;
-  let values: Usage["values"];
   try {
-    values = await fetchUsage(env, now, fetchImpl);
+    let values: Usage["values"];
+    try {
+      values = await fetchUsage(env, now, fetchImpl);
+    } catch (e) {
+      console.error("cf usage fetch failed", e);
+      return;
+    }
+    await setState(env.DB, USAGE_KEY, JSON.stringify({ fetchedAt: now, values } satisfies Usage)).run();
+
+    const day = utcDay(now);
+    for (const metric of METRICS) {
+      const limit = USAGE_LIMITS[metric];
+      if (values[metric] < limit * ALERT_RATIO) continue;
+      const key = `${ALERTED_PREFIX}${metric}:${day}`;
+      // The insert decides the winner, so overlapping runs do not alert twice.
+      const claimed = await env.DB.prepare("INSERT INTO cron_state (key, value) VALUES (?, '1') ON CONFLICT(key) DO NOTHING").bind(key).run();
+      if (claimed.meta.changes === 0) continue;
+      try {
+        await sendUsageAlert(env, { metric, value: values[metric], limit });
+      } catch (e) {
+        console.error("cf usage alert failed", e);
+        // Release the claim so the next tick retries instead of losing the day's alert.
+        await env.DB.prepare("DELETE FROM cron_state WHERE key = ?").bind(key).run();
+      }
+    }
+
+    // Alert keys only matter for their own UTC day: drop the ones older than 2 days.
+    const oldest = utcDay(now - 2 * 86_400_000);
+    await env.DB.prepare("DELETE FROM cron_state WHERE key LIKE ? AND substr(key, -10) < ?").bind(`${ALERTED_PREFIX}%`, oldest).run();
   } catch (e) {
-    console.error("cf usage fetch failed", e);
-    return;
+    console.error("cf usage poll failed", e);
   }
-  await setState(env.DB, USAGE_KEY, JSON.stringify({ fetchedAt: now, values } satisfies Usage)).run();
-
-  const day = utcDay(now);
-  for (const metric of METRICS) {
-    const limit = USAGE_LIMITS[metric];
-    if (values[metric] < limit * ALERT_RATIO) continue;
-    const key = `${ALERTED_PREFIX}${metric}:${day}`;
-    // The insert decides the winner, so overlapping runs do not alert twice.
-    const claimed = await env.DB.prepare("INSERT INTO cron_state (key, value) VALUES (?, '1') ON CONFLICT(key) DO NOTHING").bind(key).run();
-    if (claimed.meta.changes === 0) continue;
-    await sendUsageAlert(env, { metric, value: values[metric], limit });
-  }
-
-  // Alert keys only matter for their own UTC day: drop the ones older than 2 days.
-  const oldest = utcDay(now - 2 * 86_400_000);
-  await env.DB.prepare("DELETE FROM cron_state WHERE key LIKE ? AND substr(key, -10) < ?").bind(`${ALERTED_PREFIX}%`, oldest).run();
 }
 
 /** Last stored usage with the limits, or null if the cron never fetched it. */

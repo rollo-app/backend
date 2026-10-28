@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getUsage, pollUsage } from "../src/lib/cf-usage";
 import { devSentUsageAlerts } from "../src/lib/email";
 import { api, makeSuperadmin } from "./helpers";
@@ -96,6 +96,31 @@ describe("cf usage", () => {
     const gqlError = (async () => new Response(JSON.stringify({ errors: [{ message: "bad" }] }))) as typeof fetch;
     await pollUsage(withToken, 2000, gqlError);
     expect((await getUsage(env.DB))!.fetchedAt).toBe(1000);
+  });
+
+  it("treats a response without an account as an error and keeps the last value", async () => {
+    const { f } = fakeFetch({ workers_requests: 1, d1_rows_read: 1, d1_rows_written: 1, r2_class_a: 1, r2_class_b: 1 });
+    await pollUsage(withToken, 1000, f);
+    for (const body of [{ data: { viewer: { accounts: [] } } }, { data: null }]) {
+      const bad = (async () => new Response(JSON.stringify(body))) as typeof fetch;
+      await pollUsage(withToken, 2000, bad);
+      expect((await getUsage(env.DB))!.fetchedAt).toBe(1000);
+    }
+  });
+
+  it("retries the alert on the next tick when Resend fails, and never throws", async () => {
+    const { f } = fakeFetch({ workers_requests: 81_000, d1_rows_read: 0, d1_rows_written: 0, r2_class_a: 0, r2_class_b: 0 });
+    const withResend = { ...withToken, RESEND_API_KEY: "re_test" } as typeof env;
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+    const now = Date.UTC(2026, 9, 28, 12);
+    await expect(pollUsage(withResend, now, f)).resolves.toBeUndefined();
+    const keys = () => env.DB.prepare("SELECT key FROM cron_state WHERE key LIKE 'cf_usage_alerted:%'").all();
+    expect((await keys()).results).toHaveLength(0);
+    expect(await getUsage(env.DB)).not.toBeNull();
+    spy.mockResolvedValue(new Response("{}", { status: 200 }));
+    await pollUsage(withResend, now + 300_000, f);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect((await keys()).results).toHaveLength(1);
   });
 
   it("GET /admin/usage returns usage and storage", async () => {
