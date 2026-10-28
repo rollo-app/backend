@@ -13,8 +13,7 @@ Cada persona dispara como máximo 10 mails por día (denuncias + bloqueos): lo q
 3. Guardalo también en tu terminal, para que los `curl` del mail funcionen tal cual:
    `export ROLLO_ADMIN_TOKEN=<el token>`
 
-Sin `ADMIN_TOKEN`, las rutas `/admin/*` no existen (dan 404), igual que con un token equivocado.
-Desde el backoffice, `GET /admin/reports` también acepta la sesión de un superadmin (`users.app_role='superadmin'`); los dos `DELETE` siguen pidiendo el token.
+Sin `ADMIN_TOKEN`, los dos `DELETE /admin/*` no existen (dan 404), igual que con un token equivocado. Las rutas de lectura (`GET /admin/me|reports|metrics|usage|users|degraded-mode`) y `PUT /admin/degraded-mode` también aceptan la sesión de un superadmin (`users.app_role='superadmin'`), con o sin `ADMIN_TOKEN`; los dos `DELETE` siguen pidiendo el token.
 Para cambiar de mail de denuncias: `npx wrangler secret put REPORTS_EMAIL`.
 
 ## Comandos

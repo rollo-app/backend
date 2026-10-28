@@ -179,7 +179,7 @@ src/modules/<mod>/    módulos en 4 capas (ver "Arquitectura por capas"): accoun
 src/db/schema.ts       esquema Drizzle de toda la DB (camelCase en TS, columnas snake_case); las migraciones SQL siguen siendo la fuente de verdad y `npm run db:check-schema` falla si se desalinean
 src/shared/           db.ts (`orm`, `toStatement`), errors.ts (errores de dominio → status HTTP), after-response.ts (push que el controller difiere)
 src/schemas.ts        contrato compartido (zod + OpenAPI); lo de un solo módulo va a <mod>.schemas.ts
-src/lib/              infra transversal: auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), zone (zona de ~5 km), settings (columnas y tipos puros de las preferencias), moments (cálculo puro de días y ventanas), push (Expo), storage, rate-limit, email, email-caps...
+src/lib/              infra transversal: auth (sesiones y middlewares), openapi helpers, r2 (presign, servir archivos), util (fechas, revelado), login-code (códigos), friend-code (amistad), zone (zona de ~5 km), settings (columnas y tipos puros de las preferencias), moments (cálculo puro de días y ventanas), push (Expo), storage, rate-limit, email, email-caps, admin-auth (credencial del backoffice), paging (paginado), degraded (modo degradado), cf-usage (uso de Cloudflare)...
 migrations/           D1 (se aplican solas en los tests)
 test/                 vitest dentro de workerd, con D1 y R2 locales reales
 openapi.json          contrato versionado — regenerar con `npm run openapi`
@@ -220,7 +220,7 @@ Reglas:
   los repos de `likes` y `reports`, para que la regla esté en un solo lugar. Nadie importa el router ni el
   controller de otro módulo.
 - **Middlewares** (sesión, membresía, admin, rate limit) van en el `middleware` de cada `createRoute`; su código
-  vive en `src/lib/auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
+  vive en `src/lib/auth.ts`, `src/lib/admin-auth.ts` y `src/lib/rate-limit.ts`. Las rutas `/admin/*` quedan fuera del contrato (Hono plano).
 - **`src/lib/`** es solo infra transversal y helpers puros (sesiones, R2, mail, push, storage, rate limit, fechas): sin
   SQL de dominio. El SQL vive en el repository del módulo dueño y la regla en su service: p. ej. `account/` (borrar
   cuenta), `settings/` (preferencias; `lib/push.ts` lee las notificaciones desde `settings.service`), `moderation/`
@@ -262,7 +262,7 @@ Reglas:
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 885 tests
+npm test              # suite completa (la corre el CI)
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
@@ -308,7 +308,7 @@ URLs de subida salen con `rollo-api.juanifraga.com` y el celular no llega.
 
 Hecho: cuentas por email (código y link mágico), perfil y username, amigos, viajes (crear, unirse, detalle,
 editar, revelar, sacar miembros, sumar amigos, salirse), media (registrar, confirmar, feed, descargar, borrar, archivar),
-destacadas, "me gusta", notificaciones push con cron, moderación, contrato OpenAPI, CI.
+destacadas, "me gusta", notificaciones push con cron, moderación, backoffice (rol superadmin, métricas, uso de Cloudflare, modo degradado, /admin/users), contrato OpenAPI, CI.
 
 **Producción** (deployado el 22/10/2026), todo en la cuenta de Cloudflare de Juani:
 
@@ -320,7 +320,7 @@ destacadas, "me gusta", notificaciones push con cron, moderación, contrato Open
   `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
 - Mail: dominio `juanifraga.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
   DMARC `p=none` en `_dmarc`), DNS en Cloudflare. Plan gratis: 100 mails por día y 3.000 por mes.
-- Secrets de moderación: `ADMIN_TOKEN` (habilita las rutas `/admin/*`; sin él dan 404) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
+- Secrets de moderación: `ADMIN_TOKEN` (habilita los dos `DELETE /admin/*` y el acceso por token; sin él esos `DELETE` dan 404, y las rutas de lectura y `PUT /admin/degraded-mode` quedan solo para la sesión de un superadmin) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
 - Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
 
 Para deployar una versión nueva, con `main` al día:
