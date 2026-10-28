@@ -24,7 +24,7 @@ Decisiones de producto que el backend tiene que respetar:
   **Solicitudes de amistad** (`src/modules/friend-requests/`, tabla `friend_requests`): desde el perfil de otra persona, `POST/DELETE /users/{id}/friend-request`, `GET /me/friend-requests` y `POST /me/friend-requests/{id}/accept|reject`; `GET /users/{id}` suma `friendRequest` (`none|sent|received`). Solicitud cruzada o a quien ya te pidió → amigos al toque; rechazar es silencioso (el que la mandó sigue viendo `sent`, y recién a los 30 días puede reenviar); 30 por día; bloquear las borra; push `friendRequest` (abre `/friends`) y `newFriend` al aceptar.
   es distinto de `removed_at` (lo sacó el admin: no vuelve por código ni si lo suma un miembro; solo el admin lo puede volver a sumar como amigo, y recupera sus fotos). El admin no puede salirse.
 - **Destacadas** (`src/modules/featured/`, `src/lib/zone.ts`): cada uno elige hasta **60 fotos** (no videos) de rollos **revelados**
-  donde es miembro activo, suyas o de otros, para su perfil (`PUT/DELETE /me/featured/{mediaId}`, tabla `featured`). El autor puede
+  donde es miembro activo, **suyas o de un amigo** (solo fotos de amigos actuales; si no, 409 "Solo podés destacar fotos tuyas o de tus amigos"), para su perfil (`PUT/DELETE /me/featured/{mediaId}`, tabla `featured`). El autor puede
   no dejar que otros la destaquen (`PUT/DELETE /media/{id}/feature-block`, `media.feature_blocked_at`): borra las de otros y las nuevas dan
   409; él sí puede. `GET /users/{id}/featured` (permiso del perfil, si no 403 "Este perfil es privado") **nunca** devuelve el rollo, el
   caption ni la coordenada exacta: solo una **zona** (centro de la celda de 0.05°, ~5 km) y el autor si no es el dueño. Los archivos se
@@ -36,6 +36,14 @@ Decisiones de producto que el backend tiene que respetar:
   `members.allow_featuring`, `PATCH /trips/{id}/members/me` `{ allowFeaturing }` (`me.allowFeaturing` en el detalle); (3) foto: `feature-block`;
   (4) rollo privado: `trips.featuring_disabled` (`featuringDisabled` al crear y en `PATCH /trips/{id}`, solo admin; está en `Trip`): nadie
   destaca sus fotos, **ni el autor**. El autor siempre puede con las suyas salvo en el rollo privado. Destacar da 409 si algún nivel lo frena.
+  **Solo amigos** (`authorIsFriend` en `FeaturingFacts`, también en `FEATURING_ALLOWED_SQL` y en `canFeature` del feed): la foto de otro solo se destaca si el
+  autor es amigo actual de quien destaca. **Al terminar la amistad** (cualquiera de los dos la borra, `removeFriend`) **o al bloquear** (`blockUser`, quien bloquee)
+  se borran, en el mismo `batch`, de **los dos perfiles** las destacadas de fotos del otro (`deleteFeaturedBetween` en `featured.repository`); volver a ser amigos no las devuelve.
+  La migración `0028_featured_only_friends.sql` borró las existentes cuyo autor no era ni el dueño del perfil ni su amigo. El seed solo destaca fotos de amigos de Juani.
+- **"Tu actividad" → `GET /me/featured-by?cursor&limit`** (`featured.service.ts`/`featured.repository.ts`, `FeaturedByList`): las veces que **otra** persona destacó una foto tuya,
+  de la más nueva a la más vieja (`featuredAt`, cursor `src/lib/cursor.ts`, `limit` 1–100, default 60), con `total`. Solo si **hoy** podés ver ese perfil (amigo o público, `canSeeProfile`
+  en SQL), no hay bloqueo en ningún sentido y la foto sigue destacada (`VISIBLE_FROM`/`VISIBLE_WHERE`); lo tuyo en tu propio perfil no sale. Cada ítem trae `user` (como en Amigos),
+  `thumbPath` `/featured/{userId}/{mediaId}/thumb` y `thumbHash`.
   **Al apagar un nivel se limpia** (en un `batch` con el cambio): cuenta → las fotos del autor de todos los rollos salen de los perfiles ajenos;
   rollo → las de esa membresía; rollo privado → todas las del rollo, también las del autor. Prender no restaura nada.
 - **Notificaciones push** (`src/lib/push.ts`, `src/modules/trips/notices.service.ts`): se mandan con Expo Push Service
@@ -80,6 +88,10 @@ Decisiones de producto que el backend tiene que respetar:
   `POST /reports { commentId }` (`reports.comment_id`, `media_id` queda null para no ocultar la foto; solo miembros activos; el mail a soporte lleva el
   texto). Push `photoCommented` ("Cami comentó tu foto" al autor y "Cami también comentó una foto" a quienes ya comentaron) con la misma ventana de 30 min
   por foto que los "me gusta" (`media.comment_notified_at` / `comments_since_notified`); abre `/photo/<id>?tripId=<trip>&comments=1`. Borrar la cuenta borra sus comentarios.
+- **"Tu actividad" → `GET /me/comments?cursor&limit`** (`comments.service.ts`/`comments.repository.ts`, `MyComments`): tus comentarios vivos en fotos que **hoy** podés abrir en la galería
+  (miembro activo de un rollo revelado, foto no borrada ni archivada por otro —la tuya sí—, sin bloqueo con el autor ni denuncia tuya; videos y la imagen vinculada de un momento no),
+  del más nuevo al más viejo (cursor `src/lib/cursor.ts`, `limit` 1–100, default 60), con `total`. Items `{ commentId, mediaId, tripId, text, createdAt, thumbPath, thumbHash }`
+  (`thumbPath` = `/trips/{tripId}/media/{mediaId}/thumb`). Sin migración.
 - **Archivar y eliminar tus fotos y videos** (`media.service.ts`: `archiveMedia`, `unarchiveMedia`, `deleteMedia`; migración `0026_media_archived.sql`, `media.archived_at`):
   solo el **autor** (fotos y videos; los rollos viejos tienen videos), solo con el rollo **revelado** (antes 409) y siendo miembro activo (si no, 404; otro miembro 403).
   `POST /media/{id}/archive` y `/unarchive` (204, idempotentes): archivada, **solo la ve su autor** (en su feed con `archived: true`; el campo va en todo
@@ -241,7 +253,7 @@ Reglas:
 - `.npmrc` con `legacy-peer-deps=true` (bug de npm 10 con peers de Vitest 4).
 
 ```bash
-npm test              # 834 tests
+npm test              # 885 tests
 npm run test:watch
 npm run typecheck
 npm run dev           # http://localhost:8787 — /docs para probar
@@ -272,7 +284,7 @@ Tomi como desconocido). Cuentas:
   (solo Tandil en común; también está en "Escapada sin Juani", que no tiene que aparecer), Pilar (ningún rollo), Rama (se salió
   de Tandil, `left_at`) y Vicky (Juani la sacó de Tandil, `removed_at`): estos tres sin rollos en común.
 - Lu, Nacho, Sofi... comparten rollos con Juani pero no son amigos. Lu tiene un **link de amistad** nuevo en cada corrida (1 h,
-  se imprime el código y `rollo://friends/<CODE>`) y el seed la des-amiga de Juani para poder canjearlo otra vez.
+  se imprime el código y `rollo://friends/<CODE>`; el link público es `https://rollo.juanifraga.com/friends#<CODE>` y `rollo://friends/<CODE>` también vale) y el seed la des-amiga de Juani para poder canjearlo otra vez.
 - `nuevo@rollo.test`: sin rollos ni amigos (estados vacíos; el seed le borra los amigos en cada corrida). `rocio@rollo.test`: tiene
   nombre pero no `@usuario` (la app la manda a "Completá tu perfil"). Sin foto: Lu, Mateo, Nuevo y Rocío.
 

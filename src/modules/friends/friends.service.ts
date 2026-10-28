@@ -1,6 +1,7 @@
 import { generateToken, hashToken } from "../../lib/auth";
 import { ipKey } from "../../lib/ip";
 import { FRIEND_CLAIM_TTL, FRIEND_LINK_TTL, generateFriendCode, normalizeFriendCode, pairKey } from "../../lib/friend-code";
+import { deleteFeaturedBetween } from "../featured/featured.repository";
 import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
@@ -150,7 +151,8 @@ export async function getFriendProfile(
 
 export async function removeFriend(db: D1Database, me: string, otherId: string): Promise<void> {
   const [a, b] = pairKey(me, otherId);
-  await db.batch([repo.deleteFriendship(db, a, b), repo.deleteFriendRequests(db, a, b)]);
+  // Friends-only featuring: each profile loses the other's photos, and they don't come back if the two become friends again.
+  await db.batch([repo.deleteFriendship(db, a, b), repo.deleteFriendRequests(db, a, b), deleteFeaturedBetween(db, a, b)]);
 }
 
 /** Whether the two users are friends (order does not matter). Nobody is their own friend. */

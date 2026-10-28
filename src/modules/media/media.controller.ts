@@ -91,6 +91,7 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
       // The two images of a daily moment never go to a profile, nor an archived photo (it has to be unarchived first).
       canFeature: r.momentDay === null && !r.archived && canFeature({
         viewerIsAuthor: r.authorUserId === viewerId,
+        authorIsFriend: r.authorIsFriend,
         rolloPrivate,
         photoBlocked: r.featureBlockedAt !== null,
         memberAllows: r.memberAllowsFeaturing,

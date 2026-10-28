@@ -161,6 +161,7 @@ describe("featured photos and reports", () => {
     const photo = await uploadMedia(trip.tripId, b.token);
     await env.MEDIA.put(`trips/${trip.tripId}/${photo}/thumb.jpg`, photoWithMetadata("x", "Beto"));
     await api("POST", `/trips/${trip.tripId}/reveal`, { token: a.token });
+    await befriend(a.token, b.token);
     await api("PUT", `/me/featured/${photo}`, { token: a.token });
     await befriend(a.token, c.token);
     const list = async () => ((await api("GET", `/users/${a.userId}/featured`, { token: c.token })).body.photos as any[]).map((p) => p.mediaId);

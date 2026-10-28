@@ -5,7 +5,8 @@ import { avatarUrl } from "../../lib/util";
 import { zoneOf } from "../../lib/zone";
 import type { AppEnv } from "../../types";
 import type { FeaturedPhotoRow } from "./featured.repository";
-import type { featureRoute, fileRoute, listRoute, unfeatureRoute } from "./featured.router";
+import type { featuredByRoute, featureRoute, fileRoute, listRoute, unfeatureRoute } from "./featured.router";
+import { DEFAULT_FEATURED_BY_PAGE } from "./featured.schemas";
 import * as service from "./featured.service";
 
 export const feature: RouteHandler<typeof featureRoute, AppEnv> = async (c) => {
@@ -54,4 +55,9 @@ export const file: RouteHandler<typeof fileRoute, AppEnv> = async (c) => {
   const { userId, mediaId, variant } = c.req.valid("param");
   const key = await service.getFeaturedFileKey(c.env.DB, c.get("user").id, userId, mediaId, variant);
   return serveStrippedJpeg(c.env.MEDIA, key);
+};
+
+export const featuredBy: RouteHandler<typeof featuredByRoute, AppEnv> = async (c) => {
+  const { cursor, limit } = c.req.valid("query");
+  return c.json(await service.listFeaturedBy(c.env.DB, c.get("user").id, { cursor, limit: limit ?? DEFAULT_FEATURED_BY_PAGE }), 200);
 };

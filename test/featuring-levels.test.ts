@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { insertFeaturedUnderCap } from "../src/modules/featured/featured.repository";
-import { api, joinAs, newTrip, uploadMedia } from "./helpers";
+import { api, befriend, joinAs, newTrip, uploadMedia } from "./helpers";
 
 /** Revealed trip: Juani (admin), Fede and Cami, one photo each. */
 async function revealedTrip(overrides: Record<string, unknown> = {}) {
@@ -12,6 +12,10 @@ async function revealedTrip(overrides: Record<string, unknown> = {}) {
   const fedePhoto = await uploadMedia(trip.tripId, fede.token);
   const camiPhoto = await uploadMedia(trip.tripId, cami.token);
   await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken });
+  // Featuring someone else's photo is for friends only.
+  await befriend(trip.adminToken, fede.token);
+  await befriend(trip.adminToken, cami.token);
+  await befriend(fede.token, cami.token);
   return { ...trip, juani: { token: trip.adminToken, userId: trip.adminUserId }, fede, cami, juaniPhoto, fedePhoto, camiPhoto };
 }
 

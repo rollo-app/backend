@@ -841,7 +841,7 @@
           "code": {
             "type": "string",
             "example": "K7M2QX9A",
-            "description": "8-character code; the link is rollo://friends/<code>"
+            "description": "8-character code; the link is https://rollo.juanifraga.com/friends#<code> (rollo://friends/<code> is also accepted)"
           },
           "expiresAt": {
             "type": "integer",
@@ -1848,7 +1848,7 @@
           },
           "canFeature": {
             "type": "boolean",
-            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)"
+            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, if its author is neither you nor one of your friends, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)"
           },
           "likeCount": {
             "type": "integer",
@@ -2080,6 +2080,76 @@
           "lng": -71.475
         }
       },
+      "FeaturedByList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeaturedByItem"
+            },
+            "description": "Newest first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many featurings you can see today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "FeaturedByItem": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Your photo"
+          },
+          "user": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Friend"
+              },
+              {
+                "description": "Who featured it"
+              }
+            ]
+          },
+          "featuredAt": {
+            "type": "integer",
+            "description": "When they featured it (epoch ms)"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/featured/<userId>/<mediaId>/thumb",
+            "description": "Served with the permission of that profile"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "mediaId",
+          "user",
+          "featuredAt",
+          "thumbPath",
+          "thumbHash"
+        ]
+      },
       "MyLikes": {
         "type": "object",
         "properties": {
@@ -2305,6 +2375,79 @@
         },
         "required": [
           "text"
+        ]
+      },
+      "MyComments": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyComment"
+            },
+            "description": "Newest comment first"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on the last page"
+          },
+          "total": {
+            "type": "integer",
+            "description": "How many of your comments you can open today, across all pages"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ]
+      },
+      "MyComment": {
+        "type": "object",
+        "properties": {
+          "commentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mediaId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The photo you commented on"
+          },
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Its rollo, to open it in the gallery"
+          },
+          "text": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "When you wrote it (epoch ms)"
+          },
+          "thumbPath": {
+            "type": "string",
+            "example": "/trips/<tripId>/media/<mediaId>/thumb"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "commentId",
+          "mediaId",
+          "tripId",
+          "text",
+          "createdAt",
+          "thumbPath",
+          "thumbHash"
         ]
       }
     },
@@ -3467,7 +3610,7 @@
           "Friends"
         ],
         "summary": "Generate a friend link",
-        "description": "Returns an 8-character code (the link is rollo://friends/<code>) valid for 1 hour and reusable while it lives. Generating a new one invalidates the previous links of the user.",
+        "description": "Returns an 8-character code (the link is https://rollo.juanifraga.com/friends#<code>; rollo://friends/<code> is still accepted) valid for 1 hour and reusable while it lives. Generating a new one invalidates the previous links of the user.",
         "security": [
           {
             "bearerAuth": []
@@ -5379,7 +5522,7 @@
           "Featured"
         ],
         "summary": "Feature a photo on your profile",
-        "description": "A photo (not a video) of a revealed rollo you are an active member of, yours or someone else's. Idempotent. 404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author does not let others feature it (unless you took it) or if you already have 60; 400 for a video.",
+        "description": "A photo (not a video) of a revealed rollo you are an active member of: yours or a current friend's. Idempotent. 404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author is someone who is not your friend, if its author does not let others feature it (unless you took it) or if you already have 60; 400 for a video. When a friendship ends (either side) or one of the two blocks the other, each profile loses the other's photos and they do not come back if the two become friends again.",
         "security": [
           {
             "bearerAuth": []
@@ -5641,6 +5784,76 @@
           },
           "429": {
             "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/featured-by": {
+      "get": {
+        "tags": [
+          "Featured"
+        ],
+        "summary": "Who featured your photos",
+        "description": "Only yours. The times another user featured one of your photos on their profile, newest first, paginated with `cursor`. Only the ones you can see today: you can see that profile (friend or public), there is no block with that user in either direction and the photo is still featured there. Your own featuring of your own photos is not listed. Open one at `/featured/<user.id>/<mediaId>`; `thumbPath` is served with the permission of that profile.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of featurings of your photos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedByList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {
@@ -6016,6 +6229,76 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/comments": {
+      "get": {
+        "tags": [
+          "Comments"
+        ],
+        "summary": "Comments you wrote",
+        "description": "Only yours. Your live comments on photos you can open today in a rollo gallery, newest first, paginated with `cursor`. Filtered by the server: a comment drops out if you deleted it, its photo was deleted, archived by its author (yours stay), its rollo is not revealed or you left it, there is a block with the photo's author or you reported the photo (it comes back if you regain access). Open it at `/photo/<mediaId>?tripId=<tripId>&comments=1`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`nextCursor` of the previous page"
+            },
+            "required": false,
+            "description": "`nextCursor` of the previous page",
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size (default 60)"
+            },
+            "required": false,
+            "description": "Page size (default 60)",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of your comments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyComments"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
             "content": {
               "application/json": {
                 "schema": {

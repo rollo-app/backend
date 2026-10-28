@@ -121,7 +121,7 @@ export const FeedItemSchema = z
     }),
     canFeature: z.boolean().optional().openapi({
       description:
-        "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)",
+        "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, if its author is neither you nor one of your friends, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)",
     }),
     likeCount: z.number().int().optional().openapi({
       description: "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos",

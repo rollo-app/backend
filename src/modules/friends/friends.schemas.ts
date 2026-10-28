@@ -5,7 +5,7 @@ export const FriendsSchema = z.object({ friends: z.array(FriendSchema) }).openap
 
 export const FriendLinkSchema = z
   .object({
-    code: z.string().openapi({ example: "K7M2QX9A", description: "8-character code; the link is rollo://friends/<code>" }),
+    code: z.string().openapi({ example: "K7M2QX9A", description: "8-character code; the link is https://rollo.juanifraga.com/friends#<code> (rollo://friends/<code> is also accepted)" }),
     expiresAt: epochMs("The link stops working at this instant (1 hour after it was generated)"),
   })
   .openapi("FriendLink");
