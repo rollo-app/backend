@@ -11,6 +11,8 @@ export const TripSummarySchema = z
     revealAt: epochMs("Automatic reveal"),
     revealed: z.boolean(),
     role: RoleSchema,
+    isCreator: z.boolean().openapi({ description: "You created this rollo" }),
+    archived: z.boolean().openapi({ description: "You archived this rollo (only for you)" }),
     totalUploaded: z.number().int(),
     momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     coverThumbhash: z.string().nullable().openapi({

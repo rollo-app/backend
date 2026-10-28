@@ -570,7 +570,7 @@ describe("member shape", () => {
     const { tripId, code, adminUserId } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const res = await api("GET", `/trips/${tripId}`, { token: fede.token });
-    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", blockedByMe: false, allowFeaturing: true });
+    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", isCreator: false, blockedByMe: false, allowFeaturing: true });
     expect(res.body.members[0]).toMatchObject({ userId: adminUserId, name: "Juani", role: "admin" });
   });
 
@@ -696,11 +696,11 @@ describe("DELETE /trips/:id/members/me (leave)", () => {
     expect(row.removed_at).toBeNull();
   });
 
-  it("the admin can't leave (409)", async () => {
+  it("the creator can't leave (409)", async () => {
     const { tripId, adminToken } = await newTrip();
     const res = await api("DELETE", `/trips/${tripId}/members/me`, { token: adminToken });
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: "Sos el admin: no podés salirte del rollo" });
+    expect(res.body).toEqual({ error: "Creaste este rollo: no podés salirte" });
   });
 
   it("requires a session and membership", async () => {

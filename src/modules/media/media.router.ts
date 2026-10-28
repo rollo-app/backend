@@ -34,7 +34,7 @@ export const registerRoute = createRoute({
   responses: {
     201: json(MediaRegisteredSchema, "Registered; upload the files"),
     200: json(z.union([MediaRegisteredSchema, MediaStatusSchema]), "Retry: new URLs, or it was already uploaded"),
-    ...errors(400, 401, 403, 409, 429, 503),
+    ...errors(400, 401, 403, 409, 410, 429, 503),
   },
 });
 
