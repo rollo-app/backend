@@ -4411,6 +4411,63 @@
           }
         }
       },
+      "delete": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Delete the rollo for everyone (creator)",
+        "description": "Only whoever created it (403 otherwise). Removes the rollo, its members, photos, likes, comments and featured photos at once; the files in storage are purged later. Afterwards any route of that rollo answers 410 `{ error: \"Este rollo se borró\" }`. Cannot be undone.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Rollo deleted"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "tags": [
           "Trips"

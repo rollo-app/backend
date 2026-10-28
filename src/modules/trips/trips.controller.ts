@@ -7,6 +7,7 @@ import type { AppEnv } from "../../types";
 import type {
   addMembersRoute,
   createTripRoute,
+  deleteTripRoute,
   getTripRoute,
   joinTripRoute,
   leaveRoute,
@@ -103,4 +104,9 @@ export const removeAdmin: RouteHandler<typeof removeAdminRoute, AppEnv> = async 
   const trip = c.get("trip");
   const target = await members.removeAdmin(c.env.DB, trip, c.req.valid("param").memberId);
   return c.json(await members.memberView(c.env.DB, trip, c.get("user").id, target), 200);
+};
+
+export const remove: RouteHandler<typeof deleteTripRoute, AppEnv> = async (c) => {
+  await service.deleteTrip(c.env.DB, c.get("trip"));
+  return c.body(null, 204);
 };

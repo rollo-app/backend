@@ -75,6 +75,20 @@ export const updateTripRoute = createRoute({
   responses: { 200: json(TripResponseSchema, "Trip updated"), ...errors(400, 401, 403) },
 });
 
+export const deleteTripRoute = createRoute({
+  method: "delete",
+  path: "/{tripId}",
+  tags,
+  summary: "Delete the rollo for everyone (creator)",
+  description:
+    "Only whoever created it (403 otherwise). Removes the rollo, its members, photos, likes, comments and featured photos at once; the files " +
+    "in storage are purged later. Afterwards any route of that rollo answers 410 `{ error: \"Este rollo se borró\" }`. Cannot be undone.",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember, requireCreator] as const,
+  request: { params: TripParams },
+  responses: { 204: { description: "Rollo deleted" }, ...errors(401, 403, 410) },
+});
+
 export const revealRoute = createRoute({
   method: "post",
   path: "/{tripId}/reveal",
@@ -179,6 +193,7 @@ const trips = createApp();
 trips.openapi(createTripRoute, controller.create);
 trips.openapi(joinTripRoute, controller.join);
 trips.openapi(getTripRoute, controller.detail);
+trips.openapi(deleteTripRoute, controller.remove);
 trips.openapi(updateTripRoute, controller.update);
 trips.openapi(revealRoute, controller.reveal);
 trips.openapi(addMembersRoute, controller.addMembers);

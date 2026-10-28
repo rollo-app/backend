@@ -195,3 +195,10 @@ export async function revealTrip(env: Env, trip: TripRow, actorId: string): Prom
     notify: claim!.meta.changes > 0 ? () => sendTripRevealed(env, trip, actorId) : null,
   };
 }
+
+// ---------- Delete (creator) ----------
+
+/** Deletes the rollo for everyone: rows go in one batch, its R2 files are queued for the cron purge. */
+export async function deleteTrip(db: D1Database, trip: TripRow): Promise<void> {
+  await db.batch(repo.deleteTripStatements(db, trip.id, Date.now()));
+}

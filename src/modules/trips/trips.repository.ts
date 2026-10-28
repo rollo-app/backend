@@ -239,3 +239,20 @@ export function setMemberRole(db: D1Database, memberId: string, role: Role): D1P
 export function findUserCard(db: D1Database, userId: string): Promise<{ name: string | null; username: string | null; avatar_key: string | null } | null> {
   return db.prepare("SELECT name, username, avatar_key FROM users WHERE id = ?").bind(userId).first();
 }
+
+/** Statements that delete a rollo for everyone, in FK order; run them in ONE `db.batch` (a transaction). Queues its R2 keys for the cron purge. */
+export function deleteTripStatements(db: D1Database, tripId: string, now: number): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO r2_purge (key, created_at)
+         SELECT original_key, ?1 FROM media WHERE trip_id = ?2
+         UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2`,
+      )
+      .bind(now, tripId),
+    db.prepare("INSERT OR IGNORE INTO deleted_trips (trip_id, deleted_at) VALUES (?, ?)").bind(tripId, now),
+    db.prepare("DELETE FROM media WHERE trip_id = ?").bind(tripId),
+    db.prepare("DELETE FROM members WHERE trip_id = ?").bind(tripId),
+    db.prepare("DELETE FROM trips WHERE id = ?").bind(tripId),
+  ];
+}
