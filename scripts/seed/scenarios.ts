@@ -149,7 +149,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Bariloche 2025 (revelado)",
-    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member; featured photos come from here",
+    tests: "Already revealed trip (Jan 2025): feed with files, download. Juani is a member and has it ARCHIVED (her own view only); featured photos come from here",
     members: ["Cami", "Tomi", "Fede", "Lu", "Nacho"],
     // Backdated to Jan 2025 right after creating (the API rejects dates in the past). The reveal stays in
     // the future so media can be registered; `after` moves it into the past and reveals it.
@@ -184,6 +184,11 @@ export const SCENARIOS: Scenario[] = [
       if (!feed.revealed || !feed.items.length || !feed.items.every((i: any) => i.files)) {
         throw new Error("Bariloche: the feed was not left revealed with files");
       }
+      // Juani archives it for herself only (PATCH /trips/{id}/members/me): /me/trips must flag it.
+      const juani = ctx.tokens[ctx.names.indexOf("Juani")]!;
+      await api("PATCH", `/trips/${ctx.tripId}/members/me`, { archived: true }, juani);
+      const mine = await api("GET", "/me/trips", undefined, juani);
+      if (!mine.trips.find((t: any) => t.id === ctx.tripId)?.archived) throw new Error("Bariloche: Juani's archive did not show in /me/trips");
     },
   },
   {
@@ -224,6 +229,22 @@ export const SCENARIOS: Scenario[] = [
       await api("DELETE", `/trips/${ctx.tripId}/members/me`, undefined, tokenOf("Rama"));
       const [vicky] = d1<{ id: string }>(`SELECT id FROM members WHERE trip_id = '${ctx.tripId}' AND user_id = '${seedUserId("Vicky")}'`);
       await api("DELETE", `/trips/${ctx.tripId}/members/${vicky!.id}`, undefined, tokenOf("Juani"));
+    },
+  },
+  {
+    name: "Rollo con admins",
+    tests: "Cami CREATED it; Tomi and Fede are admins (role admin, isCreator false); Juani is a plain member. Try the creator-only actions as each",
+    members: ["Cami", "Tomi", "Fede"],
+    trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 4 * DAY, revealAt: Date.now() + 4 * DAY }),
+    async after(ctx) {
+      const creator = ctx.tokens[ctx.names.indexOf("Cami")]!;
+      for (const name of ["Tomi", "Fede"]) {
+        const [m] = d1<{ id: string }>(`SELECT id FROM members WHERE trip_id = '${ctx.tripId}' AND user_id = '${seedUserId(name)}'`);
+        await api("POST", `/trips/${ctx.tripId}/members/${m!.id}/admin`, undefined, creator);
+      }
+      const detail = await api("GET", `/trips/${ctx.tripId}`, undefined, creator);
+      const admins = detail.members.filter((m: any) => m.role === "admin").length;
+      if (admins !== 3) throw new Error(`Rollo con admins: ${admins} admins (expected 3: creator + 2)`);
     },
   },
   {
