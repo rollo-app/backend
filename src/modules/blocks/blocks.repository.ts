@@ -36,16 +36,6 @@ export function deleteFriendRequests(db: D1Database, userA: string, userB: strin
     .bind(userA, userB);
 }
 
-/** Their photos leave the blocker's featured list too (and its cap). */
-export function deleteFeaturedByAuthor(db: D1Database, blockerId: string, authorUserId: string): D1PreparedStatement {
-  return db
-    .prepare(
-      `DELETE FROM featured WHERE user_id = ? AND media_id IN (
-         SELECT m.id FROM media m JOIN members mem ON mem.id = m.member_id WHERE mem.user_id = ?)`,
-    )
-    .bind(blockerId, authorUserId);
-}
-
 export function markBlockEmailed(db: D1Database, blockerId: string, blockedId: string): D1PreparedStatement {
   return db.prepare("UPDATE blocks SET unemailed = 0 WHERE blocker_id = ? AND blocked_id = ?").bind(blockerId, blockedId);
 }

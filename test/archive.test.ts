@@ -20,6 +20,9 @@ async function revealedTrip() {
   expect((await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken })).status).toBe(200);
   const juani = { token: trip.adminToken, userId: trip.adminUserId };
   await api("PATCH", "/me", { token: fede.token, body: { profileVisibility: "public" } });
+  // Featuring someone else's photo is for friends only.
+  await befriend(juani.token, fede.token);
+  await befriend(cami.token, fede.token);
   expect((await api("PUT", `/media/${photo}/like`, { token: juani.token })).status).toBe(204);
   expect((await api("PUT", `/media/${photo}/like`, { token: cami.token })).status).toBe(204);
   expect((await api("POST", `/media/${photo}/comments`, { token: juani.token, body: { text: "qué foto" } })).status).toBe(201);

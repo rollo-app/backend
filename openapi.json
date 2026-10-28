@@ -841,7 +841,7 @@
           "code": {
             "type": "string",
             "example": "K7M2QX9A",
-            "description": "8-character code; the link is rollo://friends/<code>"
+            "description": "8-character code; the link is https://rollo.juanifraga.com/friends#<code> (rollo://friends/<code> is also accepted)"
           },
           "expiresAt": {
             "type": "integer",
@@ -1848,7 +1848,7 @@
           },
           "canFeature": {
             "type": "boolean",
-            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)"
+            "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, if its author is neither you nor one of your friends, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)"
           },
           "likeCount": {
             "type": "integer",
@@ -3610,7 +3610,7 @@
           "Friends"
         ],
         "summary": "Generate a friend link",
-        "description": "Returns an 8-character code (the link is rollo://friends/<code>) valid for 1 hour and reusable while it lives. Generating a new one invalidates the previous links of the user.",
+        "description": "Returns an 8-character code (the link is https://rollo.juanifraga.com/friends#<code>; rollo://friends/<code> is still accepted) valid for 1 hour and reusable while it lives. Generating a new one invalidates the previous links of the user.",
         "security": [
           {
             "bearerAuth": []
@@ -5522,7 +5522,7 @@
           "Featured"
         ],
         "summary": "Feature a photo on your profile",
-        "description": "A photo (not a video) of a revealed rollo you are an active member of, yours or someone else's. Idempotent. 404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author does not let others feature it (unless you took it) or if you already have 60; 400 for a video.",
+        "description": "A photo (not a video) of a revealed rollo you are an active member of: yours or a current friend's. Idempotent. 404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author is someone who is not your friend, if its author does not let others feature it (unless you took it) or if you already have 60; 400 for a video. When a friendship ends (either side) or one of the two blocks the other, each profile loses the other's photos and they do not come back if the two become friends again.",
         "security": [
           {
             "bearerAuth": []

@@ -143,6 +143,7 @@ describe("photoFeatured", () => {
     const mediaId = await uploadMedia(t.tripId, t.adminToken);
     const ownId = await uploadMedia(t.tripId, cami.token);
     await api("POST", `/trips/${t.tripId}/reveal`, { token: t.adminToken });
+    await befriend(t.adminToken, cami.token);
     await flushPendingPushes();
     return { t, cami, mediaId, ownId };
   }

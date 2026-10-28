@@ -23,6 +23,8 @@ async function revealedTrip() {
   }
   await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken });
   const juani = { token: trip.adminToken, userId: trip.adminUserId };
+  // Featuring someone else's photo is for friends only.
+  await befriend(juani.token, fede.token);
   return { ...trip, juani, fede, juaniPhoto, fedePhoto, fedeVideo };
 }
 
@@ -255,8 +257,6 @@ describe("GET /users/{userId}/featured", () => {
     const res = await list(stranger.token, t.juani.userId);
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: PRIVATE });
-    // Sharing a rollo does not make you a friend either.
-    expect((await list(t.fede.token, t.juani.userId)).status).toBe(403);
   });
 
   it("is visible to a stranger when the profile is public", async () => {

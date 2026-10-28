@@ -91,7 +91,7 @@ export type FeaturedPlan = { blocked: string | null; byUser: Record<string, stri
 /**
  * Featured photos of the seed, from FEATURED_TRIP's photos (in time order):
  * - Cami doesn't let others feature her first photo (feature block).
- * - Juani: 2 by others (Tomi's and Fede's first) and 3 of her own; if she has fewer than 3, other people's fill in up to 5.
+ * - Juani: 2 by others (Tomi's and Fede's first) and 3 of her own; if she has fewer than 3, friends' photos fill in up to 5.
  * - Tomi (public profile): 1 of Juani's (if any) and 2 of his own.
  * Nobody but its author ever gets the blocked photo. The order is the order they are featured in (last = newest).
  */
@@ -101,7 +101,9 @@ export function planFeatured(photos: SeedPhoto[]): FeaturedPlan {
 
   const juani = [by("Tomi")[0], by("Fede")[0]].filter((id): id is string => id !== undefined);
   const own = by("Juani").slice(0, 3);
-  const fill = photos.filter((p) => p.author !== "Juani" && p.id !== blocked && !juani.includes(p.id)).map((p) => p.id);
+  // Only friends' photos can be featured, so the fill skips people who are not friends of Juani (Lu, Nacho...).
+  const friendsOfJuani = new Set(SEED_FRIENDSHIPS.flatMap(([a, b]) => (a === "Juani" ? [b] : b === "Juani" ? [a] : [])));
+  const fill = photos.filter((p) => friendsOfJuani.has(p.author) && p.id !== blocked && !juani.includes(p.id)).map((p) => p.id);
   juani.push(...fill.slice(0, Math.max(0, 5 - juani.length - own.length)), ...own);
 
   const tomi = [...by("Juani").slice(0, 1), ...by("Tomi").slice(0, 2)];

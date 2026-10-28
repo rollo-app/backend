@@ -1,5 +1,6 @@
 import { sendBlockEmail } from "../../lib/email";
 import { pairKey } from "../../lib/friend-code";
+import { deleteFeaturedBetween } from "../featured/featured.repository";
 import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../moderation/moderation.service";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
@@ -9,7 +10,7 @@ export function listBlocked(db: D1Database, blockerId: string): Promise<repo.Blo
   return repo.listBlocked(db, blockerId);
 }
 
-/** Idempotent block. Also removes the friendship, the pending friend requests and the blocked user's photos from the blocker's featured list. */
+/** Idempotent block. Also removes the friendship, the pending friend requests and, from both profiles, the other's featured photos. */
 export async function blockUser(env: Env, blocker: UserRow, targetId: string, adminBase: string): Promise<void> {
   const me = blocker.id;
   const db = env.DB;
@@ -22,7 +23,8 @@ export async function blockUser(env: Env, blocker: UserRow, targetId: string, ad
     repo.insertBlock(db, me, targetId, Date.now()),
     repo.deleteFriendship(db, a, b),
     repo.deleteFriendRequests(db, me, targetId),
-    repo.deleteFeaturedByAuthor(db, me, targetId),
+    // Each profile loses the other's photos, whoever blocked.
+    deleteFeaturedBetween(db, me, targetId),
   ]);
   if (inserted!.meta.changes === 1 && (await withinModerationEmailCap(db, me))) {
     try {

@@ -1,6 +1,6 @@
 import { and, asc, count, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { featured, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
+import { featured, friendships, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
 // A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
 import { commentCountSql } from "../comments/comments.repository";
 import { notHiddenFor, notReportedBy } from "../reports/reports.repository";
@@ -29,6 +29,7 @@ export type FeedRow = {
   authorUserId: string;
   authorAvatarKey: string | null;
   featureBlockedAt: number | null;
+  authorIsFriend: boolean;
   memberAllowsFeaturing: boolean;
   accountAllowsFeaturing: boolean;
   featuredByMe: boolean;
@@ -163,6 +164,7 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
       authorUserId: members.userId,
       authorAvatarKey: users.avatarKey,
       featureBlockedAt: media.featureBlockedAt,
+      authorIsFriend: sql<boolean>`EXISTS (SELECT 1 FROM ${friendships} fr WHERE fr.user_a = MIN(${members.userId}, ${viewerId}) AND fr.user_b = MAX(${members.userId}, ${viewerId}))`.mapWith(Boolean),
       memberAllowsFeaturing: sql<boolean>`${members.allowFeaturing} != 0`.mapWith(Boolean),
       accountAllowsFeaturing: sql<boolean>`COALESCE(${userSettings.allowFeaturing}, 1) != 0`.mapWith(Boolean),
       featuredByMe: sql<boolean>`${featured.mediaId} IS NOT NULL`.mapWith(Boolean),

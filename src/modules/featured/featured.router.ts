@@ -16,9 +16,11 @@ export const featureRoute = createRoute({
   tags,
   summary: "Feature a photo on your profile",
   description:
-    `A photo (not a video) of a revealed rollo you are an active member of, yours or someone else's. Idempotent. ` +
-    `404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author ` +
-    `does not let others feature it (unless you took it) or if you already have ${MAX_FEATURED}; 400 for a video.`,
+    `A photo (not a video) of a revealed rollo you are an active member of: yours or a current friend's. Idempotent. ` +
+    `404 if it does not exist or you are not an active member; 409 if the rollo is not revealed, if its author is someone ` +
+    `who is not your friend, if its author does not let others feature it (unless you took it) or if you already have ${MAX_FEATURED}; ` +
+    `400 for a video. When a friendship ends (either side) or one of the two blocks the other, each profile loses the other's photos ` +
+    `and they do not come back if the two become friends again.`,
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: MediaParams },

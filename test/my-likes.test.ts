@@ -144,6 +144,7 @@ describe("GET /me/likes", () => {
         const t = await revealedTrip();
         const cami = await signUp(undefined, "Cami");
         await befriend(t.juani.token, cami.token);
+        await befriend(t.juani.token, t.fede.token);
         expect((await api("PUT", `/me/featured/${t.fedePhoto}`, { token: t.juani.token })).status).toBe(204);
         await like(cami.token, t.fedePhoto);
         return { ...t, cami };

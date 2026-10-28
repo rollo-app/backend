@@ -6,11 +6,12 @@ import type { MediaRow, TripRow, UserRow } from "../../types";
 
 /**
  * The same rule as `featuringDenial`, for SQL: use inside a query that has `media m`, `trips t` and the author's
- * membership `members author`, with one bind (the viewer's user id). Lets a write re-check the rule in the very
- * statement that inserts, so a level turned off in between can't be slipped past.
+ * membership `members author`, with three binds (the viewer's user id, three times). Lets a write re-check the rule in the
+ * very statement that inserts, so a level turned off (or a friendship ended) in between can't be slipped past.
  */
 export const FEATURING_ALLOWED_SQL = `(t.featuring_disabled = 0 AND (author.user_id = ?
-    OR (m.feature_blocked_at IS NULL AND author.allow_featuring != 0
+    OR (EXISTS (SELECT 1 FROM friendships fr WHERE fr.user_a = MIN(author.user_id, ?) AND fr.user_b = MAX(author.user_id, ?))
+        AND m.feature_blocked_at IS NULL AND author.allow_featuring != 0
         AND COALESCE((SELECT us.allow_featuring FROM user_settings us WHERE us.user_id = author.user_id), 1) != 0)))`;
 
 /**
@@ -34,6 +35,8 @@ export const VISIBLE_WHERE = `
 export type FeaturableMedia = Pick<MediaRow, "id" | "type" | "feature_blocked_at" | "paired_media_id" | "moment_day" | "archived_at"> &
   Pick<TripRow, "revealed_at" | "reveal_at" | "featuring_disabled"> & {
     author_user_id: string;
+    /** 1 when the author is a current friend of the viewer. */
+    author_is_friend: number;
     member_allow_featuring: number;
     account_allow_featuring: number;
   };
@@ -51,6 +54,7 @@ export function findFeaturableMedia(db: D1Database, userId: string, mediaId: str
     .prepare(
       `SELECT m.id, m.type, m.feature_blocked_at, m.paired_media_id, m.moment_day, m.archived_at, author.user_id AS author_user_id,
             t.revealed_at, t.reveal_at, t.featuring_disabled,
+            EXISTS (SELECT 1 FROM friendships fr WHERE fr.user_a = MIN(author.user_id, ?) AND fr.user_b = MAX(author.user_id, ?)) AS author_is_friend,
             author.allow_featuring AS member_allow_featuring,
             COALESCE(author_settings.allow_featuring, 1) AS account_allow_featuring
      FROM media m
@@ -60,7 +64,7 @@ export function findFeaturableMedia(db: D1Database, userId: string, mediaId: str
      JOIN members me ON me.trip_id = m.trip_id AND me.user_id = ? AND me.removed_at IS NULL AND me.left_at IS NULL
      WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL`,
     )
-    .bind(userId, mediaId)
+    .bind(userId, userId, userId, mediaId)
     .first<FeaturableMedia>();
 }
 
@@ -82,7 +86,7 @@ export function insertFeaturedUnderCap(db: D1Database, userId: string, mediaId: 
        AND EXISTS (SELECT 1 FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
                    WHERE m.id = ? AND m.archived_at IS NULL AND ${FEATURING_ALLOWED_SQL})`,
     )
-    .bind(userId, mediaId, now, now, userId, max, mediaId, userId);
+    .bind(userId, mediaId, now, now, userId, max, mediaId, userId, userId, userId);
 }
 
 export function deleteFeatured(db: D1Database, userId: string, mediaId: string): D1PreparedStatement {
@@ -92,6 +96,19 @@ export function deleteFeatured(db: D1Database, userId: string, mediaId: string):
 /** Removes the photo from every profile, the author's included (archiving or deleting it). */
 export function deleteFeaturedOfMedia(db: D1Database, mediaId: string): D1PreparedStatement {
   return db.prepare("DELETE FROM featured WHERE media_id = ?").bind(mediaId);
+}
+
+/**
+ * Two users stopped being friends or one blocked the other: each profile loses the other's photos (nobody's own stay).
+ * Being friends again does not bring them back.
+ */
+export function deleteFeaturedBetween(db: D1Database, userA: string, userB: string): D1PreparedStatement {
+  return db
+    .prepare(
+      `DELETE FROM featured WHERE (user_id = ?1 AND media_id IN (SELECT m.id FROM media m JOIN members mem ON mem.id = m.member_id WHERE mem.user_id = ?2))
+         OR (user_id = ?2 AND media_id IN (SELECT m.id FROM media m JOIN members mem ON mem.id = m.member_id WHERE mem.user_id = ?1))`,
+    )
+    .bind(userA, userB);
 }
 
 /** Removes the photo from everyone else's profile (the author keeps theirs). */

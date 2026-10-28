@@ -15,12 +15,15 @@ import * as repo from "./featured.repository";
  * (featuring, the revealed feed and the cleanups all agree with it). Four levels, the most restrictive wins:
  *  1. private rollo (`trips.featuring_disabled`): nobody, not even the author;
  *  2. the author can always feature their own photos;
- *  3. others need the photo (`media.feature_blocked_at`), the author's membership (`members.allow_featuring`)
- *     and the author's account (`user_settings.allow_featuring`) to allow it.
- * Turning a level off also deletes what it now blocks from other profiles (see `featured.repository`).
+ *  3. a photo of someone else only if the author is a current friend of the viewer;
+ *  4. and the photo (`media.feature_blocked_at`), the author's membership (`members.allow_featuring`)
+ *     and the author's account (`user_settings.allow_featuring`) must all allow it.
+ * Turning a level off, ending the friendship or blocking also deletes what it now blocks from the profiles (see `featured.repository`).
  */
 export type FeaturingFacts = {
   viewerIsAuthor: boolean;
+  /** The author is a current friend of the viewer. */
+  authorIsFriend: boolean;
   /** The rollo is private. */
   rolloPrivate: boolean;
   /** The author blocked this one photo. */
@@ -31,12 +34,13 @@ export type FeaturingFacts = {
   accountAllows: boolean;
 };
 
-export type FeaturingDenial = "private_rollo" | "author_declined" | null;
+export type FeaturingDenial = "private_rollo" | "not_friend" | "author_declined" | null;
 
 /** Why `viewer` can't feature the photo, or null if they can. */
 export function featuringDenial(f: FeaturingFacts): FeaturingDenial {
   if (f.rolloPrivate) return "private_rollo";
   if (f.viewerIsAuthor) return null;
+  if (!f.authorIsFriend) return "not_friend";
   if (f.photoBlocked || !f.memberAllows || !f.accountAllows) return "author_declined";
   return null;
 }
@@ -61,6 +65,7 @@ async function visibleOwner(db: D1Database, viewerId: string, userId: string) {
 function denialFor(row: repo.FeaturableMedia, viewerId: string) {
   return featuringDenial({
     viewerIsAuthor: row.author_user_id === viewerId,
+    authorIsFriend: row.author_is_friend !== 0,
     rolloPrivate: row.featuring_disabled !== 0,
     photoBlocked: row.feature_blocked_at !== null,
     memberAllows: row.member_allow_featuring !== 0,
@@ -69,9 +74,9 @@ function denialFor(row: repo.FeaturableMedia, viewerId: string) {
 }
 
 function denialError(denial: NonNullable<ReturnType<typeof featuringDenial>>) {
-  return denial === "private_rollo"
-    ? conflict("Las fotos de este rollo no se pueden destacar")
-    : conflict("Quien sacó esta foto no quiere que se destaque");
+  if (denial === "private_rollo") return conflict("Las fotos de este rollo no se pueden destacar");
+  if (denial === "not_friend") return conflict("Solo podés destacar fotos tuyas o de tus amigos");
+  return conflict("Quien sacó esta foto no quiere que se destaque");
 }
 
 /** Features a photo. Returns the push to the author when it is a new feature of someone else's photo, else null. */
