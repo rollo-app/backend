@@ -176,6 +176,29 @@ export async function sendStorageAlert(env: Env, alert: StorageAlert): Promise<v
   await deliverToSupport(env, subject, text);
 }
 
+export type UsageAlert = { metric: string; value: number; limit: number };
+
+/** Usage alerts "sent" without a Resend key (local dev and tests). */
+export const devSentUsageAlerts: UsageAlert[] = [];
+
+/** Emails support that a Cloudflare free-tier metric is near its limit. Same dev/Resend behavior as `sendStorageAlert`. */
+export async function sendUsageAlert(env: Env, alert: UsageAlert): Promise<void> {
+  const pct = Math.round((alert.value / alert.limit) * 100);
+  const subject = `Rollo: ${alert.metric} al ${pct}% del límite gratis de Cloudflare`;
+  const text = [
+    `${alert.metric} va en ${alert.value} de ${alert.limit} (${pct}%) del límite gratis de Cloudflare.`,
+    "",
+    "Si seguís así, Cloudflare frena o cobra el excedente. Podés prender el modo degradado desde el panel para frenar subidas, avatares, rollos nuevos y altas.",
+  ].join("\n");
+
+  if (!env.RESEND_API_KEY) {
+    console.log(`[usage] ${subject}\n${text}`);
+    devSentUsageAlerts.push(alert);
+    return;
+  }
+  await deliverToSupport(env, subject, text);
+}
+
 /** Alerts and daily summaries "sent" to support without a Resend key (local dev and tests). */
 export const devSentNotices: { subject: string; text: string }[] = [];
 

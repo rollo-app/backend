@@ -59,6 +59,13 @@ export async function signUp(
   return { token, userId: user.id, email: user.email };
 }
 
+/** Signs up an account and promotes it to superadmin (the backoffice role). */
+export async function makeSuperadmin(email?: string): Promise<{ token: string; userId: string; email: string }> {
+  const su = await signUp(email);
+  await env.DB.prepare("UPDATE users SET app_role = 'superadmin' WHERE id = ?").bind(su.userId).run();
+  return su;
+}
+
 /** Logs an existing account in again: a new session (another phone). Returns its token. */
 export async function logIn(email: string): Promise<string> {
   // Skip the resend throttle: pretend the previous codes were requested an hour ago.

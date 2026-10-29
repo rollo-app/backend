@@ -5,6 +5,7 @@ import { globalRateLimit } from "./lib/rate-limit";
 import { checkPushReceipts } from "./lib/push";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import { runTripNotices } from "./modules/trips/notices.service";
+import { snapshotDailyMetrics } from "./modules/metrics/metrics.service";
 import admin from "./modules/admin/admin.router";
 import auth from "./modules/auth/auth.router";
 import blocks from "./modules/blocks/blocks.router";
@@ -17,6 +18,7 @@ import avatars from "./modules/avatars/avatars.router";
 import me from "./modules/me/me.router";
 import media from "./modules/media/media.router";
 import { STATUS_BY_KIND, AppError } from "./shared/errors";
+import { pollUsage } from "./lib/cf-usage";
 import { checkStorage } from "./lib/storage";
 import { sweepOrphanAvatars } from "./lib/avatar-sweep";
 import { purgeOldEmailCounters } from "./lib/email-caps";
@@ -100,11 +102,11 @@ app.onError((err, c) => {
   return c.json({ error: "Error interno" }, 500);
 });
 
-/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads and the sweep of orphan avatar files and the purge of the files of deleted rollos. */
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the sweep of orphan avatar files, the purge of the files of deleted rollos, the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

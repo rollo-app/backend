@@ -5,3 +5,6 @@ login-email-preview.html
 .claude/worktrees/
 .drizzle-check/
 wrangler.seed.generated.jsonc
+
+# Scratch de las skills de superpowers (brainstorm, sdd)
+.superpowers/
