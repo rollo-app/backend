@@ -81,6 +81,29 @@ describe("PATCH /admin/users/{id}", () => {
     expect((await patch(u.userId, su.token, {})).status).toBe(400);
   });
 
+  it("an unknown key wins over an invalid allowed field", async () => {
+    const su = await makeSuperadmin();
+    const u = await signUp();
+    const r = await patch(u.userId, su.token, { name: "   ", email: "x" });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe("Campo no editable: email");
+  });
+
+  it("setting the own current username with another case or @ is 200", async () => {
+    const su = await makeSuperadmin();
+    const u = await signUp("own@rollo.test", "Own", "miuser");
+    expect((await patch(u.userId, su.token, { username: "@MiUser" })).body).toMatchObject({ username: "miuser" });
+    expect((await patch(u.userId, su.token, { username: "MIUSER" })).status).toBe(200);
+  });
+
+  it("name + badge + unlimitedRollos in one request write all three", async () => {
+    const su = await makeSuperadmin();
+    const u = await signUp();
+    expect((await patch(u.userId, su.token, { name: "Todo", badge: "founder", unlimitedRollos: true })).status).toBe(200);
+    const row = await env.DB.prepare("SELECT name, badge, unlimited_rollos AS n FROM users WHERE id = ?").bind(u.userId).first();
+    expect(row).toEqual({ name: "Todo", badge: "founder", n: 1 });
+  });
+
   it("missing user is 404", async () => {
     const su = await makeSuperadmin();
     const r = await patch("00000000-0000-4000-8000-000000000000", su.token, { name: "X" });

@@ -98,7 +98,7 @@ export const AuthSessionSchema = z
 
 // ---------- Trips ----------
 
-export const personName = z.string().trim().min(1).max(30).openapi({ example: "Juani" });
+const personName = z.string().trim().min(1).max(30).openapi({ example: "Juani" });
 
 /** Clock-skew tolerance when validating that a date is not in the past. */
 export const PAST_TOLERANCE_MS = 5 * 60_000;

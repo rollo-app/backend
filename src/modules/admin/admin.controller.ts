@@ -82,7 +82,8 @@ export async function getUser(c: Context<AppEnv>) {
 export async function editUser(c: Context<AppEnv>) {
   const parsed = AdminEditUserSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
+    const issues = parsed.error.issues;
+    const issue = issues.find((i) => i.code === "unrecognized_keys") ?? issues[0];
     if (!issue) throw badRequest("Cuerpo inválido");
     if (issue.code === "unrecognized_keys") throw badRequest(`Campo no editable: ${issue.keys[0]}`);
     const field = issue?.path.join(".");
