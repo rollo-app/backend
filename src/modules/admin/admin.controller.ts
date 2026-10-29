@@ -6,7 +6,7 @@ import { storageLimitBytes, storageUsage } from "../../lib/storage";
 import { badRequest } from "../../shared/errors";
 import { getMetrics as readMetrics } from "../metrics/metrics.service";
 import { PageQuerySchema } from "../../lib/paging";
-import { DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
+import { AdminEditUserSchema, DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
 import * as service from "./admin.service";
 
 type Person = { id: string; name: string | null; username: string | null; email: string };
@@ -77,4 +77,18 @@ export async function listUsers(c: Context<AppEnv>) {
 
 export async function getUser(c: Context<AppEnv>) {
   return c.json(await service.getUser(c.env.DB, c.req.param("id")!, Date.now()));
+}
+
+export async function editUser(c: Context<AppEnv>) {
+  const parsed = AdminEditUserSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    const issues = parsed.error.issues;
+    const issue = issues.find((i) => i.code === "unrecognized_keys") ?? issues[0];
+    if (!issue) throw badRequest("Cuerpo inválido");
+    if (issue.code === "unrecognized_keys") throw badRequest(`Campo no editable: ${issue.keys[0]}`);
+    const field = issue?.path.join(".");
+    throw badRequest(issue.code === "custom" || !field ? issue.message : `${field}: ${issue.message}`);
+  }
+  if (Object.values(parsed.data).every((v) => v === undefined)) throw badRequest("Mandá al menos un campo para editar");
+  return c.json(await service.editUser(c.env.DB, c.req.param("id")!, parsed.data, Date.now()));
 }

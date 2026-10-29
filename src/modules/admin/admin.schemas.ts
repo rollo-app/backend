@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UpdateProfileSchema, UserBadgeSchema } from "../../schemas";
 
 export const DegradedModeBodySchema = z.object({ on: z.boolean() });
 
@@ -20,5 +21,17 @@ export const AdminUserSchema = z.object({
 export const TripStateSchema = z.enum(["upcoming", "open", "ended", "revealed"]);
 
 export const AdminUserDetailSchema = AdminUserSchema.extend({
+  bio: z.string().nullable(),
+  unlimitedRollos: z.boolean(),
   trips: z.array(z.object({ id: z.string(), name: z.string(), role: z.enum(["admin", "member"]), state: TripStateSchema })),
 });
+
+/** Same rules as `PATCH /me` for name, username and bio (reused, not copied); anything else is rejected. */
+export const AdminEditUserSchema = z
+  .object({
+    ...UpdateProfileSchema.pick({ name: true, username: true, bio: true }).shape,
+    badge: UserBadgeSchema.optional(),
+    unlimitedRollos: z.boolean().optional(),
+  })
+  .strict();
+export type AdminEditUser = z.infer<typeof AdminEditUserSchema>;
