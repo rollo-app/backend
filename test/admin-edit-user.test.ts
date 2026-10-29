@@ -17,6 +17,16 @@ describe("PATCH /admin/users/{id}", () => {
     expect(row!.bio).toBe("hola");
   });
 
+  it("the detail returns bio and unlimitedRollos (defaults null/false) and PATCH reflects edits", async () => {
+    const su = await makeSuperadmin();
+    const u = await signUp();
+    expect((await api("GET", `/admin/users/${u.userId}`, { token: su.token })).body).toMatchObject({ bio: null, unlimitedRollos: false });
+    const r = await patch(u.userId, su.token, { bio: "mi bio", unlimitedRollos: true });
+    expect(r.body).toMatchObject({ bio: "mi bio", unlimitedRollos: true });
+    expect((await api("GET", `/admin/users/${u.userId}`, { token: su.token })).body).toMatchObject({ bio: "mi bio", unlimitedRollos: true });
+    expect((await api("GET", "/admin/users", { token: su.token })).body.items[0]).not.toHaveProperty("bio");
+  });
+
   it("sets and clears the badge", async () => {
     const su = await makeSuperadmin();
     const u = await signUp();

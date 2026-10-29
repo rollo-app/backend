@@ -119,9 +119,16 @@ export async function countUsers(db: D1Database, opts: { q?: string }): Promise<
   return row?.n ?? 0;
 }
 
-export async function findAdminUser(db: D1Database, id: string): Promise<AdminUserRow | null> {
-  const [row] = await orm(db).select(userColumns).from(users).where(eq(users.id, id)).limit(1);
-  return row ?? null;
+export type AdminUserDetailRow = AdminUserRow & { bio: string | null; unlimitedRollos: boolean };
+
+/** The list columns plus the editable fields only the detail needs (bio, rollo-limit exemption as a boolean). */
+export async function findAdminUser(db: D1Database, id: string): Promise<AdminUserDetailRow | null> {
+  const [row] = await orm(db)
+    .select({ ...userColumns, bio: users.bio, unlimitedRollos: users.unlimitedRollos })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+  return row ? { ...row, unlimitedRollos: row.unlimitedRollos !== 0 } : null;
 }
 
 export type UserTripRow = {

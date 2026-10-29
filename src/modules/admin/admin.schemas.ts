@@ -21,6 +21,8 @@ export const AdminUserSchema = z.object({
 export const TripStateSchema = z.enum(["upcoming", "open", "ended", "revealed"]);
 
 export const AdminUserDetailSchema = AdminUserSchema.extend({
+  bio: z.string().nullable(),
+  unlimitedRollos: z.boolean(),
   trips: z.array(z.object({ id: z.string(), name: z.string(), role: z.enum(["admin", "member"]), state: TripStateSchema })),
 });
 
