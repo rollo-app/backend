@@ -27,8 +27,15 @@ export type ProfilePatch = {
   profileVisibility?: "friends" | "public";
 };
 
-/** Applies a partial profile update and returns the resulting user. */
-export async function updateProfile(db: D1Database, user: UserRow, body: ProfilePatch): Promise<UserRow> {
+/**
+ * Validates uniqueness and builds the (not yet run) profile write for `user`, which may be someone other than the
+ * session user (the backoffice edits other accounts). Shared by `PATCH /me` and `PATCH /admin/users/{id}`.
+ */
+export async function prepareProfileUpdate(
+  db: D1Database,
+  user: UserRow,
+  body: ProfilePatch,
+): Promise<{ statement: D1PreparedStatement; next: repo.ProfileFields }> {
   const next = {
     name: body.name ?? user.name,
     username: body.username ?? user.username,
@@ -38,13 +45,23 @@ export async function updateProfile(db: D1Database, user: UserRow, body: Profile
   if (body.username !== undefined && body.username !== user.username) {
     if (await isUsernameTaken(db, body.username, user.id)) throw conflict(USERNAME_TAKEN_MESSAGE);
   }
+  return { statement: repo.updateProfile(db, user.id, next), next };
+}
+
+/** Runs a write that may lose a race against another account taking the same username. */
+export async function withUsernameConflict<T>(write: () => Promise<T>): Promise<T> {
   try {
-    await repo.updateProfile(db, user.id, next).run();
+    return await write();
   } catch (err) {
-    // Lost a race against another account taking the same username.
     if (String(err).includes("UNIQUE")) throw conflict(USERNAME_TAKEN_MESSAGE);
     throw err;
   }
+}
+
+/** Applies a partial profile update and returns the resulting user. */
+export async function updateProfile(db: D1Database, user: UserRow, body: ProfilePatch): Promise<UserRow> {
+  const { statement, next } = await prepareProfileUpdate(db, user, body);
+  await withUsernameConflict(() => statement.run());
   return { ...user, ...next };
 }
 

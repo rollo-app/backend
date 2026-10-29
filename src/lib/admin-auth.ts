@@ -14,15 +14,16 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 
 /**
  * Guards `/admin/*`. Accepts `Bearer <ADMIN_TOKEN>` and, with `session: true`, also the session of a superadmin.
+ * `token: false` (with `session: true`) makes the route superadmin-session only: the token is not accepted.
  * Sets `adminUser` (null for the token). Every failure is a 404, so the routes look like they do not exist.
  */
-export function adminAuth(opts: { session: boolean }) {
+export function adminAuth(opts: { session: boolean; token?: boolean }) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const token = c.env.ADMIN_TOKEN;
     const header = c.req.header("authorization") ?? "";
     // Always compare, so timing does not depend on whether the header is present.
     const isToken = await safeEqual(header, `Bearer ${token ?? ""}`);
-    if (token && isToken) {
+    if (opts.token !== false && token && isToken) {
       c.set("adminUser", null);
       return next();
     }

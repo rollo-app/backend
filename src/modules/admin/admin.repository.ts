@@ -151,3 +151,18 @@ export async function listUserTrips(db: D1Database, userId: string): Promise<Use
     .where(and(eq(members.userId, userId), isNull(members.removedAt), isNull(members.leftAt)))
     .orderBy(desc(trips.startsAt), asc(trips.id));
 }
+
+/** Sets the manually assigned flags; only the given keys change. */
+export function updateUserFlags(db: D1Database, userId: string, flags: { badge?: "founder" | "first_edition" | null; unlimitedRollos?: boolean }): D1PreparedStatement {
+  const sets: string[] = [];
+  const values: (string | number | null)[] = [];
+  if (flags.badge !== undefined) {
+    sets.push("badge = ?");
+    values.push(flags.badge);
+  }
+  if (flags.unlimitedRollos !== undefined) {
+    sets.push("unlimited_rollos = ?");
+    values.push(flags.unlimitedRollos ? 1 : 0);
+  }
+  return db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...values, userId);
+}
