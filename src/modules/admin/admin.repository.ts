@@ -119,9 +119,16 @@ export async function countUsers(db: D1Database, opts: { q?: string }): Promise<
   return row?.n ?? 0;
 }
 
-export async function findAdminUser(db: D1Database, id: string): Promise<AdminUserRow | null> {
-  const [row] = await orm(db).select(userColumns).from(users).where(eq(users.id, id)).limit(1);
-  return row ?? null;
+export type AdminUserDetailRow = AdminUserRow & { bio: string | null; unlimitedRollos: boolean };
+
+/** The list columns plus the editable fields only the detail needs (bio, rollo-limit exemption as a boolean). */
+export async function findAdminUser(db: D1Database, id: string): Promise<AdminUserDetailRow | null> {
+  const [row] = await orm(db)
+    .select({ ...userColumns, bio: users.bio, unlimitedRollos: users.unlimitedRollos })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+  return row ? { ...row, unlimitedRollos: row.unlimitedRollos !== 0 } : null;
 }
 
 export type UserTripRow = {
@@ -150,4 +157,19 @@ export async function listUserTrips(db: D1Database, userId: string): Promise<Use
     .innerJoin(trips, eq(trips.id, members.tripId))
     .where(and(eq(members.userId, userId), isNull(members.removedAt), isNull(members.leftAt)))
     .orderBy(desc(trips.startsAt), asc(trips.id));
+}
+
+/** Sets the manually assigned flags; only the given keys change. */
+export function updateUserFlags(db: D1Database, userId: string, flags: { badge?: "founder" | "first_edition" | null; unlimitedRollos?: boolean }): D1PreparedStatement {
+  const sets: string[] = [];
+  const values: (string | number | null)[] = [];
+  if (flags.badge !== undefined) {
+    sets.push("badge = ?");
+    values.push(flags.badge);
+  }
+  if (flags.unlimitedRollos !== undefined) {
+    sets.push("unlimited_rollos = ?");
+    values.push(flags.unlimitedRollos ? 1 : 0);
+  }
+  return db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...values, userId);
 }

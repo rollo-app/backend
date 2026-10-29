@@ -18,6 +18,8 @@ admin.get("/metrics", adminAuth({ session: true }), controller.getMetrics);
 admin.get("/usage", adminAuth({ session: true }), controller.getUsage);
 admin.get("/users", adminAuth({ session: true }), controller.listUsers);
 admin.get("/users/:id", adminAuth({ session: true }), controller.getUser);
+// Editing is session only: the token is for scripts that don't edit profiles.
+admin.patch("/users/:id", adminAuth({ session: true, token: false }), controller.editUser);
 admin.delete("/media/:mediaId", adminAuth({ session: false }), controller.deleteMedia);
 admin.delete("/users/:userId", adminAuth({ session: false }), controller.deleteUser);
 
