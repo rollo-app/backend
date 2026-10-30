@@ -39,6 +39,8 @@ export async function getMyMoments(
     (day) => day <= lastDay,
   );
   const fresh = days.flatMap((day) => {
+    // A config changed in a running rollo applies from the day it names, never to days before it.
+    if (trip.moment_from_day && day < trip.moment_from_day) return [];
     const full = dayWindow(trip, day);
     // Today is never drawn in the past: it starts a minute from now, and a window under the minimum is dropped.
     const window = full && day === today ? { from: Math.max(full.from, now + 60_000), to: full.to } : full;

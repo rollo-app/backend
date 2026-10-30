@@ -180,21 +180,31 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
     moment_mode: b.momentMode ?? trip.moment_mode,
     moment_window_start: b.momentWindowStart ?? trip.moment_window_start,
     moment_window_end: b.momentWindowEnd ?? trip.moment_window_end,
+    moment_from_day: trip.moment_from_day,
   };
+  // Moment mode or window changed in a running rollo: it applies from tomorrow; today's moment stays as it was.
+  const momentChanged =
+    next.moment_mode !== trip.moment_mode || next.moment_window_start !== trip.moment_window_start || next.moment_window_end !== trip.moment_window_end;
+  if (stage === "active" && momentChanged) {
+    next.moment_from_day = new Date(Date.parse(`${localDate(now, trip.timezone)}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  }
   const startChanged = next.starts_at !== trip.starts_at;
   const endChanged = next.ends_at !== trip.ends_at;
   const revealChanged = next.reveal_at !== trip.reveal_at;
   const modeChanged = next.photo_limit_mode !== trip.photo_limit_mode;
   const quotaChanged =
     next.daily_photo_limit !== trip.daily_photo_limit || next.daily_video_limit !== trip.daily_video_limit || next.total_photo_limit !== trip.total_photo_limit;
-  const momentChanged =
-    next.moment_mode !== trip.moment_mode || next.moment_window_start !== trip.moment_window_start || next.moment_window_end !== trip.moment_window_end;
 
   if (stage === "ended" && (startChanged || endChanged || revealChanged || modeChanged || quotaChanged || momentChanged)) {
     throw conflict("El rollo ya terminó: no se puede editar");
   }
   if (stage === "active" && startChanged) throw conflict("El rollo ya empezó: el inicio no se cambia");
   if (stage === "active" && modeChanged) throw conflict("El rollo ya empezó: el tipo de cupo no se cambia");
+
+  // Only the creator reveals early: others may move the reveal later, or shorten the end while the stored reveal still fits.
+  if (revealChanged && next.reveal_at < trip.reveal_at && !isCreator(trip, actorUserId)) {
+    throw forbidden("Solo quien creó el rollo puede adelantar el revelado");
+  }
 
   // Only the values being changed are checked against the clock and the caps, so an existing rollo keeps working.
   const earliest = now - PAST_TOLERANCE_MS;

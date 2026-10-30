@@ -16,7 +16,7 @@ export type NewTrip = Pick<
 export type TripEdit = Pick<
   TripRow,
   | "name" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit"
-  | "featuring_disabled" | "moment_mode" | "moment_window_start" | "moment_window_end"
+  | "featuring_disabled" | "moment_mode" | "moment_window_start" | "moment_window_end" | "moment_from_day"
 >;
 
 export async function joinCodeExists(db: D1Database, joinCode: string): Promise<boolean> {
@@ -135,12 +135,12 @@ export function updateTrip(db: D1Database, tripId: string, next: TripEdit): D1Pr
   return db
     .prepare(
       `UPDATE trips SET name = ?, starts_at = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, photo_limit_mode = ?,
-                        total_photo_limit = ?, featuring_disabled = ?, moment_mode = ?, moment_window_start = ?, moment_window_end = ?
+                        total_photo_limit = ?, featuring_disabled = ?, moment_mode = ?, moment_window_start = ?, moment_window_end = ?, moment_from_day = ?
      WHERE id = ?`,
     )
     .bind(
       next.name, next.starts_at, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.photo_limit_mode,
-      next.total_photo_limit, next.featuring_disabled, next.moment_mode, next.moment_window_start, next.moment_window_end, tripId,
+      next.total_photo_limit, next.featuring_disabled, next.moment_mode, next.moment_window_start, next.moment_window_end, next.moment_from_day, tripId,
     );
 }
 

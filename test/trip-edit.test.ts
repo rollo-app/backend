@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { localDate } from "../src/lib/util";
+import { getMyMoments } from "../src/modules/moments/moments.service";
+import type { TripRow } from "../src/types";
 import { api, DAY, HOUR, joinAs, MINUTE, newTrip, TZ } from "./helpers";
 
 const now = () => Date.now();
@@ -110,7 +112,7 @@ describe("PATCH /trips/:id while running", () => {
     const { fx, patch } = await setup(active(), { momentMode: "photo" });
     const today = localDate(now(), TZ);
     await seedMoment(fx.tripId, fx.adminUserId, today, now() + 20 * MINUTE);
-    expect((await patch({ endsAt: now() + 25 * MINUTE, revealAt: now() + 2 * DAY })).status).toBe(200);
+    expect((await patch({ endsAt: now() + 25 * MINUTE })).status).toBe(200);
     expect(await momentDays(fx.tripId)).toEqual([]);
   });
 
@@ -199,3 +201,78 @@ describe("PATCH /trips/:id validation", () => {
   });
 });
 
+
+describe("PATCH /trips/:id reveal rule for non-creator admins", () => {
+  const ADVANCE = "Solo quien creó el rollo puede adelantar el revelado";
+
+  it("refuses moving the reveal earlier and applies nothing", async () => {
+    const { fx, patch, get } = await setup(active());
+    const before = await get();
+    const res = await patch({ revealAt: before.revealAt - DAY, dailyPhotoLimit: 9 });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe(ADVANCE);
+    expect(await get()).toMatchObject({ revealAt: before.revealAt, dailyPhotoLimit: before.dailyPhotoLimit });
+    void fx;
+  });
+
+  it("refuses shortening the end together with an earlier reveal", async () => {
+    const { patch } = await setup(active());
+    const res = await patch({ endsAt: now() + 2 * DAY, revealAt: now() + 2 * DAY });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe(ADVANCE);
+  });
+
+  it("lets them move the reveal later and shorten the end with the reveal untouched", async () => {
+    const { patch, get } = await setup(active());
+    const later = (await get()).revealAt + DAY;
+    expect((await patch({ revealAt: later })).status).toBe(200);
+    expect((await patch({ endsAt: now() + 2 * DAY })).status).toBe(200);
+    expect((await get()).revealAt).toBe(later);
+  });
+
+  it("lets the creator move it earlier", async () => {
+    const { fx, patch } = await setup(active());
+    const res = await patch({ revealAt: now() + 3 * DAY, endsAt: now() + 2 * DAY }, fx.adminToken);
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("PATCH /trips/:id legacy long rollo", () => {
+  it("rejects editing the end of a rollo longer than 31 days", async () => {
+    const { patch } = await setup({ startsAt: now() - DAY, endsAt: now() + 39 * DAY, revealAt: now() + 40 * DAY });
+    const res = await patch({ endsAt: now() + 38 * DAY });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("El rollo puede durar hasta 31 días");
+  });
+});
+
+describe("moment config changes apply from tomorrow on a running rollo", () => {
+  const row = async (tripId: string) => (await env.DB.prepare("SELECT * FROM trips WHERE id = ?").bind(tripId).first<TripRow>())!;
+  const daysFor = async (tripId: string, userId: string) => {
+    // Noon local today, so today's window has room whatever time the suite runs.
+    const noon = Date.parse(`${localDate(now(), TZ)}T15:00:00Z`);
+    const moments = await getMyMoments(env.DB, await row(tripId), userId, noon, () => 0);
+    return moments.map((m) => m.day);
+  };
+
+  it("turning the moment on draws nothing for today, but tomorrow", async () => {
+    const { fx, patch } = await setup(active(), { momentMode: "off" });
+    // Early enough that today's window has room.
+    expect((await patch({ momentMode: "photo", momentWindowStart: 0, momentWindowEnd: 1440 })).status).toBe(200);
+    const days = await daysFor(fx.tripId, fx.adminUserId);
+    expect(days).not.toContain(localDate(now(), TZ));
+    expect(days).toContain(localDate(now() + DAY, TZ));
+  });
+
+  it("changing the window gives no new row for today", async () => {
+    const { fx, patch } = await setup(active(), { momentMode: "photo" });
+    expect((await patch({ momentWindowStart: 0, momentWindowEnd: 1440 })).status).toBe(200);
+    expect(await daysFor(fx.tripId, fx.adminUserId)).not.toContain(localDate(now(), TZ));
+  });
+
+  it("an upcoming rollo is unaffected", async () => {
+    const { fx, patch } = await setup(upcoming(), { momentMode: "off" });
+    expect((await patch({ momentMode: "photo" })).status).toBe(200);
+    expect((await row(fx.tripId)).moment_from_day).toBeNull();
+  });
+});
