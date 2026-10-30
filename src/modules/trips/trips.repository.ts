@@ -13,7 +13,11 @@ export type NewTrip = Pick<
   | "moment_mode" | "moment_window_start" | "moment_window_end"
 > & { started_notified_at: number | null; featuring_disabled: number };
 
-export type TripEdit = Pick<TripRow, "name" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "total_photo_limit" | "featuring_disabled">;
+export type TripEdit = Pick<
+  TripRow,
+  | "name" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit"
+  | "featuring_disabled" | "moment_mode" | "moment_window_start" | "moment_window_end"
+>;
 
 export async function joinCodeExists(db: D1Database, joinCode: string): Promise<boolean> {
   return (await db.prepare("SELECT 1 FROM trips WHERE join_code = ?").bind(joinCode).first()) !== null;
@@ -130,10 +134,14 @@ export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberI
 export function updateTrip(db: D1Database, tripId: string, next: TripEdit): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE trips SET name = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, total_photo_limit = ?, featuring_disabled = ?
+      `UPDATE trips SET name = ?, starts_at = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, photo_limit_mode = ?,
+                        total_photo_limit = ?, featuring_disabled = ?, moment_mode = ?, moment_window_start = ?, moment_window_end = ?
      WHERE id = ?`,
     )
-    .bind(next.name, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.total_photo_limit, next.featuring_disabled, tripId);
+    .bind(
+      next.name, next.starts_at, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.photo_limit_mode,
+      next.total_photo_limit, next.featuring_disabled, next.moment_mode, next.moment_window_start, next.moment_window_end, tripId,
+    );
 }
 
 export function markRevealed(db: D1Database, tripId: string, now: number): D1PreparedStatement {

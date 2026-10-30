@@ -35,6 +35,13 @@ export function deleteUntakenMomentsAfter(db: D1Database, tripId: string, day: s
   return db.prepare("DELETE FROM trip_moments WHERE trip_id = ? AND day > ? AND media_id IS NULL").bind(tripId, day);
 }
 
+/** Deletes the untaken moments of `day`; with `endsAt`, only those whose 15 minutes would run past it. */
+export function deleteUntakenMomentsOn(db: D1Database, tripId: string, day: string, endsAt: number | null): D1PreparedStatement {
+  return db
+    .prepare("DELETE FROM trip_moments WHERE trip_id = ? AND day = ? AND media_id IS NULL AND (? IS NULL OR notify_at + ? > ?)")
+    .bind(tripId, day, endsAt, MOMENT_WINDOW_MS, endsAt);
+}
+
 /**
  * Stores the moment's photo. Only fills an empty slot, so a concurrent second photo never overwrites the first (check `meta.changes`).
  * `inWindow` tells whether it was taken within the moment window.

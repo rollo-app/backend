@@ -1348,7 +1348,7 @@
               "photo_selfie"
             ],
             "default": "off",
-            "description": "Daily moment: off, a photo, or a photo plus a selfie. Cannot be changed after creating the rollo"
+            "description": "Daily moment: off, a photo, or a photo plus a selfie. Any admin can change it later (PATCH /trips/{tripId}), effective from the next day"
           },
           "momentWindowStart": {
             "type": "integer",
@@ -1456,10 +1456,15 @@
             "minLength": 1,
             "maxLength": 60
           },
+          "startsAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Only before the rollo starts; never in the past"
+          },
           "endsAt": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Trip end; must be after startsAt and <= the resulting revealAt"
+            "description": "Trip end; must be after startsAt, at most 31 days after it and <= the resulting revealAt. Not once the rollo ended"
           },
           "revealAt": {
             "type": "integer",
@@ -1478,13 +1483,42 @@
           },
           "featuringDisabled": {
             "type": "boolean",
-            "description": "Private rollo. Turning it on removes every photo of the rollo from every profile; turning it off restores nothing"
+            "description": "Private rollo (creator only). Turning it on removes every photo of the rollo from every profile; turning it off restores nothing"
+          },
+          "photoLimitMode": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "total"
+            ],
+            "description": "Only before the rollo starts"
           },
           "totalPhotoLimit": {
             "type": "integer",
             "minimum": 1,
             "maximum": 200,
-            "description": "Only for rollos in total mode"
+            "description": "Only for rollos in total mode; required when switching to total and none is stored"
+          },
+          "momentMode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "Daily moment; in a running rollo it applies from the next day"
+          },
+          "momentWindowStart": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "description": "Minutes from midnight in the rollo's time zone"
+          },
+          "momentWindowEnd": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "description": "Minutes from midnight; at least 30 after the resulting start"
           }
         }
       },
@@ -4481,7 +4515,7 @@
           "Trips"
         ],
         "summary": "Edit the trip (admin)",
-        "description": "Any admin can rename the rollo (`name`). Everything else (dates, limits, private rollo) is only for the creator: 403 without applying anything if the body has more than `name`.",
+        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything.",
         "security": [
           {
             "bearerAuth": []
@@ -4540,6 +4574,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {

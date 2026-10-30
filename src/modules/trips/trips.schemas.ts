@@ -25,7 +25,7 @@ export const CreateTripSchema = z
       description: "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise",
     }),
     momentMode: z.enum(["off", "photo", "photo_selfie"]).default("off").openapi({
-      description: "Daily moment: off, a photo, or a photo plus a selfie. Cannot be changed after creating the rollo",
+      description: "Daily moment: off, a photo, or a photo plus a selfie. Any admin can change it later (PATCH /trips/{tripId}), effective from the next day",
     }),
     momentWindowStart: z.number().int().min(0).max(1440).default(540).openapi({
       description: "Start of the daily moment window, in minutes from midnight in the rollo's time zone (default 540 = 9:00)",
@@ -57,14 +57,21 @@ export const JoinTripSchema = z
 export const UpdateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
-    endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt and <= the resulting revealAt" }),
+    startsAt: z.number().int().positive().optional().openapi({ description: "Only before the rollo starts; never in the past" }),
+    endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt, at most 31 days after it and <= the resulting revealAt. Not once the rollo ended" }),
     revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),
     dailyPhotoLimit: z.number().int().min(1).max(MAX_DAILY_PHOTOS, "Hasta 30 fotos por día").optional(),
     dailyVideoLimit: z.number().int().min(0).max(20).optional(),
     featuringDisabled: z.boolean().optional().openapi({
-      description: "Private rollo. Turning it on removes every photo of the rollo from every profile; turning it off restores nothing",
+      description: "Private rollo (creator only). Turning it on removes every photo of the rollo from every profile; turning it off restores nothing",
     }),
-    totalPhotoLimit: z.number().int().min(1).max(MAX_TOTAL_PHOTOS, "Hasta 200 fotos en todo el rollo").optional().openapi({ description: "Only for rollos in total mode" }),
+    photoLimitMode: z.enum(["daily", "total"]).optional().openapi({ description: "Only before the rollo starts" }),
+    totalPhotoLimit: z.number().int().min(1).max(MAX_TOTAL_PHOTOS, "Hasta 200 fotos en todo el rollo").optional().openapi({
+      description: "Only for rollos in total mode; required when switching to total and none is stored",
+    }),
+    momentMode: z.enum(["off", "photo", "photo_selfie"]).optional().openapi({ description: "Daily moment; in a running rollo it applies from the next day" }),
+    momentWindowStart: z.number().int().min(0).max(1440).optional().openapi({ description: "Minutes from midnight in the rollo's time zone" }),
+    momentWindowEnd: z.number().int().min(0).max(1440).optional().openapi({ description: "Minutes from midnight; at least 30 after the resulting start" }),
   })
   .openapi("UpdateTripRequest");
 

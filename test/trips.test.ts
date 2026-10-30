@@ -83,15 +83,6 @@ describe("POST /trips", () => {
     expect((await post({ momentMode: "video" })).status).toBe(400);
   });
 
-  it("does not let PATCH change the moment", async () => {
-    const { token } = await signUp(undefined, "Juani");
-    const created = await api("POST", "/trips", { token, body: { ...tripBody(), momentMode: "photo" } });
-    const id = created.body.trip.id;
-    await api("PATCH", `/trips/${id}`, { token, body: { momentMode: "off", momentWindowStart: 0 } });
-    const got = await api("GET", `/trips/${id}`, { token });
-    expect(got.body.trip).toMatchObject({ momentMode: "photo", momentWindowStart: 540, momentWindowEnd: 1380 });
-  });
-
   it("requires a session", async () => {
     expect((await api("POST", "/trips", { body: tripBody() })).status).toBe(401);
   });
