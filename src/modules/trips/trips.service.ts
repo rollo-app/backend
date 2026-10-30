@@ -222,11 +222,14 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
   const statements: D1PreparedStatement[] = [repo.updateTrip(db, trip.id, next)];
   // A private rollo takes its photos off every profile (the authors' own too); turning it off restores nothing.
   if (next.featuring_disabled !== 0 && trip.featuring_disabled === 0) statements.push(deleteFeaturedOfTrip(db, trip.id));
-  // New dates or moment config: the future moments nobody took are drawn again. Today's one stays (it was or will be
-  // notified), unless the new end leaves no room for its 15 minutes; in a rollo that has not started, today's goes too.
+  // New dates or moment config. A new start or moment config draws every future moment nobody took again. A new end alone
+  // only drops the untaken ones past the new last day: extending keeps what was drawn (offline members may hold it already).
+  // Today's one stays (it was or will be notified), unless the new end leaves no room for its 15 minutes; in a rollo that
+  // has not started, today's goes too.
   if (startChanged || endChanged || momentChanged) {
     const today = localDate(now, trip.timezone);
-    statements.push(deleteUntakenMomentsAfter(db, trip.id, today));
+    const lastDay = startChanged || momentChanged ? today : localDate(next.ends_at, trip.timezone);
+    statements.push(deleteUntakenMomentsAfter(db, trip.id, lastDay < today ? today : lastDay));
     statements.push(deleteUntakenMomentsOn(db, trip.id, today, stage === "upcoming" ? null : next.ends_at));
   }
   await db.batch(statements);
