@@ -24,7 +24,7 @@ const baseTrip: TripRow = {
   featuring_disabled: 0,
   moment_mode: "off",
   moment_window_start: 540,
-  moment_window_end: 1380,
+  moment_window_end: 1380, moment_from_day: null,
   created_by_user_id: null,
 };
 

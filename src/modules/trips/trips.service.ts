@@ -6,11 +6,13 @@ import { sendTripRevealed } from "./notices.service";
 import { assertNotDegraded } from "../../lib/degraded";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
+import { deleteUntakenMomentsAfter, deleteUntakenMomentsOn } from "../moments/moments.repository";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedOfTrip } from "../featured/featured.repository";
 import { requireName } from "./members.service";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
+import { MAX_TRIP_DURATION_MS, TRIP_TOO_LONG } from "./trips.schemas";
 import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
 
 // ---------- Create ----------
@@ -155,31 +157,84 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
 
 // ---------- Edit (admin) ----------
 
-/** Applies the edit and returns the updated trip. */
+/** Applies the edit and returns the updated trip. Any admin edits dates, quota and moment; only the creator toggles the private rollo. */
 export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: string, b: UpdateTripInput): Promise<TripRow> {
-  // Admins who didn't create the rollo may only rename it.
-  if (!isCreator(trip, actorUserId) && Object.keys(b).some((k) => k !== "name" && b[k as keyof UpdateTripInput] !== undefined)) {
-    throw forbidden(CREATOR_ONLY);
-  }
-  // Only the fields being changed are checked, so a trip that already started can still be edited.
-  const earliest = Date.now() - PAST_TOLERANCE_MS;
-  if (b.endsAt !== undefined && b.endsAt < earliest) throw badRequest("El fin no puede ser en el pasado");
-  if (b.revealAt !== undefined && b.revealAt < earliest) throw badRequest("El revelado no puede ser en el pasado");
+  if (b.featuringDisabled !== undefined && !isCreator(trip, actorUserId)) throw forbidden(CREATOR_ONLY);
+
+  const now = Date.now();
+  const stage = isRevealed(trip, now) || now > trip.ends_at ? "ended" : now >= trip.starts_at ? "active" : "upcoming";
+
+  // Only fields that carry a new value count as edited: a client re-sending what is stored changes nothing.
+  const photoLimitMode = b.photoLimitMode ?? trip.photo_limit_mode;
+  const totalPhotoLimit = photoLimitMode === "total" ? (b.totalPhotoLimit ?? trip.total_photo_limit) : null;
   const next = {
     name: b.name ?? trip.name,
+    starts_at: b.startsAt ?? trip.starts_at,
     ends_at: b.endsAt ?? trip.ends_at,
     reveal_at: b.revealAt ?? trip.reveal_at,
     daily_photo_limit: b.dailyPhotoLimit ?? trip.daily_photo_limit,
     daily_video_limit: b.dailyVideoLimit ?? trip.daily_video_limit,
+    photo_limit_mode: photoLimitMode,
+    total_photo_limit: totalPhotoLimit,
     featuring_disabled: b.featuringDisabled === undefined ? trip.featuring_disabled : b.featuringDisabled ? 1 : 0,
-    total_photo_limit: trip.photo_limit_mode === "total" ? (b.totalPhotoLimit ?? trip.total_photo_limit) : null,
+    moment_mode: b.momentMode ?? trip.moment_mode,
+    moment_window_start: b.momentWindowStart ?? trip.moment_window_start,
+    moment_window_end: b.momentWindowEnd ?? trip.moment_window_end,
+    moment_from_day: trip.moment_from_day,
   };
-  if (next.ends_at <= trip.starts_at) throw badRequest("El rollo tiene que terminar después de empezar");
-  if (next.reveal_at < next.ends_at) throw badRequest("El revelado no puede ser antes del fin");
+  // Moment mode or window changed in a running rollo: it applies from tomorrow; today's moment stays as it was.
+  const momentChanged =
+    next.moment_mode !== trip.moment_mode || next.moment_window_start !== trip.moment_window_start || next.moment_window_end !== trip.moment_window_end;
+  if (stage === "active" && momentChanged) {
+    next.moment_from_day = new Date(Date.parse(`${localDate(now, trip.timezone)}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  }
+  const startChanged = next.starts_at !== trip.starts_at;
+  const endChanged = next.ends_at !== trip.ends_at;
+  const revealChanged = next.reveal_at !== trip.reveal_at;
+  const modeChanged = next.photo_limit_mode !== trip.photo_limit_mode;
+  const quotaChanged =
+    next.daily_photo_limit !== trip.daily_photo_limit || next.daily_video_limit !== trip.daily_video_limit || next.total_photo_limit !== trip.total_photo_limit;
 
+  if (stage === "ended" && (startChanged || endChanged || revealChanged || modeChanged || quotaChanged || momentChanged)) {
+    throw conflict("El rollo ya terminó: no se puede editar");
+  }
+  if (stage === "active" && startChanged) throw conflict("El rollo ya empezó: el inicio no se cambia");
+  if (stage === "active" && modeChanged) throw conflict("El rollo ya empezó: el tipo de cupo no se cambia");
+
+  // Only the creator reveals early: others may move the reveal later, or shorten the end while the stored reveal still fits.
+  if (revealChanged && next.reveal_at < trip.reveal_at && !isCreator(trip, actorUserId)) {
+    throw forbidden("Solo quien creó el rollo puede adelantar el revelado");
+  }
+
+  // Only the values being changed are checked against the clock and the caps, so an existing rollo keeps working.
+  const earliest = now - PAST_TOLERANCE_MS;
+  if (startChanged && next.starts_at < earliest) throw badRequest("El inicio no puede ser en el pasado");
+  if (endChanged && next.ends_at < earliest) throw badRequest("El fin no puede ser en el pasado");
+  if (revealChanged && next.reveal_at < earliest) throw badRequest("El revelado no puede ser en el pasado");
+  if (next.ends_at <= next.starts_at) throw badRequest("El rollo tiene que terminar después de empezar");
+  if ((startChanged || endChanged) && next.ends_at - next.starts_at > MAX_TRIP_DURATION_MS) throw badRequest(TRIP_TOO_LONG);
+  if (next.reveal_at < next.ends_at) throw badRequest("El revelado no puede ser antes del fin");
+  if ((b.momentWindowStart !== undefined || b.momentWindowEnd !== undefined) && next.moment_window_end - next.moment_window_start < 30) {
+    throw badRequest("La franja del momento tiene que durar al menos 30 minutos");
+  }
+  if (next.photo_limit_mode === "total" && next.total_photo_limit === null) throw badRequest("Elegí cuántas fotos por persona tiene el rollo");
+
+  const statements: D1PreparedStatement[] = [repo.updateTrip(db, trip.id, next)];
   // A private rollo takes its photos off every profile (the authors' own too); turning it off restores nothing.
-  const makingPrivate = next.featuring_disabled !== 0 && trip.featuring_disabled === 0;
-  await db.batch([repo.updateTrip(db, trip.id, next), ...(makingPrivate ? [deleteFeaturedOfTrip(db, trip.id)] : [])]);
+  if (next.featuring_disabled !== 0 && trip.featuring_disabled === 0) statements.push(deleteFeaturedOfTrip(db, trip.id));
+  // New dates or moment config. A new start or moment config draws every future moment nobody took again. A new end alone
+  // only drops the untaken ones past the new last day: extending keeps what was drawn (offline members may hold it already).
+  // Today's one stays (it was or will be notified), unless the new end leaves no room for its 15 minutes; in a rollo that
+  // has not started, today's goes too.
+  if (startChanged || endChanged || momentChanged) {
+    const today = localDate(now, trip.timezone);
+    const lastDay = startChanged || momentChanged ? today : localDate(next.ends_at, trip.timezone);
+    statements.push(deleteUntakenMomentsAfter(db, trip.id, lastDay < today ? today : lastDay));
+    statements.push(deleteUntakenMomentsOn(db, trip.id, today, stage === "upcoming" ? null : next.ends_at));
+    // A new last day in the future keeps its row only if the 15 minutes fit before the new end.
+    if (lastDay > today) statements.push(deleteUntakenMomentsOn(db, trip.id, lastDay, next.ends_at));
+  }
+  await db.batch(statements);
 
   return { ...trip, ...next };
 }

@@ -1,22 +1,23 @@
+import { MOMENT_WINDOW_MS } from "../../lib/moments";
 import type { TripRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])`.
 
-export type MomentRow = { day: string; notify_at: number };
+export type MomentRow = { day: string; notify_at: number; mode: string | null };
 
-export type NewMoment = { tripId: string; userId: string; day: string; notifyAt: number; createdAt: number };
+export type NewMoment = { tripId: string; userId: string; day: string; notifyAt: number; createdAt: number; mode: string };
 
 /** INSERT OR IGNORE: a row that already exists keeps its drawn time. */
 export async function insertMomentsIgnoringExisting(db: D1Database, rows: NewMoment[]): Promise<void> {
   if (rows.length === 0) return;
-  const stmt = db.prepare("INSERT OR IGNORE INTO trip_moments (trip_id, user_id, day, notify_at, created_at) VALUES (?, ?, ?, ?, ?)");
-  await db.batch(rows.map((r) => stmt.bind(r.tripId, r.userId, r.day, r.notifyAt, r.createdAt)));
+  const stmt = db.prepare("INSERT OR IGNORE INTO trip_moments (trip_id, user_id, day, notify_at, created_at, mode) VALUES (?, ?, ?, ?, ?, ?)");
+  await db.batch(rows.map((r) => stmt.bind(r.tripId, r.userId, r.day, r.notifyAt, r.createdAt, r.mode)));
 }
 
 export async function listUserMoments(db: D1Database, tripId: string, userId: string): Promise<MomentRow[]> {
   const { results } = await db
-    .prepare("SELECT day, notify_at FROM trip_moments WHERE trip_id = ? AND user_id = ? ORDER BY day")
+    .prepare("SELECT day, notify_at, mode FROM trip_moments WHERE trip_id = ? AND user_id = ? ORDER BY day")
     .bind(tripId, userId)
     .all<MomentRow>();
   return results;
@@ -24,9 +25,21 @@ export async function listUserMoments(db: D1Database, tripId: string, userId: st
 
 export function findMoment(db: D1Database, tripId: string, userId: string, day: string): Promise<MomentRow | null> {
   return db
-    .prepare("SELECT day, notify_at FROM trip_moments WHERE trip_id = ? AND user_id = ? AND day = ?")
+    .prepare("SELECT day, notify_at, mode FROM trip_moments WHERE trip_id = ? AND user_id = ? AND day = ?")
     .bind(tripId, userId, day)
     .first<MomentRow>();
+}
+
+/** Deletes the future moments nobody took yet (days after `day`), so they are drawn again with the new config. */
+export function deleteUntakenMomentsAfter(db: D1Database, tripId: string, day: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM trip_moments WHERE trip_id = ? AND day > ? AND media_id IS NULL").bind(tripId, day);
+}
+
+/** Deletes the untaken moments of `day`; with `endsAt`, only those whose 15 minutes would run past it. */
+export function deleteUntakenMomentsOn(db: D1Database, tripId: string, day: string, endsAt: number | null): D1PreparedStatement {
+  return db
+    .prepare("DELETE FROM trip_moments WHERE trip_id = ? AND day = ? AND media_id IS NULL AND (? IS NULL OR notify_at + ? > ?)")
+    .bind(tripId, day, endsAt, MOMENT_WINDOW_MS, endsAt);
 }
 
 /**
@@ -79,7 +92,7 @@ export function findMomentSlots(
 }
 
 /**
- * Trips the user is an active member of that can have moments to schedule: moment on, not revealed, from 3 days
+ * Trips the user is an active member of that can have moments to schedule: moment on (or a moment still open today), not revealed, from 3 days
  * before the start (the app's prefetch window) until the end. Ordered by trip id so the response is deterministic.
  */
 export async function listMomentTrips(db: D1Database, userId: string, now: number, prefetchMs: number): Promise<TripRow[]> {
@@ -87,11 +100,13 @@ export async function listMomentTrips(db: D1Database, userId: string, now: numbe
     .prepare(
       `SELECT t.* FROM trips t JOIN members m ON m.trip_id = t.id
        WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL
-         AND t.moment_mode != 'off' AND t.revealed_at IS NULL AND t.reveal_at > ?
+         AND (t.moment_mode != 'off' OR EXISTS (
+           SELECT 1 FROM trip_moments tm WHERE tm.trip_id = t.id AND tm.user_id = ? AND tm.notify_at + ? > ?))
+         AND t.revealed_at IS NULL AND t.reveal_at > ?
          AND t.starts_at - ? <= ? AND t.ends_at > ?
        ORDER BY t.id`,
     )
-    .bind(userId, now, prefetchMs, now, now)
+    .bind(userId, userId, MOMENT_WINDOW_MS, now, now, prefetchMs, now, now)
     .all<TripRow>();
   return results;
 }

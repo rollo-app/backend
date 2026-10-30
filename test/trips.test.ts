@@ -46,7 +46,7 @@ describe("POST /trips", () => {
     const post = (extra: object) => api("POST", "/trips", { token, body: { ...tripBody(), ...extra } });
     expect((await post({ photoLimitMode: "total" })).status).toBe(400);
     expect((await post({ photoLimitMode: "total", totalPhotoLimit: 0 })).status).toBe(400);
-    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 501 })).status).toBe(400);
+    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 201 })).status).toBe(400);
   });
 
   it("ignores totalPhotoLimit in daily mode", async () => {
@@ -81,15 +81,6 @@ describe("POST /trips", () => {
     expect((await post({ momentWindowStart: -1 })).status).toBe(400);
     expect((await post({ momentWindowEnd: 1441 })).status).toBe(400);
     expect((await post({ momentMode: "video" })).status).toBe(400);
-  });
-
-  it("does not let PATCH change the moment", async () => {
-    const { token } = await signUp(undefined, "Juani");
-    const created = await api("POST", "/trips", { token, body: { ...tripBody(), momentMode: "photo" } });
-    const id = created.body.trip.id;
-    await api("PATCH", `/trips/${id}`, { token, body: { momentMode: "off", momentWindowStart: 0 } });
-    const got = await api("GET", `/trips/${id}`, { token });
-    expect(got.body.trip).toMatchObject({ momentMode: "photo", momentWindowStart: 540, momentWindowEnd: 1380 });
   });
 
   it("requires a session", async () => {

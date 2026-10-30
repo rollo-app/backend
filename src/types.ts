@@ -66,6 +66,8 @@ export type TripRow = {
   /** Moment window, minutes from midnight in the trip's time zone. */
   moment_window_start: number;
   moment_window_end: number;
+  /** First trip-local day the moment config applies to (YYYY-MM-DD); null = no restriction. */
+  moment_from_day: string | null;
   created_by_user_id: string | null;
 };
 
