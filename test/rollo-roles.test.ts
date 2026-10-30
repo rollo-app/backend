@@ -111,17 +111,20 @@ describe("admins and the creator", () => {
     expect((await del(beto.memberId, trip.adminToken)).status).toBe(204);
   });
 
-  it("an admin edits only the name", async () => {
+  it("an admin edits dates, quota and moment but not the private rollo", async () => {
     const { trip, ana, promote } = await setup();
     await promote(ana.memberId);
     const patch = (token: string, body: unknown) => api("PATCH", `/trips/${trip.tripId}`, { token, body });
     expect((await patch(ana.token, { name: "Nuevo" })).status).toBe(200);
-    const denied = await patch(ana.token, { name: "X", revealAt: Date.now() + 40 * DAY });
+    const edited = await patch(ana.token, { name: "Otro", revealAt: Date.now() + 40 * DAY });
+    expect(edited.status).toBe(200);
+    const denied = await patch(ana.token, { name: "X", featuringDisabled: true });
     expect(denied.status).toBe(403);
     expect(denied.body.error).toBe(CREATOR_ONLY);
     const after = await api("GET", `/trips/${trip.tripId}`, { token: trip.adminToken });
-    expect(after.body.trip.name).toBe("Nuevo");
-    expect((await patch(trip.adminToken, { revealAt: Date.now() + 40 * DAY })).status).toBe(200);
+    expect(after.body.trip.name).toBe("Otro");
+    expect(after.body.trip.featuringDisabled).toBe(false);
+    expect((await patch(trip.adminToken, { revealAt: Date.now() + 41 * DAY })).status).toBe(200);
   });
 
   it("only the creator reveals early and toggles the private rollo", async () => {

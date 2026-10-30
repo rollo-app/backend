@@ -65,14 +65,14 @@ export const updateTripRoute = createRoute({
   path: "/{tripId}",
   tags,
   summary: "Edit the trip (admin)",
-  description: "Any admin can rename the rollo (`name`). Everything else (dates, limits, private rollo) is only for the creator: 403 without applying anything if the body has more than `name`.",
+  description: "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateTripSchema } }, required: true },
   },
-  responses: { 200: json(TripResponseSchema, "Trip updated"), ...errors(400, 401, 403) },
+  responses: { 200: json(TripResponseSchema, "Trip updated"), ...errors(400, 401, 403, 409) },
 });
 
 export const deleteTripRoute = createRoute({

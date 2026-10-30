@@ -125,3 +125,41 @@ describe("limits are attributed to the creator and are atomic", () => {
     expect(members!.n).toBe(2);
   });
 });
+
+describe("caps on photos and duration", () => {
+  async function exemptUser() {
+    const a = await signUp();
+    await env.DB.prepare("UPDATE users SET unlimited_rollos = 1 WHERE id = ?").bind(a.userId).run();
+    return a;
+  }
+  const post = (token: string, extra: object) => api("POST", "/trips", { token, body: { ...body(), ...extra } });
+
+  it("caps dailyPhotoLimit at 30 on create", async () => {
+    const a = await exemptUser();
+    expect((await post(a.token, { dailyPhotoLimit: 31 })).status).toBe(400);
+    expect((await post(a.token, { dailyPhotoLimit: 30 })).status).toBe(201);
+  });
+
+  it("caps totalPhotoLimit at 200 on create", async () => {
+    const a = await exemptUser();
+    expect((await post(a.token, { photoLimitMode: "total", totalPhotoLimit: 201 })).status).toBe(400);
+    expect((await post(a.token, { photoLimitMode: "total", totalPhotoLimit: 200 })).status).toBe(201);
+  });
+
+  it("caps the duration at 31 days on create", async () => {
+    const a = await exemptUser();
+    const startsAt = Date.now() + 3600_000;
+    const at = (endsAt: number) => post(a.token, { startsAt, endsAt, revealAt: endsAt });
+    const tooLong = await at(startsAt + 31 * DAY + 1);
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.error).toBe("El rollo puede durar hasta 31 días");
+    expect((await at(startsAt + 31 * DAY)).status).toBe(201);
+  });
+
+  it("caps the photo limits at 30 and 200 on update", async () => {
+    const { tripId, adminToken } = await newTrip();
+    const patch = (b: object) => api("PATCH", `/trips/${tripId}`, { token: adminToken, body: b });
+    expect((await patch({ dailyPhotoLimit: 31 })).status).toBe(400);
+    expect((await patch({ totalPhotoLimit: 201 })).status).toBe(400);
+  });
+});

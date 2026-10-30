@@ -1,8 +1,10 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { DAY, HOUR, api, createTrip, join, joinAs, newTrip, signUp } from "./helpers";
+import { deleteUntakenMomentsAfter } from "../src/modules/moments/moments.repository";
+import { localDate } from "../src/lib/util";
+import { DAY, HOUR, TZ, api, createTrip, join, joinAs, newTrip, signUp } from "./helpers";
 
-type Moment = { day: string; notifyAt: number };
+type Moment = { day: string; notifyAt: number; mode?: string };
 type MyMoments = { trips: { tripId: string; tripName: string; momentMode: string; moments: Moment[] }[] };
 
 const getAll = (token: string) => api<MyMoments>("GET", "/me/moments", { token });
@@ -92,5 +94,60 @@ describe("GET /me/moments", () => {
     expect((await getAll(removed.token)).body.trips).toEqual([]);
     expect((await getAll(fx.adminToken)).body.trips).toHaveLength(1);
     void join;
+  });
+
+  it("stores the trip's mode in each drawn row and returns it", async () => {
+    const fx = await newTrip({ momentMode: "photo_selfie" });
+    const res = await getAll(fx.adminToken);
+    const moments = res.body.trips[0]!.moments;
+    expect(moments.length).toBeGreaterThan(0);
+    expect(moments.every((m) => m.mode === "photo_selfie")).toBe(true);
+    const { results } = await env.DB.prepare("SELECT mode FROM trip_moments WHERE trip_id = ? AND user_id = ?")
+      .bind(fx.tripId, fx.adminUserId)
+      .all<{ mode: string | null }>();
+    expect(results.every((r) => r.mode === "photo_selfie")).toBe(true);
+  });
+
+  it("keeps today's open moment after the trip turns the moment off, until its window closes", async () => {
+    const fx = await newTrip({ momentMode: "photo_selfie" });
+    await getAll(fx.adminToken);
+    // Whatever the time of day (today's draw may or may not exist yet), set today's row explicitly: opens in 5 minutes.
+    const todayDay = localDate(Date.now(), TZ);
+    const notifyAt = Date.now() + 5 * 60_000;
+    await env.DB.prepare("DELETE FROM trip_moments WHERE trip_id = ? AND user_id = ? AND day = ?").bind(fx.tripId, fx.adminUserId, todayDay).run();
+    await env.DB.prepare("INSERT INTO trip_moments (trip_id, user_id, day, notify_at, created_at, mode) VALUES (?, ?, ?, ?, ?, 'photo_selfie')")
+      .bind(fx.tripId, fx.adminUserId, todayDay, notifyAt, Date.now())
+      .run();
+    const today = { day: todayDay, notifyAt, mode: "photo_selfie" };
+    await env.DB.prepare("UPDATE trips SET moment_mode = 'off' WHERE id = ?").bind(fx.tripId).run();
+    const rows = () =>
+      env.DB.prepare("SELECT day FROM trip_moments WHERE trip_id = ? AND user_id = ?").bind(fx.tripId, fx.adminUserId).all<{ day: string }>();
+    const drawn = (await rows()).results.length;
+
+    const open = await getAll(fx.adminToken);
+    expect(open.body.trips).toHaveLength(1);
+    expect(open.body.trips[0]!.momentMode).toBe("photo_selfie");
+    expect(open.body.trips[0]!.moments).toEqual([today]);
+    expect((await rows()).results.length).toBe(drawn);
+
+    await env.DB.prepare("UPDATE trip_moments SET notify_at = ? WHERE trip_id = ? AND user_id = ? AND day = ?")
+      .bind(Date.now() - 16 * 60_000, fx.tripId, fx.adminUserId, today.day)
+      .run();
+    expect((await getAll(fx.adminToken)).body.trips).toEqual([]);
+    expect((await rows()).results.length).toBe(drawn);
+  });
+
+  it("deleteUntakenMomentsAfter removes later untaken rows and keeps today's and taken ones", async () => {
+    const fx = await newTrip({ momentMode: "photo" });
+    const days = ["2027-01-10", "2027-01-11", "2027-01-12", "2027-01-13"];
+    for (const day of days) {
+      await env.DB.prepare("INSERT INTO trip_moments (trip_id, user_id, day, notify_at, created_at) VALUES (?, ?, ?, 1, 1)")
+        .bind(fx.tripId, fx.adminUserId, day)
+        .run();
+    }
+    await env.DB.prepare("UPDATE trip_moments SET media_id = 'm' WHERE trip_id = ? AND day = '2027-01-12'").bind(fx.tripId).run();
+    await deleteUntakenMomentsAfter(env.DB, fx.tripId, "2027-01-10").run();
+    const { results } = await env.DB.prepare("SELECT day FROM trip_moments WHERE trip_id = ? ORDER BY day").bind(fx.tripId).all<{ day: string }>();
+    expect(results.map((r) => r.day)).toEqual(["2027-01-10", "2027-01-12"]);
   });
 });

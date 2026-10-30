@@ -12,10 +12,10 @@ async function fixture(overrides: Record<string, unknown> = {}) {
 }
 
 /** Inserts the member's moment row for the day of `notifyAt` (what GET /moments would have drawn). */
-async function seedMoment(tripId: string, userId: string, notifyAt: number) {
+async function seedMoment(tripId: string, userId: string, notifyAt: number, mode: string | null = null) {
   const day = localDate(notifyAt, TZ);
-  await env.DB.prepare("INSERT INTO trip_moments (trip_id, user_id, day, notify_at, created_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(tripId, userId, day, notifyAt, Date.now())
+  await env.DB.prepare("INSERT INTO trip_moments (trip_id, user_id, day, notify_at, created_at, mode) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(tripId, userId, day, notifyAt, Date.now(), mode)
     .run();
   return day;
 }
@@ -254,7 +254,7 @@ describe("moment mode and pairing guards", () => {
   it("400s momentDay on a trip with momentMode off, and a selfie unless the mode is photo_selfie", async () => {
     const off = await fixture({ momentMode: "off" });
     const notifyAt = Date.now() - 2 * MINUTE;
-    const day = await seedMoment(off.tripId, off.adminUserId, notifyAt);
+    const day = localDate(notifyAt, TZ); // no row for it: an off trip has nothing to take
     expect((await post(off.tripId, off.adminToken, photoBody({ momentDay: day, takenAt: notifyAt + MINUTE }))).status).toBe(400);
     expect((await post(off.tripId, off.adminToken, photoBody({ pairedMediaId: crypto.randomUUID() }))).status).toBe(400);
 
@@ -277,5 +277,47 @@ describe("moment mode and pairing guards", () => {
     await post(fx.tripId, fx.adminToken, stray);
     await env.DB.prepare("UPDATE media SET moment_day = ? WHERE id = ?").bind(day, stray.id).run();
     expect((await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: stray.id }))).status).toBe(400);
+  });
+});
+
+describe("moment uploads after the rollo's config changed", () => {
+  const setMode = (tripId: string, mode: string) => env.DB.prepare("UPDATE trips SET moment_mode = ? WHERE id = ?").bind(mode, tripId).run();
+
+  it("accepts the main photo and the selfie of a row drawn with photo_selfie after the moment was turned off", async () => {
+    const fx = await fixture();
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(fx.tripId, fx.adminUserId, notifyAt, "photo_selfie");
+    await setMode(fx.tripId, "off");
+    const main = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    expect((await post(fx.tripId, fx.adminToken, main)).status).toBe(201);
+    expect((await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: main.id }))).status).toBe(201);
+  });
+
+  it("accepts the selfie when the trip switched to photo after the row was drawn with photo_selfie", async () => {
+    const fx = await fixture();
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(fx.tripId, fx.adminUserId, notifyAt, "photo_selfie");
+    const main = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    expect((await post(fx.tripId, fx.adminToken, main)).status).toBe(201);
+    await setMode(fx.tripId, "photo");
+    expect((await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: main.id }))).status).toBe(201);
+  });
+
+  it("rejects the selfie of a row drawn with photo even if the trip later allows selfies", async () => {
+    const fx = await fixture();
+    const notifyAt = Date.now() - 2 * MINUTE;
+    const day = await seedMoment(fx.tripId, fx.adminUserId, notifyAt, "photo");
+    const main = photoBody({ momentDay: day, takenAt: notifyAt + MINUTE });
+    expect((await post(fx.tripId, fx.adminToken, main)).status).toBe(201);
+    const res = await post(fx.tripId, fx.adminToken, photoBody({ pairedMediaId: main.id }));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Este rollo no admite selfie del momento");
+  });
+
+  it("still 400s a moment photo when the trip is off and there is no row", async () => {
+    const fx = await fixture({ momentMode: "off" });
+    const res = await post(fx.tripId, fx.adminToken, photoBody({ momentDay: localDate(Date.now(), TZ) }));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Este rollo no tiene momento del día");
   });
 });
