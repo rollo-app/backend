@@ -116,10 +116,40 @@ describe("PATCH /trips/:id while running", () => {
     const tomorrow = localDate(now() + DAY, TZ);
     const day3 = localDate(now() + 3 * DAY, TZ);
     await seedMoment(fx.tripId, fx.adminUserId, today, now() + HOUR);
-    await seedMoment(fx.tripId, fx.adminUserId, tomorrow, now() + DAY);
+    await seedMoment(fx.tripId, fx.adminUserId, tomorrow, now() + DAY - 2 * HOUR);
     await seedMoment(fx.tripId, fx.adminUserId, day3, now() + 3 * DAY);
     expect((await patch({ endsAt: now() + DAY })).status).toBe(200);
     expect(await momentDays(fx.tripId)).toEqual([today, tomorrow]);
+  });
+
+  it("deletes tomorrow's untaken moment when the end moves to tomorrow before its drawn time", async () => {
+    const { fx, patch } = await setup(active(), { momentMode: "photo" });
+    const today = localDate(now(), TZ);
+    const tomorrow = localDate(now() + DAY, TZ);
+    await seedMoment(fx.tripId, fx.adminUserId, today, now() + HOUR);
+    await seedMoment(fx.tripId, fx.adminUserId, tomorrow, now() + DAY + 5 * HOUR);
+    expect((await patch({ endsAt: now() + DAY })).status).toBe(200);
+    expect(await momentDays(fx.tripId)).toEqual([today]);
+  });
+
+  it("keeps tomorrow's moment when the new end leaves room for its 15 minutes", async () => {
+    const { fx, patch } = await setup(active(), { momentMode: "photo" });
+    const today = localDate(now(), TZ);
+    const tomorrow = localDate(now() + DAY, TZ);
+    await seedMoment(fx.tripId, fx.adminUserId, today, now() + HOUR);
+    await seedMoment(fx.tripId, fx.adminUserId, tomorrow, now() + DAY - 2 * HOUR);
+    expect((await patch({ endsAt: now() + DAY })).status).toBe(200);
+    expect(await momentDays(fx.tripId)).toEqual([today, tomorrow]);
+  });
+
+  it("re-draws everything from tomorrow when the end and the window change together", async () => {
+    const { fx, patch } = await setup(active(), { momentMode: "photo" });
+    const today = localDate(now(), TZ);
+    const tomorrow = localDate(now() + DAY, TZ);
+    await seedMoment(fx.tripId, fx.adminUserId, today, now() + HOUR);
+    await seedMoment(fx.tripId, fx.adminUserId, tomorrow, now() + DAY - 2 * HOUR);
+    expect((await patch({ endsAt: now() + DAY, momentWindowStart: 600 })).status).toBe(200);
+    expect(await momentDays(fx.tripId)).toEqual([today]);
   });
 
   it("deletes nothing when only the daily quota changes", async () => {

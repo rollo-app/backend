@@ -231,6 +231,8 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
     const lastDay = startChanged || momentChanged ? today : localDate(next.ends_at, trip.timezone);
     statements.push(deleteUntakenMomentsAfter(db, trip.id, lastDay < today ? today : lastDay));
     statements.push(deleteUntakenMomentsOn(db, trip.id, today, stage === "upcoming" ? null : next.ends_at));
+    // A new last day in the future keeps its row only if the 15 minutes fit before the new end.
+    if (lastDay > today) statements.push(deleteUntakenMomentsOn(db, trip.id, lastDay, next.ends_at));
   }
   await db.batch(statements);
 
