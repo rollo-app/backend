@@ -46,7 +46,7 @@ describe("POST /trips", () => {
     const post = (extra: object) => api("POST", "/trips", { token, body: { ...tripBody(), ...extra } });
     expect((await post({ photoLimitMode: "total" })).status).toBe(400);
     expect((await post({ photoLimitMode: "total", totalPhotoLimit: 0 })).status).toBe(400);
-    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 501 })).status).toBe(400);
+    expect((await post({ photoLimitMode: "total", totalPhotoLimit: 201 })).status).toBe(400);
   });
 
   it("ignores totalPhotoLimit in daily mode", async () => {

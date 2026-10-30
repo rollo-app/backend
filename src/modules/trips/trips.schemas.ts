@@ -2,6 +2,11 @@ import { z } from "@hono/zod-openapi";
 import { isValidTimeZone } from "../../lib/util";
 import { epochMs, pathParam, PAST_TOLERANCE_MS } from "../../schemas";
 
+export const MAX_DAILY_PHOTOS = 30;
+export const MAX_TOTAL_PHOTOS = 200;
+export const MAX_TRIP_DURATION_MS = 31 * 86_400_000;
+export const TRIP_TOO_LONG = "El rollo puede durar hasta 31 días";
+
 export const CreateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).openapi({ example: "Viaje al sur" }),
@@ -12,11 +17,11 @@ export const CreateTripSchema = z
     startsAt: epochMs("Trip start"),
     endsAt: epochMs("Trip end; must be after startsAt"),
     revealAt: epochMs("When the roll is revealed; must be >= endsAt"),
-    dailyPhotoLimit: z.number().int().min(1).max(100).default(10),
+    dailyPhotoLimit: z.number().int().min(1).max(MAX_DAILY_PHOTOS, "Hasta 30 fotos por día").default(10),
     dailyVideoLimit: z.number().int().min(0).max(20).default(0).openapi({ description: "Legacy: rollos have no videos, omit it" }),
     featuringDisabled: z.boolean().default(false).openapi({ description: "Private rollo: nobody can feature its photos on a profile, not even their author" }),
     photoLimitMode: z.enum(["daily", "total"]).default("daily"),
-    totalPhotoLimit: z.number().int().min(1).max(500).optional().openapi({
+    totalPhotoLimit: z.number().int().min(1).max(MAX_TOTAL_PHOTOS, "Hasta 200 fotos en todo el rollo").optional().openapi({
       description: "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise",
     }),
     momentMode: z.enum(["off", "photo", "photo_selfie"]).default("off").openapi({
@@ -39,6 +44,7 @@ export const CreateTripSchema = z
   })
   .refine((d) => d.startsAt >= Date.now() - PAST_TOLERANCE_MS, { message: "El inicio no puede ser en el pasado", path: ["startsAt"] })
   .refine((d) => d.endsAt > d.startsAt, { message: "El rollo tiene que terminar después de empezar", path: ["endsAt"] })
+  .refine((d) => d.endsAt - d.startsAt <= MAX_TRIP_DURATION_MS, { message: TRIP_TOO_LONG, path: ["endsAt"] })
   .refine((d) => d.revealAt >= d.endsAt, { message: "El revelado no puede ser antes del fin", path: ["revealAt"] })
   .openapi("CreateTripRequest");
 
@@ -53,12 +59,12 @@ export const UpdateTripSchema = z
     name: z.string().trim().min(1).max(60).optional(),
     endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt and <= the resulting revealAt" }),
     revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),
-    dailyPhotoLimit: z.number().int().min(1).max(100).optional(),
+    dailyPhotoLimit: z.number().int().min(1).max(MAX_DAILY_PHOTOS, "Hasta 30 fotos por día").optional(),
     dailyVideoLimit: z.number().int().min(0).max(20).optional(),
     featuringDisabled: z.boolean().optional().openapi({
       description: "Private rollo. Turning it on removes every photo of the rollo from every profile; turning it off restores nothing",
     }),
-    totalPhotoLimit: z.number().int().min(1).max(500).optional().openapi({ description: "Only for rollos in total mode" }),
+    totalPhotoLimit: z.number().int().min(1).max(MAX_TOTAL_PHOTOS, "Hasta 200 fotos en todo el rollo").optional().openapi({ description: "Only for rollos in total mode" }),
   })
   .openapi("UpdateTripRequest");
 

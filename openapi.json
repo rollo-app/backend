@@ -1303,7 +1303,7 @@
           "dailyPhotoLimit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100,
+            "maximum": 30,
             "default": 10
           },
           "dailyVideoLimit": {
@@ -1329,7 +1329,7 @@
           "totalPhotoLimit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 500,
+            "maximum": 200,
             "description": "Photos per person in the whole rollo; required when photoLimitMode is total, ignored otherwise"
           },
           "momentMode": {
@@ -1461,7 +1461,7 @@
           "dailyPhotoLimit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 30
           },
           "dailyVideoLimit": {
             "type": "integer",
@@ -1475,7 +1475,7 @@
           "totalPhotoLimit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 500,
+            "maximum": 200,
             "description": "Only for rollos in total mode"
           }
         }
