@@ -28,8 +28,8 @@ export async function getMyMoments(
   userId: string,
   now: number,
   random: () => number = secureRandom,
-): Promise<{ day: string; notifyAt: number }[]> {
-  if (trip.moment_mode === "off" || isRevealed(trip, now) || now >= trip.ends_at) return [];
+): Promise<{ day: string; notifyAt: number; mode?: "photo" | "photo_selfie" }[]> {
+  if (isRevealed(trip, now) || now >= trip.ends_at) return [];
   if (!(await getNotificationSettings(db, [userId])).get(userId)!.dailyMoment) return [];
 
   const today = localDate(now, trip.timezone);
@@ -43,21 +43,26 @@ export async function getMyMoments(
     // Today is never drawn in the past: it starts a minute from now, and a window under the minimum is dropped.
     const window = full && day === today ? { from: Math.max(full.from, now + 60_000), to: full.to } : full;
     if (window && window.to - window.from < MIN_DAY_WINDOW_MS) return [];
-    return window ? [{ tripId: trip.id, userId, day, notifyAt: drawNotifyAt(window, random), createdAt: now }] : [];
+    return window ? [{ tripId: trip.id, userId, day, notifyAt: drawNotifyAt(window, random), createdAt: now, mode: trip.moment_mode }] : [];
   });
-  await insertMomentsIgnoringExisting(db, fresh);
+  // A trip with the moment off draws nothing new; the rows already drawn (today's) stay takeable.
+  if (trip.moment_mode !== "off") await insertMomentsIgnoringExisting(db, fresh);
 
   const rows = await listUserMoments(db, trip.id, userId);
   return rows
-    .filter((r) => r.day >= today && r.notify_at + MOMENT_WINDOW_MS > now)
-    .map((r) => ({ day: r.day, notifyAt: r.notify_at }));
+    // With the moment off only today's already drawn row is still takeable.
+    .filter((r) => (trip.moment_mode === "off" ? r.day === today : r.day >= today) && r.notify_at + MOMENT_WINDOW_MS > now)
+    .flatMap((r) => {
+      const mode = (r.mode ?? trip.moment_mode) as "photo" | "photo_selfie" | "off";
+      return [{ day: r.day, notifyAt: r.notify_at, ...(mode === "off" ? {} : { mode }) }];
+    });
 }
 
 export type MyTripMoments = {
   tripId: string;
   tripName: string;
   momentMode: "photo" | "photo_selfie";
-  moments: { day: string; notifyAt: number }[];
+  moments: { day: string; notifyAt: number; mode?: "photo" | "photo_selfie" }[];
 };
 
 /**
@@ -73,12 +78,12 @@ export async function getAllMyMoments(
   const trips = await listMomentTrips(db, userId, now, MOMENT_PREFETCH_MS);
   const out: MyTripMoments[] = [];
   for (const trip of trips) {
-    out.push({
-      tripId: trip.id,
-      tripName: trip.name,
-      momentMode: trip.moment_mode as "photo" | "photo_selfie",
-      moments: await getMyMoments(db, trip, userId, now, random),
-    });
+    const moments = await getMyMoments(db, trip, userId, now, random);
+    // The query lets an off trip through on any open row (it can't know the trip's local day): drop it when nothing is takeable today.
+    if (trip.moment_mode === "off" && moments.length === 0) continue;
+    // With the moment off, the trip only shows because of a row drawn earlier: report that row's mode.
+    const momentMode = trip.moment_mode === "off" ? (moments[0]?.mode ?? "photo") : (trip.moment_mode as "photo" | "photo_selfie");
+    out.push({ tripId: trip.id, tripName: trip.name, momentMode, moments });
   }
   return out;
 }
@@ -106,9 +111,10 @@ export type MomentTarget = { day: string; notifyAt: number; pairedMediaId: strin
  * must pair with the member's own main moment photo of this rollo (400) and inherits its day.
  */
 export async function resolveMoment(db: D1Database, trip: TripRow, member: MemberRow, input: RegisterMediaInput): Promise<MomentTarget | null> {
-  if (input.momentDay != null && trip.moment_mode === "off") throw badRequest("Este rollo no tiene momento del día");
+  // A moment already drawn survives the trip turning the moment off or changing its mode: the row decides.
+  const existing = input.momentDay != null ? await findMoment(db, trip.id, member.user_id, input.momentDay) : null;
+  if (input.momentDay != null && trip.moment_mode === "off" && !existing) throw badRequest("Este rollo no tiene momento del día");
   if (input.pairedMediaId) {
-    if (trip.moment_mode !== "photo_selfie") throw badRequest("Este rollo no admite selfie del momento");
     const main = await findMediaById(db, input.pairedMediaId);
     const valid =
       main !== null &&
@@ -120,6 +126,8 @@ export async function resolveMoment(db: D1Database, trip: TripRow, member: Membe
     if (!valid || (input.momentDay != null && input.momentDay !== main.momentDay)) {
       throw badRequest("La foto del momento no corresponde");
     }
+    const mainRow = await findMoment(db, trip.id, member.user_id, main.momentDay!);
+    if ((mainRow?.mode ?? trip.moment_mode) !== "photo_selfie") throw badRequest("Este rollo no admite selfie del momento");
     const slots = await findMomentSlots(db, trip.id, member.user_id, main.momentDay!);
     if (!slots) throw badRequest("La foto del momento no corresponde");
     if (slots.media_id !== main.id) throw badRequest("La foto del momento no corresponde");
@@ -128,7 +136,7 @@ export async function resolveMoment(db: D1Database, trip: TripRow, member: Membe
   }
   if (input.momentDay == null) return null;
 
-  const row = await findMoment(db, trip.id, member.user_id, input.momentDay);
+  const row = existing;
   if (!row) throw conflict("No tenés un momento ese día");
   const slots = await findMomentSlots(db, trip.id, member.user_id, input.momentDay);
   if (slots?.media_id != null) throw conflict("Este momento ya tiene foto");

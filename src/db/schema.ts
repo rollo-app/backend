@@ -307,6 +307,7 @@ export const tripMoments = sqliteTable(
     selfieMediaId: text("selfie_media_id"),
     takenAt: integer("taken_at"),
     inWindow: integer("in_window"),
+    mode: text("mode"),
   },
   (t) => [primaryKey({ columns: [t.tripId, t.userId, t.day] })],
 );

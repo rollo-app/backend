@@ -4,6 +4,10 @@ export const MomentSchema = z
   .object({
     day: z.string().openapi({ description: "Local date of the trip (YYYY-MM-DD)", example: "2027-01-12" }),
     notifyAt: z.number().int().openapi({ description: "Epoch ms when the moment starts; the user has 15 minutes from then" }),
+    mode: z
+      .enum(["photo", "photo_selfie"])
+      .optional()
+      .openapi({ description: "How this moment is taken, fixed when it was drawn; later changes to the rollo do not affect it" }),
   })
   .openapi("Moment");
 

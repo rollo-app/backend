@@ -332,6 +332,14 @@
           "notifyAt": {
             "type": "integer",
             "description": "Epoch ms when the moment starts; the user has 15 minutes from then"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "photo_selfie"
+            ],
+            "description": "How this moment is taken, fixed when it was drawn; later changes to the rollo do not affect it"
           }
         },
         "required": [
