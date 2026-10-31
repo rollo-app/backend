@@ -16,7 +16,8 @@
     "seed": "tsx scripts/seed-with-server.ts",
     "seed:only": "tsx scripts/seed.ts",
     "db:check-schema": "tsx scripts/check-schema.ts",
-    "email:preview": "tsx scripts/email-preview.ts"
+    "email:preview": "tsx scripts/email-preview.ts",
+    "review:rollo": "tsx scripts/review-rollo.ts"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",

@@ -322,7 +322,7 @@ destacadas, "me gusta", notificaciones push con cron, moderación, backoffice (r
 - Mail: dominio `juanifraga.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
   DMARC `p=none` en `_dmarc`), DNS en Cloudflare. Plan gratis: 100 mails por día y 3.000 por mes.
 - Secrets de moderación: `ADMIN_TOKEN` (habilita los dos `DELETE /admin/*` y el acceso por token; sin él esos `DELETE` dan 404, y las rutas de lectura y `PUT /admin/degraded-mode` quedan solo para la sesión de un superadmin) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@juanifraga.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
-- Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
+- `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review, @appreviewer) están cargados. Su contenido de prueba: rollo revelado "Budapest" con fotos de Juani, creado con `npm run review:rollo -- --photos <carpeta> --remote` (`scripts/review-rollo.ts`: escribe directo a D1 y R2, lee fecha y GPS del EXIF, marca el rollo como avisado para que el cron no mande push; probar antes con `--dry-run`).
 
 Para deployar una versión nueva, con `main` al día:
 
