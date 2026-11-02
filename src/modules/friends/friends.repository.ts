@@ -78,7 +78,7 @@ export async function consumeClaim(db: D1Database, claimHash: string, now: numbe
 // ---------- Friendships ----------
 
 export async function findUser(db: D1Database, id: string): Promise<PublicFriendRow | null> {
-  return db.prepare("SELECT id, name, username, avatar_key, bio FROM users WHERE id = ?").bind(id).first<PublicFriendRow>();
+  return db.prepare("SELECT id, name, username, avatar_key, bio FROM users WHERE id = ? AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL").bind(id).first<PublicFriendRow>();
 }
 
 export function insertFriendship(db: D1Database, a: string, b: string, now: number): D1PreparedStatement {
@@ -101,7 +101,8 @@ export async function listFriends(db: D1Database, userId: string): Promise<Publi
     .prepare(
       `SELECT u.id, u.name, u.username, u.avatar_key, u.bio
      FROM users u
-     WHERE u.id IN (SELECT user_b FROM friendships WHERE user_a = ?1 UNION SELECT user_a FROM friendships WHERE user_b = ?1)
+     WHERE u.name IS NOT NULL AND TRIM(u.name) <> '' AND u.username IS NOT NULL
+       AND u.id IN (SELECT user_b FROM friendships WHERE user_a = ?1 UNION SELECT user_a FROM friendships WHERE user_b = ?1)
      ORDER BY u.name COLLATE NOCASE, u.id`,
     )
     .bind(userId)

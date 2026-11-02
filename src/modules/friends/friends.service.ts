@@ -111,7 +111,9 @@ export async function redeem(
   // A block in either direction fails exactly like an invalid link.
   if (creatorId !== me && (await isBlockedEitherWay(db, me, creatorId))) return failAttempt(db, keys);
 
-  const creator = (await repo.findUser(db, creatorId))!;
+  // An incomplete creator (an old account with no @) is invisible: the link fails like an invalid one.
+  const creator = await repo.findUser(db, creatorId);
+  if (!creator) return failAttempt(db, keys);
 
   let notify: AfterResponse = null;
   if (creatorId !== me) {
