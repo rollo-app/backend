@@ -6,7 +6,7 @@ import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedByOthersOfMember } from "../featured/featured.repository";
 import { blockedIdsFor } from "../blocks/blocks.service";
-import { areFriends } from "../friends/friends.service";
+import { areFriends, isCompleteUser } from "../friends/friends.service";
 import * as repo from "./trips.repository";
 
 // ---------- Membership ----------
@@ -91,7 +91,8 @@ export async function addFriendsToTrip(
       results.push({ userId, status: "already_member" });
       continue;
     }
-    if (!(await areFriends(env.DB, me.id, userId))) {
+    // A friend who lost their name or @ is hidden from friend lists, so they can't be added either.
+    if (!(await areFriends(env.DB, me.id, userId)) || !(await isCompleteUser(env.DB, userId))) {
       results.push({ userId, status: "unavailable" });
       continue;
     }

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { api, befriend, join, newTrip, signUp } from "./helpers";
+import { api, befriend, join, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 
 const clearUsername = (userId: string) => env.DB.prepare("UPDATE users SET username = NULL WHERE id = ?").bind(userId).run();
 
@@ -62,5 +62,19 @@ describe("incomplete accounts are invisible outside their rollos", () => {
     expect((await api("GET", `/users/${b.userId}/friends`, { token: a.token })).status).toBe(404);
     expect((await api("GET", `/users/${b.userId}/featured`, { token: a.token })).status).toBe(404);
     expect((await api("GET", `/featured/${b.userId}/${crypto.randomUUID()}/thumb`, { token: a.token })).status).toBe(404);
+  });
+
+  it("an incomplete account that featured your photo is not listed in featured-by", async () => {
+    const trip = await newTrip({ dailyPhotoLimit: 10 });
+    const fede = await joinAs(trip.code, "Fede");
+    const photo = await uploadMedia(trip.tripId, trip.adminToken);
+    await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken });
+    await befriend(trip.adminToken, fede.token);
+    expect((await api("PUT", `/me/featured/${photo}`, { token: fede.token })).status).toBe(204);
+    const before = await api("GET", "/me/featured-by", { token: trip.adminToken });
+    expect(before.body.total).toBe(1);
+    await clearUsername(fede.userId);
+    const after = await api("GET", "/me/featured-by", { token: trip.adminToken });
+    expect(after.body).toEqual({ items: [], nextCursor: null, total: 0 });
   });
 });

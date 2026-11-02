@@ -48,6 +48,11 @@ describe("complete profile required", () => {
       ["GET", "/me/moments"],
       ["GET", "/me/settings"],
       ["POST", "/friends/link"],
+      ["GET", "/me/featured-by"],
+      ["PUT", `/me/featured/${crypto.randomUUID()}`],
+      ["GET", `/trips/${crypto.randomUUID()}/feed`],
+      ["POST", `/media/${crypto.randomUUID()}/archive`],
+      ["POST", "/reports", { userId: other.userId }],
     ];
     for (const [method, path, body] of calls) {
       const res = await api(method, path, { token, body });

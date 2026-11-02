@@ -198,6 +198,7 @@ export type FeaturedByRow = {
 const FEATURED_BY_FROM = `
   ${VISIBLE_FROM} JOIN users fu ON fu.id = f.user_id
   WHERE ${VISIBLE_WHERE}
+    AND fu.name IS NOT NULL AND TRIM(fu.name) <> '' AND fu.username IS NOT NULL
     AND author.user_id = ? AND f.user_id != author.user_id
     AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = f.user_id AND b.blocked_id = author.user_id) OR (b.blocker_id = author.user_id AND b.blocked_id = f.user_id))
     AND (fu.profile_visibility = 'public'

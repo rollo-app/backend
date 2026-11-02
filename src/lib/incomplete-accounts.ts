@@ -24,5 +24,12 @@ export async function purgeIncompleteAccounts(env: Env, now = Date.now()): Promi
     )
     .bind(cutoff, BATCH)
     .all<UserRow>();
-  for (const user of results) await deleteAccount(env, user);
+  for (const user of results) {
+    try {
+      await deleteAccount(env, user);
+    } catch (err) {
+      // One broken account must not stall the whole purge.
+      console.error("purgeIncompleteAccounts: could not delete", user.id, err);
+    }
+  }
 }

@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as account from "../src/modules/account/account.service";
 import { purgeIncompleteAccounts } from "../src/lib/incomplete-accounts";
 import { befriend, DAY, join, newTrip, signUp } from "./helpers";
 
@@ -81,5 +82,24 @@ describe("purgeIncompleteAccounts", () => {
     await sessionAge(u.userId, 30);
     await purgeIncompleteAccounts(env);
     expect(await exists(u.userId)).toBe(true);
+  });
+
+  it("keeps purging when one deletion throws", async () => {
+    const a = await abandoned();
+    const b = await abandoned();
+    const real = account.deleteAccount;
+    const spy = vi.spyOn(account, "deleteAccount").mockImplementation(async (e, user) => {
+      if (user.id === a.userId) throw new Error("boom");
+      return real(e, user);
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await purgeIncompleteAccounts(env);
+    } finally {
+      spy.mockRestore();
+      err.mockRestore();
+    }
+    expect(await exists(a.userId)).toBe(true);
+    expect(await exists(b.userId)).toBe(false);
   });
 });

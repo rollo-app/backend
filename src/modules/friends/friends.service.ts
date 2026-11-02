@@ -163,3 +163,8 @@ export async function areFriends(db: D1Database, a: string, b: string): Promise<
   const [userA, userB] = pairKey(a, b);
   return repo.friendshipExists(db, userA, userB);
 }
+
+/** Whether the account has a name and an @username (incomplete accounts are hidden from social features). */
+export async function isCompleteUser(db: D1Database, id: string): Promise<boolean> {
+  return (await repo.findUser(db, id)) !== null;
+}
