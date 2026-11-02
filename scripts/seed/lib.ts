@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import sharp from "sharp";
 import { rgbaToThumbHash } from "thumbhash";
+import { nameSearchColumn } from "../../src/lib/search-text";
 import { NO_AVATAR, renderAvatar } from "./avatars";
 import { LIMITED_ROLLOS, NO_USERNAME, PUBLIC_PROFILES, SEED_BADGES, SEED_BIOS } from "./people";
 
@@ -89,11 +90,13 @@ export function ensureUser(name: string): Promise<string> {
       const now = Date.now();
       const [existing] = d1<{ id: string }>(`SELECT id FROM users WHERE email = ${sqlStr(email)}`);
       let userId = existing?.id;
+      const nameSearchValue = nameSearchColumn(name);
+      const nameSearch = nameSearchValue === null ? "NULL" : sqlStr(nameSearchValue);
       const username = NO_USERNAME.has(name) ? "NULL" : sqlStr(seedUsername(name));
-      if (userId) d1(`UPDATE users SET name = ${sqlStr(name)}, username = ${username} WHERE id = ${sqlStr(userId)}`);
+      if (userId) d1(`UPDATE users SET name = ${sqlStr(name)}, name_search = ${nameSearch}, username = ${username} WHERE id = ${sqlStr(userId)}`);
       else {
         userId = randomUUID();
-        d1(`INSERT INTO users (id, email, name, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${username}, ${now})`);
+        d1(`INSERT INTO users (id, email, name, name_search, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${nameSearch}, ${username}, ${now})`);
       }
       const badge = SEED_BADGES[name];
       d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"}, unlimited_rollos = ${LIMITED_ROLLOS.has(name) ? 0 : 1} WHERE id = ${sqlStr(userId)}`);

@@ -15,6 +15,7 @@
     "openapi": "tsx scripts/export-openapi.ts",
     "seed": "tsx scripts/seed-with-server.ts",
     "seed:only": "tsx scripts/seed.ts",
+    "db:backfill-name-search": "tsx scripts/backfill-name-search.ts",
     "db:check-schema": "tsx scripts/check-schema.ts",
     "email:preview": "tsx scripts/email-preview.ts"
   },
