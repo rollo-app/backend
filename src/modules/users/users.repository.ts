@@ -12,13 +12,13 @@ const friendIdsOf = (n: number) =>
 
 export async function findProfileOwner(db: D1Database, userId: string): Promise<ProfileOwnerRow | null> {
   return db
-    .prepare("SELECT id, name, username, avatar_key, bio, badge, profile_visibility FROM users WHERE id = ?")
+    .prepare("SELECT id, name, username, avatar_key, bio, badge, profile_visibility FROM users WHERE id = ? AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL")
     .bind(userId)
     .first<ProfileOwnerRow>();
 }
 
 export async function findVisibilityOwner(db: D1Database, userId: string): Promise<VisibilityOwnerRow | null> {
-  return db.prepare("SELECT id, profile_visibility FROM users WHERE id = ?").bind(userId).first<VisibilityOwnerRow>();
+  return db.prepare("SELECT id, profile_visibility FROM users WHERE id = ? AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL").bind(userId).first<VisibilityOwnerRow>();
 }
 
 export async function hasBlocked(db: D1Database, blockerId: string, blockedId: string): Promise<boolean> {
@@ -37,8 +37,8 @@ export async function hasReportedUser(db: D1Database, reporterId: string, target
 export async function friendCounts(db: D1Database, viewerId: string, ownerId: string): Promise<{ friendCount: number; mutualCount: number }> {
   const row = await db
     .prepare(
-      `SELECT (SELECT COUNT(*) FROM (${friendIdsOf(1)})) AS friendCount,
-              (SELECT COUNT(*) FROM (${friendIdsOf(1)}) WHERE user_b IN (${friendIdsOf(2)})) AS mutualCount`,
+      `SELECT (SELECT COUNT(*) FROM users c WHERE c.id IN (${friendIdsOf(1)}) AND c.name IS NOT NULL AND TRIM(c.name) <> '' AND c.username IS NOT NULL) AS friendCount,
+              (SELECT COUNT(*) FROM users c WHERE c.id IN (${friendIdsOf(1)}) AND c.id IN (${friendIdsOf(2)}) AND c.name IS NOT NULL AND TRIM(c.name) <> '' AND c.username IS NOT NULL) AS mutualCount`,
     )
     .bind(ownerId, viewerId)
     .first<{ friendCount: number; mutualCount: number }>();
@@ -51,7 +51,8 @@ export async function listFriendsOf(db: D1Database, ownerId: string, mutualWith?
     .prepare(
       `SELECT u.id, u.name, u.username, u.avatar_key
      FROM users u
-     WHERE u.id IN (${friendIdsOf(1)})${mutualWith !== undefined ? ` AND u.id IN (${friendIdsOf(2)})` : ""}
+     WHERE u.name IS NOT NULL AND TRIM(u.name) <> '' AND u.username IS NOT NULL
+       AND u.id IN (${friendIdsOf(1)})${mutualWith !== undefined ? ` AND u.id IN (${friendIdsOf(2)})` : ""}
      ORDER BY u.name COLLATE NOCASE, u.id`,
     )
     .bind(...(mutualWith !== undefined ? [ownerId, mutualWith] : [ownerId]))

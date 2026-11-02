@@ -142,7 +142,7 @@ export function deleteFeaturedOfTrip(db: D1Database, tripId: string): D1Prepared
 
 export function findProfileOwner(db: D1Database, userId: string): Promise<Pick<UserRow, "id" | "profile_visibility"> | null> {
   return db
-    .prepare("SELECT id, profile_visibility FROM users WHERE id = ?")
+    .prepare("SELECT id, profile_visibility FROM users WHERE id = ? AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL")
     .bind(userId)
     .first<Pick<UserRow, "id" | "profile_visibility">>();
 }
@@ -198,6 +198,7 @@ export type FeaturedByRow = {
 const FEATURED_BY_FROM = `
   ${VISIBLE_FROM} JOIN users fu ON fu.id = f.user_id
   WHERE ${VISIBLE_WHERE}
+    AND fu.name IS NOT NULL AND TRIM(fu.name) <> '' AND fu.username IS NOT NULL
     AND author.user_id = ? AND f.user_id != author.user_id
     AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = f.user_id AND b.blocked_id = author.user_id) OR (b.blocker_id = author.user_id AND b.blocked_id = f.user_id))
     AND (fu.profile_visibility = 'public'

@@ -111,7 +111,9 @@ export async function redeem(
   // A block in either direction fails exactly like an invalid link.
   if (creatorId !== me && (await isBlockedEitherWay(db, me, creatorId))) return failAttempt(db, keys);
 
-  const creator = (await repo.findUser(db, creatorId))!;
+  // An incomplete creator (an old account with no @) is invisible: the link fails like an invalid one.
+  const creator = await repo.findUser(db, creatorId);
+  if (!creator) return failAttempt(db, keys);
 
   let notify: AfterResponse = null;
   if (creatorId !== me) {
@@ -160,4 +162,9 @@ export async function areFriends(db: D1Database, a: string, b: string): Promise<
   if (a === b) return false;
   const [userA, userB] = pairKey(a, b);
   return repo.friendshipExists(db, userA, userB);
+}
+
+/** Whether the account has a name and an @username (incomplete accounts are hidden from social features). */
+export async function isCompleteUser(db: D1Database, id: string): Promise<boolean> {
+  return (await repo.findUser(db, id)) !== null;
 }

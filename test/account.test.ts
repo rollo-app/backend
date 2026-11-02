@@ -380,6 +380,7 @@ describe("DELETE /me", () => {
     expect(fresh.userId).not.toBe(old.userId);
     const me = await api("GET", "/me", { token: fresh.token });
     expect(me.body.name).toBeNull();
+    await api("PATCH", "/me", { token: fresh.token, body: { name: "Otra vez", username: "again_fresh" } });
     expect((await api("GET", "/me/trips", { token: fresh.token })).body.trips).toEqual([]);
   });
 

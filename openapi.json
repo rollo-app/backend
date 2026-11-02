@@ -2794,6 +2794,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2850,6 +2860,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2889,6 +2909,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2918,6 +2948,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -3219,6 +3259,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3357,6 +3407,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -3404,6 +3464,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -3586,6 +3656,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -3625,6 +3705,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -3757,6 +3847,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3813,6 +3913,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3842,6 +3952,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -3906,6 +4026,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -3944,6 +4074,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4007,6 +4147,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -4044,6 +4194,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4073,6 +4233,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4140,6 +4310,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -4179,6 +4359,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4238,6 +4428,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4362,6 +4562,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4421,6 +4631,16 @@
           },
           "409": {
             "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4524,6 +4744,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4573,6 +4803,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4630,6 +4870,16 @@
           },
           "410": {
             "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4721,6 +4971,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4770,6 +5030,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4856,6 +5126,16 @@
           },
           "409": {
             "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -4959,6 +5239,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -5009,6 +5299,16 @@
           },
           "409": {
             "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -5093,6 +5393,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -5160,6 +5470,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -5242,6 +5562,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -5363,6 +5693,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -5449,6 +5789,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -5507,6 +5857,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -5608,6 +5968,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -5696,6 +6066,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -5768,6 +6148,16 @@
           },
           "409": {
             "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -5854,6 +6244,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -5913,6 +6313,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -5963,6 +6373,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -6039,6 +6459,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -6069,6 +6499,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -6135,6 +6575,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -6240,6 +6690,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -6319,6 +6779,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -6379,6 +6849,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -6418,6 +6898,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -6495,6 +6985,16 @@
                 }
               }
             }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -6544,6 +7044,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -6626,6 +7136,16 @@
               }
             }
           },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Daily limit or rate limit reached",
             "content": {
@@ -6687,6 +7207,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {
@@ -6757,6 +7287,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {

@@ -90,8 +90,8 @@ describe("POST /trips", () => {
   it("requires the profile to have a name", async () => {
     const { token } = await signUp(undefined, null);
     const res = await api("POST", "/trips", { token, body: tripBody() });
-    expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: "Completá tu nombre en el perfil" });
+    expect(res.status).toBe(428);
+    expect(res.body).toEqual({ error: "Completá tu perfil" });
   });
 
   it("rejects an invalid time zone", async () => {
@@ -187,8 +187,8 @@ describe("POST /trips/join", () => {
     const { code } = await newTrip();
     const { token } = await signUp(undefined, null);
     const res = await api("POST", "/trips/join", { token, body: { code } });
-    expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: "Completá tu nombre en el perfil" });
+    expect(res.status).toBe(428);
+    expect(res.body).toEqual({ error: "Completá tu perfil" });
   });
 
   it("is idempotent: joining twice returns 200 with the same membership", async () => {

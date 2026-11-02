@@ -65,6 +65,26 @@ describe("addedToTrip", () => {
     expect(expo.sent.some((m) => m.to === adminToken)).toBe(false);
   });
 
+  it("answers unavailable, adds nobody and sends no push for a friend who lost their @", async () => {
+    const expo = mockExpo();
+    const t = await newTrip();
+    const cami = await signUp(undefined, "Cami");
+    await befriend(t.adminToken, cami.token);
+    await registerToken(cami.token);
+    await flushPendingPushes();
+    expo.sent.length = 0;
+    await env.DB.prepare("UPDATE users SET username = NULL WHERE id = ?").bind(cami.userId).run();
+
+    const res = await api("POST", `/trips/${t.tripId}/members`, { token: t.adminToken, body: { friendIds: [cami.userId] } });
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).toContain("unavailable");
+    await flushPendingPushes();
+
+    expect(expo.sent).toEqual([]);
+    const row = await env.DB.prepare("SELECT 1 FROM members WHERE trip_id = ? AND user_id = ?").bind(t.tripId, cami.userId).first();
+    expect(row).toBeNull();
+  });
+
   it("does not notify someone who was already a member or could not be added", async () => {
     const expo = mockExpo();
     const t = await newTrip();

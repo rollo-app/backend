@@ -26,6 +26,7 @@ const ERROR_DESCRIPTIONS: Record<number, string> = {
   404: "Not found",
   410: "The rollo was deleted",
   409: "Conflict with the current state",
+  428: "Profile incomplete: set a name and a username first",
   429: "Daily limit or rate limit reached",
   503: "Storage limit reached; new uploads are paused",
   502: "Upstream service failed",

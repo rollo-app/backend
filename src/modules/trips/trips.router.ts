@@ -27,7 +27,7 @@ export const createTripRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },
-  responses: { 201: json(TripCreatedSchema, "Trip created"), ...errors(400, 401, 409) },
+  responses: { 201: json(TripCreatedSchema, "Trip created"), ...errors(400, 401, 409, 428) },
 });
 
 export const joinTripRoute = createRoute({
@@ -44,7 +44,7 @@ export const joinTripRoute = createRoute({
   responses: {
     201: json(TripCreatedSchema, "Joined the trip"),
     200: json(TripCreatedSchema, "Already a member"),
-    ...errors(400, 401, 403, 404, 409),
+    ...errors(400, 401, 403, 404, 409, 428),
   },
 });
 
@@ -57,7 +57,7 @@ export const getTripRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
-  responses: { 200: json(TripDetailSchema, "Trip detail"), ...errors(401, 403) },
+  responses: { 200: json(TripDetailSchema, "Trip detail"), ...errors(401, 403, 428) },
 });
 
 export const updateTripRoute = createRoute({
@@ -72,7 +72,7 @@ export const updateTripRoute = createRoute({
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateTripSchema } }, required: true },
   },
-  responses: { 200: json(TripResponseSchema, "Trip updated"), ...errors(400, 401, 403, 409) },
+  responses: { 200: json(TripResponseSchema, "Trip updated"), ...errors(400, 401, 403, 409, 428) },
 });
 
 export const deleteTripRoute = createRoute({
@@ -86,7 +86,7 @@ export const deleteTripRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireCreator] as const,
   request: { params: TripParams },
-  responses: { 204: { description: "Rollo deleted" }, ...errors(401, 403, 410) },
+  responses: { 204: { description: "Rollo deleted" }, ...errors(401, 403, 410, 428) },
 });
 
 export const revealRoute = createRoute({
@@ -98,7 +98,7 @@ export const revealRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireCreator] as const,
   request: { params: TripParams },
-  responses: { 200: json(TripResponseSchema, "Roll revealed"), ...errors(401, 403) },
+  responses: { 200: json(TripResponseSchema, "Roll revealed"), ...errors(401, 403, 428) },
 });
 
 export const addMembersRoute = createRoute({
@@ -117,7 +117,7 @@ export const addMembersRoute = createRoute({
     params: TripParams,
     body: { content: { "application/json": { schema: AddMembersSchema } }, required: true },
   },
-  responses: { 200: json(AddMembersResponseSchema, "Result per friend"), ...errors(400, 401, 403, 409, 429) },
+  responses: { 200: json(AddMembersResponseSchema, "Result per friend"), ...errors(400, 401, 403, 409, 428, 429) },
 });
 
 export const leaveRoute = createRoute({
@@ -131,7 +131,7 @@ export const leaveRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
-  responses: { 204: { description: "You left the trip" }, ...errors(401, 403, 409) },
+  responses: { 204: { description: "You left the trip" }, ...errors(401, 403, 409, 428) },
 });
 
 export const updateMyMembershipRoute = createRoute({
@@ -149,7 +149,7 @@ export const updateMyMembershipRoute = createRoute({
     params: TripParams,
     body: { content: { "application/json": { schema: UpdateMyMembershipSchema } }, required: true },
   },
-  responses: { 200: json(MyMembershipSchema, "Updated"), ...errors(400, 401, 403, 409) },
+  responses: { 200: json(MyMembershipSchema, "Updated"), ...errors(400, 401, 403, 409, 428) },
 });
 
 export const removeMemberRoute = createRoute({
@@ -161,7 +161,7 @@ export const removeMemberRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: TripMemberParams },
-  responses: { 204: { description: "Member removed" }, ...errors(400, 401, 403, 404) },
+  responses: { 204: { description: "Member removed" }, ...errors(400, 401, 403, 404, 428) },
 });
 
 export const makeAdminRoute = createRoute({
@@ -173,7 +173,7 @@ export const makeAdminRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: TripMemberParams },
-  responses: { 200: json(MemberSchema, "The member, now admin"), ...errors(401, 403, 404) },
+  responses: { 200: json(MemberSchema, "The member, now admin"), ...errors(401, 403, 404, 428) },
 });
 
 export const removeAdminRoute = createRoute({
@@ -185,7 +185,7 @@ export const removeAdminRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireCreator] as const,
   request: { params: TripMemberParams },
-  responses: { 200: json(MemberSchema, "The member, now a regular member"), ...errors(400, 401, 403, 404) },
+  responses: { 200: json(MemberSchema, "The member, now a regular member"), ...errors(400, 401, 403, 404, 428) },
 });
 
 const trips = createApp();

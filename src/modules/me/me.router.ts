@@ -1,5 +1,5 @@
 import { createRoute } from "@hono/zod-openapi";
-import { requireUser } from "../../lib/auth";
+import { requireSession, requireUser } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { rateLimit } from "../../lib/rate-limit";
 import { UpdateProfileSchema, UserSchema } from "../../schemas";
@@ -21,7 +21,7 @@ export const getMeRoute = createRoute({
   tags,
   summary: "Your profile",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireSession] as const,
   responses: { 200: json(UserSchema, "Your profile"), ...errors(401) },
 });
 
@@ -36,7 +36,7 @@ export const updateMeRoute = createRoute({
     "The bio is trimmed, an empty one clears it (null), and it allows up to 150 characters and 3 lines (400 otherwise). " +
     "profileVisibility is \"friends\" (default) or \"public\"; any other value is a 400.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireSession] as const,
   request: { body: { content: { "application/json": { schema: UpdateProfileSchema } }, required: true } },
   responses: { 200: json(UserSchema, "Profile updated"), ...errors(400, 401, 409) },
 });
@@ -51,7 +51,7 @@ export const avatarRoute = createRoute({
     "503 when the storage limit is reached. A previous upload that was never completed is discarded. " +
     "Each call generates a new random file name, so the avatar URL changes when you replace it.",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  middleware: [requireSession, rateLimit("RL_EXPENSIVE")] as const,
   request: { body: { content: { "application/json": { schema: AvatarUploadRequestSchema } }, required: true } },
   responses: { 200: json(AvatarUploadSchema, "Upload URL"), ...errors(400, 401, 429, 503) },
 });
@@ -65,7 +65,7 @@ export const avatarCompleteRoute = createRoute({
     "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, " +
     "makes it your avatar and deletes the previous one. Otherwise the upload is discarded and the response is a 400.",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
+  middleware: [requireSession, rateLimit("RL_EXPENSIVE")] as const,
   responses: { 200: json(UserSchema, "Profile with the new avatar"), ...errors(400, 401, 429) },
 });
 
@@ -82,7 +82,7 @@ export const deleteMeRoute = createRoute({
     "Your reports and blocks (made and received), push tokens, settings and likes (yours, and the ones on your photos) are deleted too. Your friendships, friend links and claims, avatar, sessions and pending login codes are deleted too (your friends keep their rollos). " +
     "The same email can sign up again later as a brand-new user.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireSession] as const,
   responses: { 204: { description: "Account deleted" }, ...errors(401) },
 });
 
@@ -94,7 +94,7 @@ export const myTripsRoute = createRoute({
   description: "Rollos you are an active member of, most recent start first.",
   security: bearerAuth,
   middleware: [requireUser] as const,
-  responses: { 200: json(MyTripsSchema, "Your rollos"), ...errors(401) },
+  responses: { 200: json(MyTripsSchema, "Your rollos"), ...errors(401, 428) },
 });
 
 export const putPushTokenRoute = createRoute({
@@ -107,7 +107,7 @@ export const putPushTokenRoute = createRoute({
     "Idempotent: calling it again only refreshes when it was last seen. A token belongs to one account at a time: " +
     "if another account had it (same phone, another account), it moves to yours. 400 if it is not an Expo push token.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireSession] as const,
   request: { params: PushTokenParams },
   responses: { 204: { description: "Token registered" }, ...errors(400, 401) },
 });
@@ -119,7 +119,7 @@ export const deletePushTokenRoute = createRoute({
   summary: "Unregister a push token",
   description: "Stops sending pushes to this token for your account (call it when signing out). Idempotent; another account's token is left alone.",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireSession] as const,
   request: { params: PushTokenParams },
   responses: { 204: { description: "Token removed" }, ...errors(400, 401) },
 });
@@ -132,7 +132,7 @@ export const getSettingsRoute = createRoute({
   description: "Your notification preferences, one per kind of push. Every one is on by default.",
   security: bearerAuth,
   middleware: [requireUser] as const,
-  responses: { 200: json(UserSettingsSchema, "Your settings"), ...errors(401) },
+  responses: { 200: json(UserSettingsSchema, "Your settings"), ...errors(401, 428) },
 });
 
 export const updateSettingsRoute = createRoute({
@@ -146,7 +146,7 @@ export const updateSettingsRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: UpdateUserSettingsSchema } }, required: true } },
-  responses: { 200: json(UserSettingsSchema, "Settings updated"), ...errors(400, 401) },
+  responses: { 200: json(UserSettingsSchema, "Settings updated"), ...errors(400, 401, 428) },
 });
 
 const me = createApp();

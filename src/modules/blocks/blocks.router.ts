@@ -17,7 +17,7 @@ export const listRoute = createRoute({
   description: "Ordered by name.",
   security: bearerAuth,
   middleware: [requireUser] as const,
-  responses: { 200: json(BlocksSchema, "Blocked users"), ...errors(401) },
+  responses: { 200: json(BlocksSchema, "Blocked users"), ...errors(401, 428) },
 });
 
 // ---------- Block ----------
@@ -32,7 +32,7 @@ export const blockRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
-  responses: { 204: { description: "Blocked" }, ...errors(400, 401, 404, 429) },
+  responses: { 204: { description: "Blocked" }, ...errors(400, 401, 404, 428, 429) },
 });
 
 // ---------- Unblock ----------
@@ -46,7 +46,7 @@ export const unblockRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
-  responses: { 204: { description: "Unblocked" }, ...errors(401) },
+  responses: { 204: { description: "Unblocked" }, ...errors(401, 428) },
 });
 
 const blocks = createApp();
