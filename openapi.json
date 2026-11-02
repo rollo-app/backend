@@ -684,6 +684,67 @@
           "status"
         ]
       },
+      "UserSearch": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserSearchResult"
+            },
+            "description": "Up to 20 matches: exact username first, then most mutual friends, then by name"
+          }
+        },
+        "required": [
+          "users"
+        ]
+      },
+      "UserSearchResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User id"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cami"
+          },
+          "username": {
+            "type": "string",
+            "example": "cami",
+            "description": "Unique handle without the @"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mutualCount": {
+            "type": "integer",
+            "description": "How many of your friends are also this user's friends"
+          },
+          "friendRequest": {
+            "type": "string",
+            "enum": [
+              "none",
+              "sent",
+              "received"
+            ],
+            "description": "Pending friend request between you and this user: sent (you sent one, also after they rejected it), received (they sent you one you have not answered), none"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "avatarUrl",
+          "mutualCount",
+          "friendRequest"
+        ]
+      },
       "UserProfile": {
         "type": "object",
         "properties": {
@@ -3564,6 +3625,75 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/search": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Search users by @username or name",
+        "description": "Finds people to add as friends: the username starts with q, or the name or any word of it does (case and accents ignored). Never lists yourself, your friends, anyone with a block in either direction, or accounts without a username or a name. Order: exact username first, then most mutual friends, then by name. At most 20, no paging. 400 if q has fewer than 2 or more than 30 characters once trimmed and without the leading @. Limited per user (429).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "@cami",
+              "description": "What to look for: a username (with or without @) or the start of a name or of any word of it. Case and accents are ignored. 2 to 30 characters once trimmed and without the leading @; otherwise 400"
+            },
+            "required": true,
+            "description": "What to look for: a username (with or without @) or the start of a name or of any word of it. Case and accents are ignored. 2 to 30 characters once trimmed and without the leading @; otherwise 400",
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSearch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
             "content": {
               "application/json": {
                 "schema": {

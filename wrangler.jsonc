@@ -32,7 +32,9 @@
     // Per user: media registration/completion, avatar upload, likes, adding members.
     { "name": "RL_EXPENSIVE", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } },
     // Per user: file downloads (a gallery loads many thumbnails).
-    { "name": "RL_FILES", "namespace_id": "1004", "simple": { "limit": 300, "period": 60 } }
+    { "name": "RL_FILES", "namespace_id": "1004", "simple": { "limit": 300, "period": 60 } },
+    // Per user: user search.
+    { "name": "RL_SEARCH", "namespace_id": "1005", "simple": { "limit": 60, "period": 60 } }
   ],
 
   "vars": {

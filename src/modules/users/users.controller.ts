@@ -1,7 +1,7 @@
 import type { RouteHandler } from "@hono/zod-openapi";
 import { avatarUrl, toBadge } from "../../lib/util";
 import type { AppEnv } from "../../types";
-import type { friendsRoute, profileRoute } from "./users.router";
+import type { friendsRoute, profileRoute, searchRoute } from "./users.router";
 import * as service from "./users.service";
 
 export const profile: RouteHandler<typeof profileRoute, AppEnv> = async (c) => {
@@ -39,6 +39,23 @@ export const friends: RouteHandler<typeof friendsRoute, AppEnv> = async (c) => {
     {
       scope,
       friends: friends.map((u) => ({ id: u.id, name: u.name ?? "", username: u.username, avatarUrl: avatarUrl(u.id, u.avatar_key) })),
+    },
+    200,
+  );
+};
+
+export const search: RouteHandler<typeof searchRoute, AppEnv> = async (c) => {
+  const rows = await service.searchUsers(c.env.DB, c.get("user").id, c.req.valid("query").q);
+  return c.json(
+    {
+      users: rows.map((u) => ({
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        avatarUrl: avatarUrl(u.id, u.avatar_key),
+        mutualCount: u.mutual_count,
+        friendRequest: u.friendRequest,
+      })),
     },
     200,
   );
