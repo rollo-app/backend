@@ -8,10 +8,9 @@ export function searchText(input: string): string {
   return input.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-/** A raw search query: drops one leading "@" (once trimmed) and normalizes. */
+/** A raw search query: drops every leading "@" (once trimmed) and normalizes. */
 export function normalizeSearchQuery(raw: string): string {
-  const trimmed = raw.trim();
-  return searchText(trimmed.startsWith("@") ? trimmed.slice(1) : trimmed);
+  return searchText(raw.trim().replace(/^@+/, ""));
 }
 
 /** Value of `users.name_search`: the normalized name with a leading space, so `LIKE '% prefix%'` matches word starts. */

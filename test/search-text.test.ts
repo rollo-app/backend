@@ -9,9 +9,10 @@ describe("searchText", () => {
 });
 
 describe("normalizeSearchQuery", () => {
-  it("drops one leading @ and normalizes", () => {
+  it("drops every leading @ and normalizes", () => {
     expect(normalizeSearchQuery("@Cami.P")).toBe("cami.p");
     expect(normalizeSearchQuery(" @ ")).toBe("");
+    expect(normalizeSearchQuery("@@cami")).toBe("cami");
   });
 });
 
