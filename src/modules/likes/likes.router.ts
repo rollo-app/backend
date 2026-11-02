@@ -21,7 +21,7 @@ export const likeRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Liked" }, ...errors(400, 401, 404, 429) },
+  responses: { 204: { description: "Liked" }, ...errors(400, 401, 404, 428, 429) },
 });
 
 export const unlikeRoute = createRoute({
@@ -33,7 +33,7 @@ export const unlikeRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Not liked anymore" }, ...errors(401) },
+  responses: { 204: { description: "Not liked anymore" }, ...errors(401, 428) },
 });
 
 export const myLikesRoute = createRoute({
@@ -49,7 +49,7 @@ export const myLikesRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { query: MyLikesQuery },
-  responses: { 200: json(MyLikesSchema, "A page of liked photos"), ...errors(400, 401) },
+  responses: { 200: json(MyLikesSchema, "A page of liked photos"), ...errors(400, 401, 428) },
 });
 
 const likes = createApp();

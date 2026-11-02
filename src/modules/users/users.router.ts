@@ -18,7 +18,7 @@ export const profileRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: UserParams },
-  responses: { 200: json(UserProfileSchema, "User profile"), ...errors(401, 404) },
+  responses: { 200: json(UserProfileSchema, "User profile"), ...errors(401, 404, 428) },
 });
 
 export const friendsRoute = createRoute({
@@ -33,7 +33,7 @@ export const friendsRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: UserParams },
-  responses: { 200: json(UserFriendsSchema, "User's friends"), ...errors(401, 404) },
+  responses: { 200: json(UserFriendsSchema, "User's friends"), ...errors(401, 404, 428) },
 });
 
 const users = createApp();

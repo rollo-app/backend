@@ -9,11 +9,6 @@ import { blockedIdsFor } from "../blocks/blocks.service";
 import { areFriends } from "../friends/friends.service";
 import * as repo from "./trips.repository";
 
-export function requireName(user: Pick<UserRow, "name" | "username">) {
-  if (!user.name) throw conflict("Completá tu nombre en el perfil");
-  if (!user.username) throw conflict("Elegí tu nombre de usuario en el perfil");
-}
-
 // ---------- Membership ----------
 
 type AddResult =
@@ -59,7 +54,6 @@ export async function joinTrip(
   user: UserRow,
   code: string,
 ): Promise<{ created: boolean; trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> }> {
-  requireName(user);
   const now = Date.now();
 
   const trip = await repo.findTripByJoinCode(db, code);

@@ -24,7 +24,7 @@ export const featureRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Featured" }, ...errors(400, 401, 404, 409) },
+  responses: { 204: { description: "Featured" }, ...errors(400, 401, 404, 409, 428) },
 });
 
 export const unfeatureRoute = createRoute({
@@ -36,7 +36,7 @@ export const unfeatureRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Not featured anymore" }, ...errors(401) },
+  responses: { 204: { description: "Not featured anymore" }, ...errors(401, 428) },
 });
 
 // ---------- A user's featured photos ----------
@@ -53,7 +53,7 @@ export const listRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: UserParams },
-  responses: { 200: json(FeaturedPhotosSchema, "Featured photos"), ...errors(401, 403, 404) },
+  responses: { 200: json(FeaturedPhotosSchema, "Featured photos"), ...errors(401, 403, 404, 428) },
 });
 
 // ---------- Files ----------
@@ -71,7 +71,7 @@ export const fileRoute = createRoute({
   request: { params: FeaturedFileParams },
   responses: {
     200: { description: "File", content: { "image/jpeg": { schema: z.string().openapi({ format: "binary" }) } } },
-    ...errors(400, 401, 403, 404, 429),
+    ...errors(400, 401, 403, 404, 428, 429),
   },
 });
 
@@ -88,7 +88,7 @@ export const featuredByRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { query: FeaturedByQuery },
-  responses: { 200: json(FeaturedByListSchema, "A page of featurings of your photos"), ...errors(400, 401) },
+  responses: { 200: json(FeaturedByListSchema, "A page of featurings of your photos"), ...errors(400, 401, 428) },
 });
 
 const featured = createApp();

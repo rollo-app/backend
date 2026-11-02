@@ -41,8 +41,9 @@ export async function findSessionUser(
 /**
  * Requires `Authorization: Bearer <token>` of a valid session. Loads the user into the context.
  * `last_used_at` and the expiry (a year ahead) are refreshed at most once per day.
+ * Does not check the profile: only for the routes that complete it, log out or delete the account.
  */
-export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
+export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token) throw new HTTPException(401, { message: "Falta el token" });
@@ -61,6 +62,15 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   c.set("user", user);
   c.set("sessionId", session_id);
   await next();
+});
+
+/** Like requireSession, but the account must have a name and a username (428 otherwise). */
+export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
+  await requireSession(c, async () => {
+    const user = c.get("user");
+    if (!user.name?.trim() || !user.username) throw new HTTPException(428, { message: "Completá tu perfil" });
+    await next();
+  });
 });
 
 async function loadTripAndMember(c: Context<AppEnv>, tripId: string, notMember: () => HTTPException) {

@@ -244,12 +244,4 @@ describe("momentPosted push", () => {
     expect(p.expo.sent.map((m) => m.to)).toEqual([p.tokens.fede]);
     expect(Object.values(tokens)).not.toContain(p.expo.sent[0]!.to);
   });
-
-  it("uses the author's username when they have no name", async () => {
-    const p = await pushFixture();
-    await env.DB.prepare("UPDATE users SET name = NULL, username = 'juani' WHERE id = ?").bind(p.fx.adminUserId).run();
-    await p.register();
-    await p.complete();
-    expect(p.expo.sent[0]!.title).toBe("@juani subió su momento");
-  });
 });

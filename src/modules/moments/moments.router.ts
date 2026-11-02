@@ -19,7 +19,7 @@ export const listMyMomentsRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
-  responses: { 200: json(MyMomentsSchema, "My moments"), ...errors(401, 403) },
+  responses: { 200: json(MyMomentsSchema, "My moments"), ...errors(401, 403, 428) },
 });
 
 export const listAllMyMomentsRoute = createRoute({
@@ -34,7 +34,7 @@ export const listAllMyMomentsRoute = createRoute({
     "Like the per-rollo endpoint, the first time it draws and stores the missing moments and never re-draws. Ordered by rollo id.",
   security: bearerAuth,
   middleware: [requireUser] as const,
-  responses: { 200: json(AllMyMomentsSchema, "My moments in all my rollos"), ...errors(401) },
+  responses: { 200: json(AllMyMomentsSchema, "My moments in all my rollos"), ...errors(401, 428) },
 });
 
 export const meMoments = createApp();

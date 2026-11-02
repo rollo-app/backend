@@ -34,7 +34,7 @@ export const registerRoute = createRoute({
   responses: {
     201: json(MediaRegisteredSchema, "Registered; upload the files"),
     200: json(z.union([MediaRegisteredSchema, MediaStatusSchema]), "Retry: new URLs, or it was already uploaded"),
-    ...errors(400, 401, 403, 409, 410, 429, 503),
+    ...errors(400, 401, 403, 409, 410, 428, 429, 503),
   },
 });
 
@@ -51,7 +51,7 @@ export const completeRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireMediaMember] as const,
   request: { params: MediaParams },
-  responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404, 429) },
+  responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404, 428, 429) },
 });
 
 // ---------- Feed ----------
@@ -69,7 +69,7 @@ export const feedRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams },
-  responses: { 200: json(FeedResponseSchema, "Feed ordered by the time the shot was taken"), ...errors(401, 403) },
+  responses: { 200: json(FeedResponseSchema, "Feed ordered by the time the shot was taken"), ...errors(401, 403, 428) },
 });
 
 // ---------- Download ----------
@@ -91,7 +91,7 @@ export const downloadRoute = createRoute({
         "video/mp4": { schema: z.string().openapi({ format: "binary" }) },
       },
     },
-    ...errors(401, 403, 404, 429),
+    ...errors(401, 403, 404, 428, 429),
   },
 });
 
@@ -111,7 +111,7 @@ export const deleteRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireMediaMember] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Deleted" }, ...errors(400, 401, 403, 404, 409) },
+  responses: { 204: { description: "Deleted" }, ...errors(400, 401, 403, 404, 409, 428) },
 });
 
 // ---------- Archive (author, after the reveal) ----------
@@ -134,7 +134,7 @@ export const archiveRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireMediaMember] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Archived" }, ...errors(400, 401, 403, 404, 409) },
+  responses: { 204: { description: "Archived" }, ...errors(400, 401, 403, 404, 409, 428) },
 });
 
 export const unarchiveRoute = createRoute({
@@ -146,7 +146,7 @@ export const unarchiveRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, requireMediaMember] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Unarchived" }, ...errors(400, 401, 403, 404, 409) },
+  responses: { 204: { description: "Unarchived" }, ...errors(400, 401, 403, 404, 409, 428) },
 });
 
 // ---------- Feature block (author) ----------
@@ -158,7 +158,7 @@ export const blockFeatureRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Done" }, ...errors(401, 403, 404) },
+  responses: { 204: { description: "Done" }, ...errors(401, 403, 404, 428) },
   summary: "Don't let others feature this photo (author only)",
   description:
     "Removes it from everyone else's profile and stops new ones (they get 409). You can still feature it yourself. " +
@@ -173,7 +173,7 @@ export const unblockFeatureRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: MediaParams },
-  responses: { 204: { description: "Done" }, ...errors(401, 403, 404) },
+  responses: { 204: { description: "Done" }, ...errors(401, 403, 404, 428) },
   summary: "Let others feature this photo again (author only)",
   description:
     "Idempotent. Works even if you left the rollo or were removed from it. " +
