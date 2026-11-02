@@ -52,3 +52,34 @@ export const UserFriendsSchema = z
     friends: z.array(UserFriendSchema).openapi({ description: "Sorted by name, case-insensitive" }),
   })
   .openapi("UserFriends");
+
+export const UserSearchQuerySchema = z.object({
+  q: z.string().openapi({
+    example: "@cami",
+    description:
+      "What to look for: a username (with or without @) or the start of a name or of any word of it. Case and accents are ignored. " +
+      "2 to 30 characters once trimmed and without the leading @; otherwise 400",
+  }),
+});
+
+export const UserSearchResultSchema = z
+  .object({
+    id: z.string().uuid().openapi({ description: "User id" }),
+    name: z.string().openapi({ example: "Cami" }),
+    username: z.string().openapi({ example: "cami", description: "Unique handle without the @" }),
+    avatarUrl: z.string().nullable(),
+    mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends" }),
+    friendRequest: z.enum(["none", "sent", "received"]).openapi({
+      description:
+        "Pending friend request between you and this user: sent (you sent one, also after they rejected it), received (they sent you one you have not answered), none",
+    }),
+  })
+  .openapi("UserSearchResult");
+
+export const UserSearchSchema = z
+  .object({
+    users: z.array(UserSearchResultSchema).openapi({
+      description: "Up to 20 matches: exact username first, then most mutual friends, then by name",
+    }),
+  })
+  .openapi("UserSearch");

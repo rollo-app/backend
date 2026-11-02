@@ -19,7 +19,7 @@ export const listCommentsRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: MediaParams },
-  responses: { 200: json(CommentListSchema, "Comments"), ...errors(401, 404) },
+  responses: { 200: json(CommentListSchema, "Comments"), ...errors(401, 404, 428) },
 });
 
 export const createCommentRoute = createRoute({
@@ -34,7 +34,7 @@ export const createCommentRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: MediaParams, body: { content: { "application/json": { schema: CreateCommentSchema } }, required: true } },
-  responses: { 201: json(CommentSchema, "The new comment"), ...errors(400, 401, 404, 429) },
+  responses: { 201: json(CommentSchema, "The new comment"), ...errors(400, 401, 404, 428, 429) },
 });
 
 export const deleteCommentRoute = createRoute({
@@ -48,7 +48,7 @@ export const deleteCommentRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: CommentParams },
-  responses: { 204: { description: "Deleted" }, ...errors(401, 403, 404) },
+  responses: { 204: { description: "Deleted" }, ...errors(401, 403, 404, 428) },
 });
 
 export const myCommentsRoute = createRoute({
@@ -64,7 +64,7 @@ export const myCommentsRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { query: MyCommentsQuery },
-  responses: { 200: json(MyCommentsSchema, "A page of your comments"), ...errors(400, 401) },
+  responses: { 200: json(MyCommentsSchema, "A page of your comments"), ...errors(400, 401, 428) },
 });
 
 const comments = createApp();

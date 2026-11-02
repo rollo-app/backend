@@ -6,13 +6,8 @@ import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedByOthersOfMember } from "../featured/featured.repository";
 import { blockedIdsFor } from "../blocks/blocks.service";
-import { areFriends } from "../friends/friends.service";
+import { areFriends, isCompleteUser } from "../friends/friends.service";
 import * as repo from "./trips.repository";
-
-export function requireName(user: Pick<UserRow, "name" | "username">) {
-  if (!user.name) throw conflict("Completá tu nombre en el perfil");
-  if (!user.username) throw conflict("Elegí tu nombre de usuario en el perfil");
-}
 
 // ---------- Membership ----------
 
@@ -59,7 +54,6 @@ export async function joinTrip(
   user: UserRow,
   code: string,
 ): Promise<{ created: boolean; trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> }> {
-  requireName(user);
   const now = Date.now();
 
   const trip = await repo.findTripByJoinCode(db, code);
@@ -97,7 +91,8 @@ export async function addFriendsToTrip(
       results.push({ userId, status: "already_member" });
       continue;
     }
-    if (!(await areFriends(env.DB, me.id, userId))) {
+    // A friend who lost their name or @ is hidden from friend lists, so they can't be added either.
+    if (!(await areFriends(env.DB, me.id, userId)) || !(await isCompleteUser(env.DB, userId))) {
       results.push({ userId, status: "unavailable" });
       continue;
     }

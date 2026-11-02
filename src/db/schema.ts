@@ -37,6 +37,7 @@ export const users = sqliteTable(
     id: text("id").primaryKey(),
     email: text("email").notNull().unique(),
     name: text("name"),
+    nameSearch: text("name_search"),
     avatarKey: text("avatar_key"),
     pendingAvatarKey: text("pending_avatar_key"),
     createdAt: integer("created_at").notNull(),

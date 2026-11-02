@@ -23,7 +23,7 @@ export const sendRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: UserParams },
-  responses: { 200: json(SendFriendRequestResponseSchema, "Request status"), ...errors(400, 401, 404, 429) },
+  responses: { 200: json(SendFriendRequestResponseSchema, "Request status"), ...errors(400, 401, 404, 428, 429) },
 });
 
 export const cancelRoute = createRoute({
@@ -35,7 +35,7 @@ export const cancelRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: UserParams },
-  responses: { 204: { description: "Request cancelled" }, ...errors(401) },
+  responses: { 204: { description: "Request cancelled" }, ...errors(401, 428) },
 });
 
 export const listRoute = createRoute({
@@ -46,7 +46,7 @@ export const listRoute = createRoute({
   description: "Pending ones only (the ones you rejected are gone), most recent first.",
   security: bearerAuth,
   middleware: [requireUser] as const,
-  responses: { 200: json(ReceivedFriendRequestsSchema, "Received requests"), ...errors(401) },
+  responses: { 200: json(ReceivedFriendRequestsSchema, "Received requests"), ...errors(401, 428) },
 });
 
 export const acceptRoute = createRoute({
@@ -58,7 +58,7 @@ export const acceptRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
-  responses: { 200: json(FriendResponseSchema, "The new friend"), ...errors(401, 404) },
+  responses: { 200: json(FriendResponseSchema, "The new friend"), ...errors(401, 404, 428) },
 });
 
 export const rejectRoute = createRoute({
@@ -70,7 +70,7 @@ export const rejectRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
-  responses: { 204: { description: "Request rejected" }, ...errors(401) },
+  responses: { 204: { description: "Request rejected" }, ...errors(401, 428) },
 });
 
 /** Mounted at /users. */

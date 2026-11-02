@@ -9,7 +9,6 @@ import { PAST_TOLERANCE_MS } from "../../schemas";
 import { deleteUntakenMomentsAfter, deleteUntakenMomentsOn } from "../moments/moments.repository";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedOfTrip } from "../featured/featured.repository";
-import { requireName } from "./members.service";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
 import { MAX_TRIP_DURATION_MS, TRIP_TOO_LONG } from "./trips.schemas";
@@ -51,7 +50,6 @@ export async function createTrip(
   body: CreateTripInput,
   hooks: { beforeInsert?: () => Promise<void> } = {},
 ): Promise<{ trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> } | null> {
-  requireName(user);
   await assertNotDegraded({ DB: db });
   const now = Date.now();
   const limited = !user.unlimited_rollos;

@@ -15,7 +15,7 @@ export const createReportRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateReportSchema } }, required: true } },
-  responses: { 204: { description: "Reported" }, ...errors(400, 401, 404, 429) },
+  responses: { 204: { description: "Reported" }, ...errors(400, 401, 404, 428, 429) },
 });
 
 const reports = createApp();

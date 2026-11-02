@@ -1,5 +1,5 @@
 import { createRoute } from "@hono/zod-openapi";
-import { requireUser } from "../../lib/auth";
+import { requireSession } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { AuthSessionSchema } from "../../schemas";
 import * as controller from "./auth.controller";
@@ -62,7 +62,7 @@ export const logoutRoute = createRoute({
   tags,
   summary: "Sign out (deletes the current session)",
   security: bearerAuth,
-  middleware: [requireUser] as const,
+  middleware: [requireSession] as const,
   responses: { 204: { description: "Signed out" }, ...errors(401) },
 });
 

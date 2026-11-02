@@ -7,7 +7,7 @@ export type FriendRequestRow = { from_user_id: string; to_user_id: string; creat
 export type ReceivedRequestRow = PublicFriendRow & { requested_at: number };
 
 export async function findUser(db: D1Database, id: string): Promise<PublicFriendRow | null> {
-  return db.prepare("SELECT id, name, username, avatar_key, bio FROM users WHERE id = ?").bind(id).first<PublicFriendRow>();
+  return db.prepare("SELECT id, name, username, avatar_key, bio FROM users WHERE id = ? AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL").bind(id).first<PublicFriendRow>();
 }
 
 export async function find(db: D1Database, fromId: string, toId: string): Promise<FriendRequestRow | null> {
@@ -70,7 +70,8 @@ export async function listReceived(db: D1Database, toId: string): Promise<Receiv
     .prepare(
       `SELECT u.id, u.name, u.username, u.avatar_key, u.bio, r.created_at AS requested_at
        FROM friend_requests r JOIN users u ON u.id = r.from_user_id
-       WHERE r.to_user_id = ? AND r.rejected_at IS NULL AND r.cancelled_at IS NULL
+       WHERE u.name IS NOT NULL AND TRIM(u.name) <> '' AND u.username IS NOT NULL
+         AND r.to_user_id = ? AND r.rejected_at IS NULL AND r.cancelled_at IS NULL
        ORDER BY r.created_at DESC, u.id`,
     )
     .bind(toId)

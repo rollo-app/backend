@@ -7,6 +7,7 @@ export type Env = {
   RL_IP?: RateLimitBinding;
   RL_EXPENSIVE?: RateLimitBinding;
   RL_FILES?: RateLimitBinding;
+  RL_SEARCH?: RateLimitBinding;
   DB: D1Database;
   MEDIA: R2Bucket;
   R2_BUCKET_NAME: string;

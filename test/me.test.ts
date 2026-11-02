@@ -151,13 +151,13 @@ describe("usernames", () => {
     const admin = await newTrip();
     const user = await signUp(undefined, "Sin usuario", null);
     const join = await api("POST", "/trips/join", { token: user.token, body: { code: admin.code } });
-    expect(join.status).toBe(409);
-    expect(join.body.error).toBe("Elegí tu nombre de usuario en el perfil");
+    expect(join.status).toBe(428);
+    expect(join.body.error).toBe("Completá tu perfil");
     const create = await api("POST", "/trips", {
       token: user.token,
       body: { name: "X", timezone: TZ, startsAt: Date.now() + HOUR, endsAt: Date.now() + 2 * HOUR, revealAt: Date.now() + 3 * HOUR },
     });
-    expect(create.status).toBe(409);
+    expect(create.status).toBe(428);
     await api("PATCH", "/me", { token: user.token, body: { username: "ya.tengo" } });
     expect((await api("POST", "/trips/join", { token: user.token, body: { code: admin.code } })).status).toBe(201);
   });

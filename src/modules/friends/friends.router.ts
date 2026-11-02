@@ -27,7 +27,7 @@ export const linkRoute = createRoute({
     "Generating a new one invalidates the previous links of the user.",
   security: bearerAuth,
   middleware: [requireUser] as const,
-  responses: { 200: json(FriendLinkSchema, "Friend link"), ...errors(401) },
+  responses: { 200: json(FriendLinkSchema, "Friend link"), ...errors(401, 428) },
 });
 
 // ---------- Claim (no session) ----------
@@ -58,7 +58,7 @@ export const redeemRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: RedeemFriendSchema } }, required: true } },
-  responses: { 200: json(FriendResponseSchema, "The new (or existing) friend"), ...errors(400, 401, 429) },
+  responses: { 200: json(FriendResponseSchema, "The new (or existing) friend"), ...errors(400, 401, 428, 429) },
 });
 
 // ---------- List ----------
@@ -71,7 +71,7 @@ export const listRoute = createRoute({
   description: "Ordered by name.",
   security: bearerAuth,
   middleware: [requireUser] as const,
-  responses: { 200: json(FriendsSchema, "Friends"), ...errors(401) },
+  responses: { 200: json(FriendsSchema, "Friends"), ...errors(401, 428) },
 });
 
 // ---------- Profile ----------
@@ -87,7 +87,7 @@ export const profileRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
-  responses: { 200: json(FriendProfileSchema, "Friend profile"), ...errors(401, 404) },
+  responses: { 200: json(FriendProfileSchema, "Friend profile"), ...errors(401, 404, 428) },
 });
 
 // ---------- Remove ----------
@@ -101,7 +101,7 @@ export const removeRoute = createRoute({
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { params: FriendParams },
-  responses: { 204: { description: "Friendship removed" }, ...errors(401) },
+  responses: { 204: { description: "Friendship removed" }, ...errors(401, 428) },
 });
 
 const friends = createApp();

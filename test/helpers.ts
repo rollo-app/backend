@@ -154,12 +154,20 @@ export async function joinAs(code: string, name: string): Promise<{ token: strin
 export const originalContent = (mediaId: string) => `original-${mediaId}`;
 export const thumbContent = (mediaId: string) => `thumb-${mediaId}`;
 
+/** A moment shortly before now that falls on the same local day (in `TZ`) as now, even right after midnight. */
+function recentTakenAt(): number {
+  const now = Date.now();
+  const localDay = (ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(ms);
+  const ago = now - MINUTE;
+  return localDay(ago) === localDay(now) ? ago : now;
+}
+
 export function photoBody(overrides: Record<string, unknown> = {}) {
   const id = (overrides.id as string | undefined) ?? crypto.randomUUID();
   return {
     id,
     type: "photo",
-    takenAt: Date.now() - MINUTE,
+    takenAt: recentTakenAt(),
     lat: -49.33,
     lng: -72.88,
     accuracyM: 12,
