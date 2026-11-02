@@ -1,4 +1,5 @@
 import { hiddenMediaSql } from "../reports/reports.repository";
+import { nameSearchColumn } from "../../lib/search-text";
 import type { Role, TripRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -10,8 +11,8 @@ export type ProfileFields = { name: string | null; username: string | null; bio:
 
 export function updateProfile(db: D1Database, userId: string, next: ProfileFields): D1PreparedStatement {
   return db
-    .prepare("UPDATE users SET name = ?, username = ?, bio = ?, profile_visibility = ? WHERE id = ?")
-    .bind(next.name, next.username, next.bio, next.profile_visibility, userId);
+    .prepare("UPDATE users SET name = ?, name_search = ?, username = ?, bio = ?, profile_visibility = ? WHERE id = ?")
+    .bind(next.name, nameSearchColumn(next.name), next.username, next.bio, next.profile_visibility, userId);
 }
 
 export function setPendingAvatarKey(db: D1Database, userId: string, key: string): D1PreparedStatement {

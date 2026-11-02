@@ -1,9 +1,10 @@
 import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { areFriends } from "../friends/friends.service";
-import { notFound } from "../../shared/errors";
+import { normalizeSearchQuery, SEARCH_MAX, SEARCH_MIN } from "../../lib/search-text";
+import { badRequest, notFound } from "../../shared/errors";
 import type { UserRow } from "../../types";
 import * as repo from "./users.repository";
-import type { ProfileOwnerRow, UserFriendRow } from "./users.repository";
+import type { ProfileOwnerRow, UserFriendRow, UserSearchHit } from "./users.repository";
 
 export type UserProfile = {
   owner: ProfileOwnerRow;
@@ -70,4 +71,17 @@ export async function canSeeProfile(
   if (await isBlockedEitherWay(db, viewerId, owner.id)) return false;
   if (owner.profile_visibility === "public") return true;
   return areFriends(db, viewerId, owner.id);
+}
+
+export type UserSearchRow = UserSearchHit & { friendRequest: "none" | "sent" | "received" };
+
+/** People matching `rawQ` by @username or name, with the viewer's friend-request state for each. */
+export async function searchUsers(db: D1Database, viewerId: string, rawQ: string): Promise<UserSearchRow[]> {
+  const q = normalizeSearchQuery(rawQ);
+  if (q.length < SEARCH_MIN) throw badRequest("Escribí al menos 2 letras.");
+  if (q.length > SEARCH_MAX) throw badRequest("La búsqueda es demasiado larga.");
+  const hits = await repo.searchUsers(db, viewerId, q);
+  const requests = await repo.friendRequestRowsWith(db, viewerId, hits.map((h) => h.id));
+  const now = Date.now();
+  return hits.map((h) => ({ ...h, friendRequest: repo.friendRequestStateFrom(requests, viewerId, h.id, now) }));
 }
