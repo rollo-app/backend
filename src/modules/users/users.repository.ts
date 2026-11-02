@@ -18,7 +18,7 @@ export async function findProfileOwner(db: D1Database, userId: string): Promise<
 }
 
 export async function findVisibilityOwner(db: D1Database, userId: string): Promise<VisibilityOwnerRow | null> {
-  return db.prepare("SELECT id, profile_visibility FROM users WHERE id = ?").bind(userId).first<VisibilityOwnerRow>();
+  return db.prepare("SELECT id, profile_visibility FROM users WHERE id = ? AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL").bind(userId).first<VisibilityOwnerRow>();
 }
 
 export async function hasBlocked(db: D1Database, blockerId: string, blockedId: string): Promise<boolean> {

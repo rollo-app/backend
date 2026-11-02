@@ -52,4 +52,15 @@ describe("incomplete accounts are invisible outside their rollos", () => {
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).toContain(b.userId);
   });
+
+  it("an incomplete owner's friend list and featured photos are not found", async () => {
+    const a = await signUp();
+    const b = await signUp();
+    await befriend(a.token, b.token);
+    await clearUsername(b.userId);
+    await env.DB.prepare("UPDATE users SET profile_visibility = 'public' WHERE id = ?").bind(b.userId).run();
+    expect((await api("GET", `/users/${b.userId}/friends`, { token: a.token })).status).toBe(404);
+    expect((await api("GET", `/users/${b.userId}/featured`, { token: a.token })).status).toBe(404);
+    expect((await api("GET", `/featured/${b.userId}/${crypto.randomUUID()}/thumb`, { token: a.token })).status).toBe(404);
+  });
 });

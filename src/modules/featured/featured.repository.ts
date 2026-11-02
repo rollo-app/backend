@@ -142,7 +142,7 @@ export function deleteFeaturedOfTrip(db: D1Database, tripId: string): D1Prepared
 
 export function findProfileOwner(db: D1Database, userId: string): Promise<Pick<UserRow, "id" | "profile_visibility"> | null> {
   return db
-    .prepare("SELECT id, profile_visibility FROM users WHERE id = ?")
+    .prepare("SELECT id, profile_visibility FROM users WHERE id = ? AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL")
     .bind(userId)
     .first<Pick<UserRow, "id" | "profile_visibility">>();
 }
