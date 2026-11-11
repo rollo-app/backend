@@ -3,7 +3,7 @@ import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTPayload
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEGRADED_MESSAGE, resetDegradedCache } from "../src/lib/degraded";
 import { GOOGLE_ERROR, GOOGLE_UNAVAILABLE, setGoogleKeysForTests } from "../src/lib/google";
-import { GOOGLE_USE_CODE } from "../src/modules/auth/auth.service";
+import { USE_EMAIL_CODE } from "../src/modules/auth/auth.service";
 import { api, signUp } from "./helpers";
 
 // Audiences come from GOOGLE_CLIENT_IDS in vitest.config.ts.
@@ -67,7 +67,7 @@ describe("POST /auth/google", () => {
     const existing = await signUp("cami@hotmail.com");
     const res = await signInWithGoogle(await googleToken({ sub: "g-hot", email: "cami@hotmail.com" }));
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe(GOOGLE_USE_CODE);
+    expect(res.body.error).toBe(USE_EMAIL_CODE);
     const link = await env.DB.prepare("SELECT 1 FROM user_identities WHERE subject = 'g-hot'").first();
     expect(link).toBeNull();
     const { n } = (await env.DB.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").bind(existing.userId).first<{ n: number }>())!;

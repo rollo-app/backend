@@ -10,12 +10,14 @@ import {
   reserveEmailSlot,
 } from "../../lib/email-caps";
 import { DEGRADED_MESSAGE, isDegraded } from "../../lib/degraded";
-import { verifyGoogleIdToken } from "../../lib/google";
+import { APPLE_ERROR, verifyAppleIdToken } from "../../lib/apple";
+import { GOOGLE_ERROR, verifyGoogleIdToken } from "../../lib/google";
 import { ipKey } from "../../lib/ip";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../../lib/login-code";
 import { badRequest, conflict, rateLimited, unavailable } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import * as repo from "./auth.repository";
+import type { IdentityProvider } from "./auth.repository";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -30,7 +32,7 @@ const LINK_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 /** A PKCE code verifier (RFC 7636): 43–128 unreserved characters. */
 const LINK_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const LINK_ERROR = "El link venció o ya se usó. Pedí otro código.";
-export const GOOGLE_USE_CODE = "Ya tenés una cuenta con este email. Entrá con el código que te mandamos por mail.";
+export const USE_EMAIL_CODE = "Ya tenés una cuenta con este email. Entrá con el código que te mandamos por mail.";
 
 /** "send_failed" means the email provider failed (the controller answers 502). */
 export type StartResult = "sent" | "send_failed";
@@ -185,29 +187,51 @@ async function signIn(db: D1Database, email: string, now: number): Promise<Signe
   return newSession(db, (await repo.findUserByEmail(db, email))!, now);
 }
 
-/**
- * Signs in with a Google ID token. The Google account id (`sub`) finds a linked user even if its email changed; if
- * none, the email Google verified signs into that email's account (or creates it) and links it, in one batch.
- */
+/** Signs in with a Google ID token (see `signInWithProvider`). Google sends the profile name in the token. */
 export async function signInWithGoogle(env: Env, idToken: string): Promise<SignedIn> {
   const { subject, email, name, emailIsGoogles } = await verifyGoogleIdToken(env, idToken);
+  return signInWithProvider(env, { provider: "google", subject, email, name, emailIsProviders: emailIsGoogles }, GOOGLE_ERROR);
+}
+
+/**
+ * Signs in with a Sign in with Apple identity token (see `signInWithProvider`). Apple gives the name only to the app and only on
+ * the first sign-in, so the app sends it along (it is just a suggestion for the user's own profile, like `PATCH /me`).
+ */
+export async function signInWithApple(env: Env, input: { identityToken: string; name?: string }): Promise<SignedIn> {
+  const { subject, email, emailIsApples } = await verifyAppleIdToken(env, input.identityToken);
+  return signInWithProvider(env, { provider: "apple", subject, email, name: input.name ?? null, emailIsProviders: emailIsApples }, APPLE_ERROR);
+}
+
+/**
+ * The provider's account id (`sub`) finds a linked user even if its email changed; if none, the email the provider verified signs
+ * into that email's account (or creates it) and links it, in one batch.
+ */
+async function signInWithProvider(
+  env: Env,
+  account: { provider: IdentityProvider; subject: string; email: string | null; name: string | null; emailIsProviders: boolean },
+  invalidMessage: string,
+): Promise<SignedIn> {
+  const { provider, subject, email, name, emailIsProviders } = account;
   const now = Date.now();
 
-  const linked = await repo.findUserByIdentity(env.DB, "google", subject);
+  const linked = await repo.findUserByIdentity(env.DB, provider, subject);
   if (linked) return newSession(env.DB, linked, now);
+  // Without a link, the email is what finds or makes the account.
+  if (!email) throw badRequest(invalidMessage);
 
   const exists = await repo.userExists(env.DB, email);
-  // Google checked a non-Gmail, non-Workspace address only when that Google account was made: the address may have changed hands
-  // since. Linking it to the Rollo account with that email could hand someone else's account over, so that owner uses the code.
-  if (exists && !emailIsGoogles) throw conflict(GOOGLE_USE_CODE);
+  // A provider vouches for an address it doesn't own (not Gmail/Workspace, not iCloud/its relay) only from when that provider account
+  // was made: it may have changed hands since. Linking it to the Rollo account with that email could hand someone else's account
+  // over, so that owner signs in with the code.
+  if (exists && !emailIsProviders) throw conflict(USE_EMAIL_CODE);
   // Degraded mode blocks new accounts, as in `startLogin`; existing ones still get in.
   if (!exists && (await isDegraded(env))) throw unavailable(DEGRADED_MESSAGE);
-  // The Google name prefills "Completá tu perfil" (the user can change it there); an account that already has a name keeps it.
+  // The provider's name prefills "Completá tu perfil" (the user can change it there); an account that already has a name keeps it.
   const suggested = profileNameFrom(name);
   await env.DB.batch([
     repo.insertUserIfMissing(env.DB, crypto.randomUUID(), email, now),
     ...(suggested ? [repo.setNameIfMissing(env.DB, email, suggested)] : []),
-    repo.linkIdentityByEmail(env.DB, { provider: "google", subject, email, now }),
+    repo.linkIdentityByEmail(env.DB, { provider, subject, email, now }),
   ]);
   return newSession(env.DB, (await repo.findUserByEmail(env.DB, email))!, now);
 }

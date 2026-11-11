@@ -49,6 +49,21 @@ export const GoogleSignInSchema = z
   })
   .openapi("GoogleSignInRequest");
 
+export const AppleSignInSchema = z
+  .object({
+    identityToken: z.string().min(1).max(4096).openapi({
+      example: "eyJraWQiOiIuLi4iLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2FwcGxlaWQuYXBwbGUuY29tIiwiLi4uIjoiLi4uIn0.c2ln",
+      description: "Identity token from Sign in with Apple on the phone (a JWT signed by Apple)",
+    }),
+    name: z.string().max(100).optional().openapi({
+      example: "Lucía Pérez",
+      description:
+        "Full name Apple gave the app (only on the first sign-in). Suggested as the profile name if the account has none; " +
+        "trimmed, single spaces, cut to 30 characters",
+    }),
+  })
+  .openapi("AppleSignInRequest");
+
 export const EmailVerifyLinkSchema = z
   .object({
     email: emailField,
