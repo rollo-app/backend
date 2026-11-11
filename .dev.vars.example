@@ -11,6 +11,8 @@ DEV_LOCAL_UPLOADS=1
 # LOGIN_LINK_URL=https://rollo.juanifraga.com/entrar
 # Login con Google: ya viene en wrangler.jsonc (vars); acá solo para probar con otros client IDs
 # GOOGLE_CLIENT_IDS=xxx.apps.googleusercontent.com,yyy.apps.googleusercontent.com
+# Sign in with Apple: también en wrangler.jsonc (bundle ids)
+# APPLE_CLIENT_IDS=com.ejemplo.app
 # Cuenta de App Review (a ese email no se le manda nada; REVIEW_CODE es su código)
 # REVIEW_EMAIL=review@example.com
 # REVIEW_CODE=K7M2QX

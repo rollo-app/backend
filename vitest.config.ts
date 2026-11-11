@@ -24,6 +24,8 @@ export default defineConfig({
           DEV_LOCAL_UPLOADS: "",
           // Audiences of the Google ID tokens the tests sign (test/google-auth.test.ts).
           GOOGLE_CLIENT_IDS: "test-web.apps.googleusercontent.com, test-ios.apps.googleusercontent.com",
+          // Audience of the Apple identity tokens the tests sign (test/apple-auth.test.ts).
+          APPLE_CLIENT_IDS: "com.juanifraga.rollo.app",
         },
       },
     })),

@@ -2,7 +2,7 @@ import type { RouteHandler } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { publicUser } from "../../lib/util";
 import type { AppEnv } from "../../types";
-import type { googleRoute, logoutRoute, startRoute, verifyLinkRoute, verifyRoute } from "./auth.router";
+import type { appleRoute, googleRoute, logoutRoute, startRoute, verifyLinkRoute, verifyRoute } from "./auth.router";
 import * as service from "./auth.service";
 
 const present = (r: service.SignedIn) => ({ token: r.token, user: publicUser(r.user), isNew: r.isNew });
@@ -26,6 +26,10 @@ export const verifyLink: RouteHandler<typeof verifyLinkRoute, AppEnv> = async (c
 
 export const google: RouteHandler<typeof googleRoute, AppEnv> = async (c) => {
   return c.json(present(await service.signInWithGoogle(c.env, c.req.valid("json").idToken)), 200);
+};
+
+export const apple: RouteHandler<typeof appleRoute, AppEnv> = async (c) => {
+  return c.json(present(await service.signInWithApple(c.env, c.req.valid("json"))), 200);
 };
 
 export const logout: RouteHandler<typeof logoutRoute, AppEnv> = async (c) => {

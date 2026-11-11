@@ -207,6 +207,27 @@
           "idToken"
         ]
       },
+      "AppleSignInRequest": {
+        "type": "object",
+        "properties": {
+          "identityToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "example": "eyJraWQiOiIuLi4iLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2FwcGxlaWQuYXBwbGUuY29tIiwiLi4uIjoiLi4uIn0.c2ln",
+            "description": "Identity token from Sign in with Apple on the phone (a JWT signed by Apple)"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Lucía Pérez",
+            "description": "Full name Apple gave the app (only on the first sign-in). Suggested as the profile name if the account has none; trimmed, single spaces, cut to 30 characters"
+          }
+        },
+        "required": [
+          "identityToken"
+        ]
+      },
       "ReceivedFriendRequests": {
         "type": "object",
         "properties": {
@@ -2762,6 +2783,67 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/GoogleSignInRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/apple": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Sign in with a Sign in with Apple identity token",
+        "description": "Same result as `/auth/email/verify` and the same rules as `/auth/google`. The token must be signed by Apple, issued for one of our bundle ids (`APPLE_CLIENT_IDS`) and not expired; if it carries an email, Apple must have verified it. Any failure is the same 400. The Apple account id finds the user it was linked to before (later tokens may come without an email); otherwise the email signs into that email's account or creates it, and links it. An existing account is only linked when Apple owns the address (iCloud, or the Hide My Email relay); any other address with an account answers 409 (sign in with the emailed code). A first sign-in without an email is a 400. `name`, which Apple gives only on the first sign-in, prefills an account without a name. 503 when Apple sign-in is not configured, or in degraded mode for an email without an account.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppleSignInRequest"
               }
             }
           }
