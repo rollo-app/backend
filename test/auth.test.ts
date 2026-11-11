@@ -119,6 +119,8 @@ describe("POST /auth/email/start", () => {
     expect(calls[0]!.auth).toBe("Bearer re_test");
     // The sender is EMAIL_FROM from wrangler.jsonc: the Rollo domain verified in Resend.
     expect(calls[0]!.body).toMatchObject({ from: "Rollo <no-reply@somosrollo.com>", to: [email] });
+    // Replies to the no-reply sender reach support instead of getting lost.
+    expect(calls[0]!.body.reply_to).toBe("soporte@somosrollo.com");
     expect(calls[0]!.body.subject).toMatch(/^Tu código de Rollo: [ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
     expect(devSentCodes.has(email)).toBe(false);
   });
