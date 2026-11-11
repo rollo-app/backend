@@ -109,7 +109,7 @@ describe("POST /auth/email/start", () => {
       return new Response("{}", { status: 200 });
     }) as typeof fetch;
     try {
-      const res = await start(email, { env: { RESEND_API_KEY: "re_test", EMAIL_FROM: "Rollo <rollo@juanifraga.com>" } });
+      const res = await start(email, { env: { RESEND_API_KEY: "re_test" } });
       expect(res.status).toBe(204);
     } finally {
       globalThis.fetch = realFetch;
@@ -117,7 +117,10 @@ describe("POST /auth/email/start", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe("https://api.resend.com/emails");
     expect(calls[0]!.auth).toBe("Bearer re_test");
-    expect(calls[0]!.body).toMatchObject({ from: "Rollo <rollo@juanifraga.com>", to: [email] });
+    // The sender is EMAIL_FROM from wrangler.jsonc: the Rollo domain verified in Resend.
+    expect(calls[0]!.body).toMatchObject({ from: "Rollo <no-reply@somosrollo.com>", to: [email] });
+    // Replies to the no-reply sender reach support instead of getting lost.
+    expect(calls[0]!.body.reply_to).toBe("soporte@somosrollo.com");
     expect(calls[0]!.body.subject).toMatch(/^Tu código de Rollo: [ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
     expect(devSentCodes.has(email)).toBe(false);
   });

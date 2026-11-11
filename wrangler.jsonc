@@ -41,7 +41,7 @@
     "R2_BUCKET_NAME": "rollo-media",
     // ID de la base D1, para consultar su uso en la GraphQL Analytics API (junto con el secret CF_ANALYTICS_TOKEN).
     "D1_DATABASE_ID": "13f35fe4-d442-4ff2-a0fc-e895537561ef",
-    "EMAIL_FROM": "Rollo <rollo@juanifraga.com>",
+    "EMAIL_FROM": "Rollo <no-reply@somosrollo.com>",
     // Login con Google: client IDs de OAuth (proyecto rollo-514415) aceptados como audiencia del ID token. No son secretos.
     // Web ("Rollo backend", el webClientId de la app), iOS prod (com.juanifraga.rollo.app) e iOS dev (com.juanifraga.rollo).
     "GOOGLE_CLIENT_IDS": "331161321522-jlgfn8q6egq5oe4l3n358vr24d3gh6mv.apps.googleusercontent.com,331161321522-eg16sji80rga1jor4b5k8ebhs4tc750f.apps.googleusercontent.com,331161321522-22bg1d28fj30lnliseebuit2v7bc5lcm.apps.googleusercontent.com",
@@ -52,6 +52,9 @@
   // Dominio propio. Un solo nivel de subdominio para que lo cubra el
   // certificado gratis de Cloudflare (*.juanifraga.com).
   "routes": [
+    // Dominio propio de Rollo (docs/decisiones/0003-dominio-somosrollo.md).
+    { "pattern": "api.somosrollo.com", "custom_domain": true },
+    // El de siempre: lo usan los builds de la app ya instalados, así que no se saca.
     { "pattern": "rollo-api.juanifraga.com", "custom_domain": true }
   ],
 
@@ -65,7 +68,7 @@
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
   // Opcionales:
   //   RESEND_API_KEY            envío de los códigos de login (sin esto solo se loguean en consola)
-  //   REPORTS_EMAIL             destino de las denuncias (default soporte@juanifraga.com)
+  //   REPORTS_EMAIL             destino de las denuncias (default soporte@somosrollo.com)
   //   CF_ANALYTICS_TOKEN        token con "Account Analytics: Read" para medir el uso de Cloudflare (sin él no se mide)
   //   ADMIN_TOKEN               token de las rutas /admin/* (borrar fotos y cuentas denunciadas)
   //   LOGIN_LINK_URL            base del link mágico del mail (default https://rollo.juanifraga.com/entrar)
