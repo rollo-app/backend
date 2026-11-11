@@ -52,6 +52,9 @@
   // Dominio propio. Un solo nivel de subdominio para que lo cubra el
   // certificado gratis de Cloudflare (*.juanifraga.com).
   "routes": [
+    // Dominio propio de Rollo (docs/decisiones/0003-dominio-somosrollo.md).
+    { "pattern": "api.somosrollo.com", "custom_domain": true },
+    // El de siempre: lo usan los builds de la app ya instalados, así que no se saca.
     { "pattern": "rollo-api.juanifraga.com", "custom_domain": true }
   ],
 
