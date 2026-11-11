@@ -41,7 +41,7 @@
     "R2_BUCKET_NAME": "rollo-media",
     // ID de la base D1, para consultar su uso en la GraphQL Analytics API (junto con el secret CF_ANALYTICS_TOKEN).
     "D1_DATABASE_ID": "13f35fe4-d442-4ff2-a0fc-e895537561ef",
-    "EMAIL_FROM": "Rollo <rollo@somosrollo.com>",
+    "EMAIL_FROM": "Rollo <no-reply@somosrollo.com>",
     // Login con Google: client IDs de OAuth (proyecto rollo-514415) aceptados como audiencia del ID token. No son secretos.
     // Web ("Rollo backend", el webClientId de la app), iOS prod (com.juanifraga.rollo.app) e iOS dev (com.juanifraga.rollo).
     "GOOGLE_CLIENT_IDS": "331161321522-jlgfn8q6egq5oe4l3n358vr24d3gh6mv.apps.googleusercontent.com,331161321522-eg16sji80rga1jor4b5k8ebhs4tc750f.apps.googleusercontent.com,331161321522-22bg1d28fj30lnliseebuit2v7bc5lcm.apps.googleusercontent.com",

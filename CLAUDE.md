@@ -323,8 +323,8 @@ destacadas, "me gusta", notificaciones push con cron, moderación, backoffice (r
   Read & Write sobre `rollo-media`) `RESEND_API_KEY` (Sending access a `somosrollo.com`; la anterior era solo de `juanifraga.com`) y `CF_ANALYTICS_TOKEN` (token de Cloudflare con "Account Analytics: Read"; sin él no se mide el uso, ver "Backoffice"). Se cargan con
   `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
 - Mail: dominio `somosrollo.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
-  DMARC `p=none` en `_dmarc`), DNS en Cloudflare; los mails salen de `rollo@somosrollo.com` (`EMAIL_FROM` en `wrangler.jsonc`)
-  y las denuncias van a `soporte@somosrollo.com`. Las dos casillas reciben por Email Routing de Cloudflare → Gmail de Juani.
+  DMARC `p=none` en `_dmarc`), DNS en Cloudflare; los mails salen de `no-reply@somosrollo.com` (`EMAIL_FROM` en `wrangler.jsonc`; esa casilla no recibe)
+  y las denuncias van a `soporte@somosrollo.com`, que recibe por Email Routing de Cloudflare → Gmail de Juani.
   Hasta noviembre de 2026 era `juanifraga.com` (decisión `0003`). Plan gratis: 100 mails por día y 3.000 por mes.
 - Secrets de moderación: `ADMIN_TOKEN` (habilita los dos `DELETE /admin/*` y el acceso por token; sin él esos `DELETE` dan 404, y las rutas de lectura y `PUT /admin/degraded-mode` quedan solo para la sesión de un superadmin) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@somosrollo.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
 - Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.

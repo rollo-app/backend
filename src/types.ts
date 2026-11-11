@@ -18,7 +18,7 @@ export type Env = {
   DEV_LOCAL_UPLOADS?: string;
   /** Resend API key. Without it, login codes are only logged to the console (dev). */
   RESEND_API_KEY?: string;
-  /** Sender of the login emails, e.g. "Rollo <rollo@somosrollo.com>". */
+  /** Sender of the login emails, e.g. "Rollo <no-reply@somosrollo.com>". */
   EMAIL_FROM?: string;
   /** Where report emails go. Defaults to soporte@somosrollo.com. */
   REPORTS_EMAIL?: string;
