@@ -22,6 +22,8 @@ export default defineConfig({
           R2_SECRET_ACCESS_KEY: "test-secret",
           // Apagado aunque esté en tu .dev.vars; los tests que lo necesitan lo prenden por request.
           DEV_LOCAL_UPLOADS: "",
+          // Audiences of the Google ID tokens the tests sign (test/google-auth.test.ts).
+          GOOGLE_CLIENT_IDS: "test-web.apps.googleusercontent.com, test-ios.apps.googleusercontent.com",
         },
       },
     })),

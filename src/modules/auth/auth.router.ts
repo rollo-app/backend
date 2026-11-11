@@ -3,7 +3,7 @@ import { requireSession } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { AuthSessionSchema } from "../../schemas";
 import * as controller from "./auth.controller";
-import { EmailStartSchema, EmailVerifyLinkSchema, EmailVerifySchema } from "./auth.schemas";
+import { EmailStartSchema, EmailVerifyLinkSchema, EmailVerifySchema, GoogleSignInSchema } from "./auth.schemas";
 
 const tags = ["Auth"];
 
@@ -54,6 +54,24 @@ export const verifyLinkRoute = createRoute({
   responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400) },
 });
 
+// ---------- Google ----------
+
+export const googleRoute = createRoute({
+  method: "post",
+  path: "/google",
+  tags,
+  summary: "Sign in with a Google ID token",
+  description:
+    "Same result as `/auth/email/verify`. The token must be signed by Google, issued for one of our OAuth clients (`GOOGLE_CLIENT_IDS`), " +
+    "not expired, and carry an email Google verified; any failure is the same 400. The Google account id finds the user it was linked to " +
+    "before (even if its email changed); otherwise the verified email signs into that email's account or creates it, and links it. " +
+    "An account without a name gets the Google profile name (single spaces, up to 30 characters) as a suggestion: it stays incomplete " +
+    "(`isNew`) until it has a username, so the profile step shows it prefilled. " +
+    "503 when Google sign-in is not configured, or in degraded mode for an email without an account.",
+  request: { body: { content: { "application/json": { schema: GoogleSignInSchema } }, required: true } },
+  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 503) },
+});
+
 // ---------- Logout ----------
 
 export const logoutRoute = createRoute({
@@ -71,6 +89,7 @@ const auth = createApp();
 auth.openapi(startRoute, controller.start);
 auth.openapi(verifyRoute, controller.verify);
 auth.openapi(verifyLinkRoute, controller.verifyLink);
+auth.openapi(googleRoute, controller.google);
 auth.openapi(logoutRoute, controller.logout);
 
 export default auth;

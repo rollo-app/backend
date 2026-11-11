@@ -73,6 +73,7 @@ export function deleteUserData(db: D1Database, user: { id: string; email: string
     db.prepare("DELETE FROM friend_attempts WHERE key = ?").bind(`user:${user.id}`),
     db.prepare("UPDATE members SET added_by_user_id = NULL WHERE added_by_user_id = ?").bind(user.id),
     db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id),
+    db.prepare("DELETE FROM user_identities WHERE user_id = ?").bind(user.id),
     db.prepare("DELETE FROM auth_codes WHERE email = ?").bind(user.email),
     db.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
   ];

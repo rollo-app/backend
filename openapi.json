@@ -192,6 +192,21 @@
           "token"
         ]
       },
+      "GoogleSignInRequest": {
+        "type": "object",
+        "properties": {
+          "idToken": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "example": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCIuLi4iOiIuLi4ifQ.c2ln",
+            "description": "Google ID token from Google Sign-In on the phone (a JWT signed by Google)"
+          }
+        },
+        "required": [
+          "idToken"
+        ]
+      },
       "ReceivedFriendRequests": {
         "type": "object",
         "properties": {
@@ -2723,6 +2738,57 @@
           },
           "400": {
             "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/google": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Sign in with a Google ID token",
+        "description": "Same result as `/auth/email/verify`. The token must be signed by Google, issued for one of our OAuth clients (`GOOGLE_CLIENT_IDS`), not expired, and carry an email Google verified; any failure is the same 400. The Google account id finds the user it was linked to before (even if its email changed); otherwise the verified email signs into that email's account or creates it, and links it. An account without a name gets the Google profile name (single spaces, up to 30 characters) as a suggestion: it stays incomplete (`isNew`) until it has a username, so the profile step shows it prefilled. 503 when Google sign-in is not configured, or in degraded mode for an email without an account.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleSignInRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
             "content": {
               "application/json": {
                 "schema": {

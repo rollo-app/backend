@@ -10,6 +10,7 @@ import {
   reserveEmailSlot,
 } from "../../lib/email-caps";
 import { DEGRADED_MESSAGE, isDegraded } from "../../lib/degraded";
+import { verifyGoogleIdToken } from "../../lib/google";
 import { ipKey } from "../../lib/ip";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../../lib/login-code";
 import { badRequest, rateLimited, unavailable } from "../../shared/errors";
@@ -180,8 +181,40 @@ async function consume(db: D1Database, id: string, now: number): Promise<boolean
 /** Creates the user on first sign-in and a new session. */
 async function signIn(db: D1Database, email: string, now: number): Promise<SignedIn> {
   await repo.insertUserIfMissing(db, crypto.randomUUID(), email, now).run();
-  const user = (await repo.findUserByEmail(db, email))!;
+  return newSession(db, (await repo.findUserByEmail(db, email))!, now);
+}
 
+/**
+ * Signs in with a Google ID token. The Google account id (`sub`) finds a linked user even if its email changed; if
+ * none, the email Google verified signs into that email's account (or creates it) and links it, in one batch.
+ */
+export async function signInWithGoogle(env: Env, idToken: string): Promise<SignedIn> {
+  const { subject, email, name } = await verifyGoogleIdToken(env, idToken);
+  const now = Date.now();
+
+  const linked = await repo.findUserByIdentity(env.DB, "google", subject);
+  if (linked) return newSession(env.DB, linked, now);
+
+  // Degraded mode blocks new accounts, as in `startLogin`; existing ones still get in.
+  if (!(await repo.userExists(env.DB, email)) && (await isDegraded(env))) throw unavailable(DEGRADED_MESSAGE);
+  // The Google name prefills "Completá tu perfil" (the user can change it there); an account that already has a name keeps it.
+  const suggested = profileNameFrom(name);
+  await env.DB.batch([
+    repo.insertUserIfMissing(env.DB, crypto.randomUUID(), email, now),
+    ...(suggested ? [repo.setNameIfMissing(env.DB, email, suggested)] : []),
+    repo.linkIdentityByEmail(env.DB, { provider: "google", subject, email, now }),
+  ]);
+  return newSession(env.DB, (await repo.findUserByEmail(env.DB, email))!, now);
+}
+
+/** A provider's full name as a profile name: single spaces, at most 30 characters (the `PATCH /me` limit); null if empty. */
+function profileNameFrom(raw: string | null): string | null {
+  if (!raw) return null;
+  const name = [...raw.trim().replace(/\s+/g, " ")].slice(0, 30).join("").trim();
+  return name || null;
+}
+
+async function newSession(db: D1Database, user: UserRow, now: number): Promise<SignedIn> {
   const token = generateToken();
   await repo
     .insertSession(db, { id: crypto.randomUUID(), userId: user.id, tokenHash: await hashToken(token), now, expiresAt: now + SESSION_TTL })
