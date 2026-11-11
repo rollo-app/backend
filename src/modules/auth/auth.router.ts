@@ -3,7 +3,7 @@ import { requireSession } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { AuthSessionSchema } from "../../schemas";
 import * as controller from "./auth.controller";
-import { EmailStartSchema, EmailVerifyLinkSchema, EmailVerifySchema, GoogleSignInSchema } from "./auth.schemas";
+import { AppleSignInSchema, EmailStartSchema, EmailVerifyLinkSchema, EmailVerifySchema, GoogleSignInSchema } from "./auth.schemas";
 
 const tags = ["Auth"];
 
@@ -74,6 +74,25 @@ export const googleRoute = createRoute({
   responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 409, 503) },
 });
 
+// ---------- Apple ----------
+
+export const appleRoute = createRoute({
+  method: "post",
+  path: "/apple",
+  tags,
+  summary: "Sign in with a Sign in with Apple identity token",
+  description:
+    "Same result as `/auth/email/verify` and the same rules as `/auth/google`. The token must be signed by Apple, issued for one of " +
+    "our bundle ids (`APPLE_CLIENT_IDS`) and not expired; if it carries an email, Apple must have verified it. Any failure is the " +
+    "same 400. The Apple account id finds the user it was linked to before (later tokens may come without an email); otherwise the " +
+    "email signs into that email's account or creates it, and links it. An existing account is only linked when Apple owns the " +
+    "address (iCloud, or the Hide My Email relay); any other address with an account answers 409 (sign in with the emailed code). " +
+    "A first sign-in without an email is a 400. `name`, which Apple gives only on the first sign-in, prefills an account without a name. " +
+    "503 when Apple sign-in is not configured, or in degraded mode for an email without an account.",
+  request: { body: { content: { "application/json": { schema: AppleSignInSchema } }, required: true } },
+  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 409, 503) },
+});
+
 // ---------- Logout ----------
 
 export const logoutRoute = createRoute({
@@ -92,6 +111,7 @@ auth.openapi(startRoute, controller.start);
 auth.openapi(verifyRoute, controller.verify);
 auth.openapi(verifyLinkRoute, controller.verifyLink);
 auth.openapi(googleRoute, controller.google);
+auth.openapi(appleRoute, controller.apple);
 auth.openapi(logoutRoute, controller.logout);
 
 export default auth;
