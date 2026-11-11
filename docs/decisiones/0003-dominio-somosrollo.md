@@ -4,7 +4,7 @@
 - **Fecha:** 11/11/2026
 - **Revisar:** cuando casi nadie use builds anteriores a la primera versión que habla con el dominio nuevo (para apagar los subdominios de `juanifraga.com`), o si cambia la marca
 
-Cubre los dos repos (`rollo-app/backend` y `rollo-app/mobile`, que tiene el sitio).
+Cubre `rollo-app/backend`, `rollo-app/mobile` y `rollo-app/web` (el sitio, que se separó de `mobile` en esta misma mudanza).
 
 ## Contexto
 
@@ -30,13 +30,16 @@ relay de "Ocultar mi email" de Apple conviene un dominio de Rollo.
 | Mails | `rollo@somosrollo.com`, `soporte@somosrollo.com` | `rollo@` / `soporte@juanifraga.com` |
 
 **Nada se apaga:** los builds instalados tienen fijos la API vieja y el dominio de Universal Links viejo, y los mails y
-links de amistad ya mandados apuntan al sitio viejo. Los dos dominios sirven lo mismo (mismo Worker, mismo archivo de
-Universal Links) por tiempo indefinido.
+links de amistad ya mandados apuntan al sitio viejo. Los dos dominios sirven lo mismo (la API, el mismo Worker; el sitio, el
+mismo proyecto de Vercel, con el mismo archivo de Universal Links) por tiempo indefinido.
+
+**El sitio pasa a Vercel** (repo `rollo-app/web`, deploy por git: `main` → producción, previews por PR), en vez del Worker
+`rollo-site` de Cloudflare. El DNS de los dos dominios sigue en Cloudflare, con los registros del sitio en "DNS only".
 
 ## Etapas
 
-1. **Infraestructura en paralelo (sin cambiar a nadie):** el Worker del sitio y el de la API atienden también los
-   dominios nuevos; la URL canónica del sitio pasa a `somosrollo.com`.
+1. **Infraestructura en paralelo (sin cambiar a nadie):** el Worker de la API atiende también `api.somosrollo.com`; el sitio
+   se publica en Vercel con `somosrollo.com` (canónico) y `rollo.juanifraga.com`, y después se apaga el Worker `rollo-site`.
 2. **Mail:** verificar `somosrollo.com` en Resend (DKIM, SPF, DMARC), Email Routing de Cloudflare para `soporte@`
    y `rollo@` → Gmail, y recién ahí `EMAIL_FROM` y los textos de soporte pasan al dominio nuevo. Registrar el
    remitente en el portal de Apple (relay de "Ocultar mi email").
