@@ -1,3 +1,4 @@
+import { nameSearchColumn } from "../../lib/search-text";
 import type { UserRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -69,6 +70,33 @@ export function insertUserIfMissing(db: D1Database, id: string, email: string, n
 
 export async function findUserByEmail(db: D1Database, email: string): Promise<UserRow | null> {
   return db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<UserRow>();
+}
+
+export type IdentityProvider = "google" | "apple";
+
+/** The user linked to an external sign-in account (provider + its stable account id). */
+export async function findUserByIdentity(db: D1Database, provider: IdentityProvider, subject: string): Promise<UserRow | null> {
+  return db
+    .prepare("SELECT u.* FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = ? AND i.subject = ?")
+    .bind(provider, subject)
+    .first<UserRow>();
+}
+
+/** Links the external account to the user with that email (no-op if it is already linked). */
+export function linkIdentityByEmail(
+  db: D1Database,
+  l: { provider: IdentityProvider; subject: string; email: string; now: number },
+): D1PreparedStatement {
+  return db
+    .prepare("INSERT OR IGNORE INTO user_identities (provider, subject, user_id, created_at) SELECT ?, ?, id, ? FROM users WHERE email = ?")
+    .bind(l.provider, l.subject, l.now, l.email);
+}
+
+/** Sets the name only if the account has none: a suggestion for the profile step, never over the user's own. */
+export function setNameIfMissing(db: D1Database, email: string, name: string): D1PreparedStatement {
+  return db
+    .prepare("UPDATE users SET name = ?, name_search = ? WHERE email = ? AND name IS NULL")
+    .bind(name, nameSearchColumn(name), email);
 }
 
 export function insertSession(

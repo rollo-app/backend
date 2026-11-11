@@ -40,6 +40,15 @@ export const EmailVerifySchema = z
       }) })
   .openapi("EmailVerifyRequest");
 
+export const GoogleSignInSchema = z
+  .object({
+    idToken: z.string().min(1).max(4096).openapi({
+      example: "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCIuLi4iOiIuLi4ifQ.c2ln",
+      description: "Google ID token from Google Sign-In on the phone (a JWT signed by Google)",
+    }),
+  })
+  .openapi("GoogleSignInRequest");
+
 export const EmailVerifyLinkSchema = z
   .object({
     email: emailField,

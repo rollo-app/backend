@@ -32,6 +32,8 @@ export type Env = {
   CF_ANALYTICS_TOKEN?: string;
   /** D1 database id, to filter the D1 analytics (var in wrangler.jsonc). */
   D1_DATABASE_ID?: string;
+  /** Comma-separated Google OAuth client ids (web and iOS) accepted as ID token audience. Empty: Google sign-in answers 503. */
+  GOOGLE_CLIENT_IDS?: string;
   /** App Review account: for this email no email is sent and REVIEW_CODE is accepted as the code. */
   REVIEW_EMAIL?: string;
   REVIEW_CODE?: string;
