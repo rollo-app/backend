@@ -68,6 +68,21 @@ export const sessions = sqliteTable(
   (t) => [index("idx_sessions_user").on(t.userId)],
 );
 
+export const userIdentities = sqliteTable(
+  "user_identities",
+  {
+    provider: text("provider", { enum: ["google", "apple"] }).notNull(),
+    subject: text("subject").notNull(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.provider, t.subject] }),
+    index("idx_user_identities_user").on(t.userId),
+    check("user_identities_provider_check", sql`${t.provider} IN ('google', 'apple')`),
+  ],
+);
+
 export const authCodes = sqliteTable(
   "auth_codes",
   {
