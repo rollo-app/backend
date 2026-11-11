@@ -39,7 +39,7 @@ export async function sendLoginCode(env: Env, email: string, code: string, linkT
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <rollo@juanifraga.com>",
+      from: env.EMAIL_FROM ?? "Rollo <rollo@somosrollo.com>",
       to: [email],
       ...renderLoginEmail({ code, url }),
     }),
@@ -83,8 +83,8 @@ async function deliverToSupport(env: Env, subject: string, text: string): Promis
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <rollo@juanifraga.com>",
-      to: [env.REPORTS_EMAIL ?? "soporte@juanifraga.com"],
+      from: env.EMAIL_FROM ?? "Rollo <rollo@somosrollo.com>",
+      to: [env.REPORTS_EMAIL ?? "soporte@somosrollo.com"],
       subject,
       text,
     }),

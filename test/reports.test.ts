@@ -92,6 +92,22 @@ describe("report emails", () => {
     globalThis.fetch = realFetch;
   });
 
+  it("by default the report email goes from rollo@ to soporte@somosrollo.com", async () => {
+    const { a, mediaId } = await setup();
+    const bodies: any[] = [];
+    globalThis.fetch = (async (input: any, init?: any) => {
+      const url = typeof input === "string" ? input : (input.url ?? String(input));
+      if (url.startsWith("https://api.resend.com")) {
+        bodies.push(JSON.parse(String(init?.body)));
+        return new Response("{}", { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    const res = await api("POST", "/reports", { token: a.token, body: { mediaId, reason: "offensive" }, env: { RESEND_API_KEY: "x" } });
+    expect(res.status).toBe(204);
+    expect(bodies[0]).toMatchObject({ from: "Rollo <rollo@somosrollo.com>", to: ["soporte@somosrollo.com"] });
+  });
+
   it("a failing email still records the report", async () => {
     const { a, mediaId } = await setup();
     let calls = 0;
