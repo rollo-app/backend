@@ -3,6 +3,7 @@ import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTPayload
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEGRADED_MESSAGE, resetDegradedCache } from "../src/lib/degraded";
 import { GOOGLE_ERROR, GOOGLE_UNAVAILABLE, setGoogleKeysForTests } from "../src/lib/google";
+import { GOOGLE_USE_CODE } from "../src/modules/auth/auth.service";
 import { api, signUp } from "./helpers";
 
 // Audiences come from GOOGLE_CLIENT_IDS in vitest.config.ts.
@@ -26,7 +27,7 @@ let subCounter = 0;
 
 /** A Google ID token like the one the app gets from Google Sign-In. */
 async function googleToken(
-  claims: JWTPayload & { email?: string; email_verified?: boolean; name?: string } = {},
+  claims: JWTPayload & { email?: string; email_verified?: boolean; name?: string; hd?: string } = {},
   opts: { key?: CryptoKey; expiresIn?: string } = {},
 ): Promise<string> {
   return new SignJWT({ email: `g${subCounter}@gmail.com`, email_verified: true, ...claims })
@@ -60,6 +61,30 @@ describe("POST /auth/google", () => {
     expect(res.body.isNew).toBe(false);
     const link = await env.DB.prepare("SELECT user_id FROM user_identities WHERE provider = 'google' AND subject = 'g-cami'").first();
     expect(link?.user_id).toBe(existing.userId);
+  });
+
+  it("a non-Google email that already has an account is not linked (Google only checked it once): 409, use the code", async () => {
+    const existing = await signUp("cami@hotmail.com");
+    const res = await signInWithGoogle(await googleToken({ sub: "g-hot", email: "cami@hotmail.com" }));
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe(GOOGLE_USE_CODE);
+    const link = await env.DB.prepare("SELECT 1 FROM user_identities WHERE subject = 'g-hot'").first();
+    expect(link).toBeNull();
+    const { n } = (await env.DB.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").bind(existing.userId).first<{ n: number }>())!;
+    expect(n).toBe(1);
+  });
+
+  it("a Google Workspace email (hd matches its domain) links an existing account", async () => {
+    const existing = await signUp("juani@empresa.com");
+    const res = await signInWithGoogle(await googleToken({ email: "juani@empresa.com", hd: "empresa.com" }));
+    expect(res.status).toBe(200);
+    expect(res.body.user.id).toBe(existing.userId);
+  });
+
+  it("a non-Google email without an account still signs up", async () => {
+    const res = await signInWithGoogle(await googleToken({ email: "nueva@hotmail.com" }));
+    expect(res.status).toBe(200);
+    expect(res.body.isNew).toBe(true);
   });
 
   it("finds the user by the Google account id even if its email changed", async () => {

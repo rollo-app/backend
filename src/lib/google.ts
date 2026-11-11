@@ -29,8 +29,18 @@ function clientIds(env: Env): string[] {
     .filter(Boolean);
 }
 
-/** `name` is the Google profile's full name, untouched (may be missing). */
-export type GoogleAccount = { subject: string; email: string; name: string | null };
+/**
+ * `name` is the Google profile's full name, untouched (may be missing). `emailIsGoogles`: Google owns that address (Gmail, or a
+ * Workspace domain, `hd`), so it vouches for it today; any other address it only checked when the Google account was made.
+ */
+export type GoogleAccount = { subject: string; email: string; name: string | null; emailIsGoogles: boolean };
+
+/** Google's guidance: trust the email to find an existing account only for Gmail or a Workspace domain matching `hd`. */
+function googleOwnsEmail(email: string, hd: unknown): boolean {
+  const domain = email.slice(email.lastIndexOf("@") + 1);
+  if (domain === "gmail.com" || domain === "googlemail.com") return true;
+  return typeof hd === "string" && hd.toLowerCase() === domain;
+}
 
 /**
  * Checks a Google ID token (signature against Google's keys, issuer, audience = one of our clients, expiry) and that
@@ -46,10 +56,17 @@ export async function verifyGoogleIdToken(env: Env, idToken: string): Promise<Go
     console.warn("[google] invalid ID token", err instanceof Error ? err.message : err);
     throw badRequest(GOOGLE_ERROR);
   }
-  const { sub, email, email_verified, name } = payload as { sub?: unknown; email?: unknown; email_verified?: unknown; name?: unknown };
+  const { sub, email, email_verified, name, hd } = payload as {
+    sub?: unknown;
+    email?: unknown;
+    email_verified?: unknown;
+    name?: unknown;
+    hd?: unknown;
+  };
   if (typeof sub !== "string" || !sub || typeof email !== "string" || email_verified !== true) {
     console.warn("[google] token without a verified email");
     throw badRequest(GOOGLE_ERROR);
   }
-  return { subject: sub, email: email.trim().toLowerCase(), name: typeof name === "string" ? name : null };
+  const normalized = email.trim().toLowerCase();
+  return { subject: sub, email: normalized, name: typeof name === "string" ? name : null, emailIsGoogles: googleOwnsEmail(normalized, hd) };
 }

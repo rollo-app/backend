@@ -65,11 +65,13 @@ export const googleRoute = createRoute({
     "Same result as `/auth/email/verify`. The token must be signed by Google, issued for one of our OAuth clients (`GOOGLE_CLIENT_IDS`), " +
     "not expired, and carry an email Google verified; any failure is the same 400. The Google account id finds the user it was linked to " +
     "before (even if its email changed); otherwise the verified email signs into that email's account or creates it, and links it. " +
+    "An existing account is only linked when Google owns the address (Gmail, or a Workspace domain matching `hd`); for any other " +
+    "address with an account the answer is 409 (sign in with the emailed code instead). " +
     "An account without a name gets the Google profile name (single spaces, up to 30 characters) as a suggestion: it stays incomplete " +
     "(`isNew`) until it has a username, so the profile step shows it prefilled. " +
     "503 when Google sign-in is not configured, or in degraded mode for an email without an account.",
   request: { body: { content: { "application/json": { schema: GoogleSignInSchema } }, required: true } },
-  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 503) },
+  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 409, 503) },
 });
 
 // ---------- Logout ----------

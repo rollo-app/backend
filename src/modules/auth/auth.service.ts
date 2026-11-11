@@ -13,7 +13,7 @@ import { DEGRADED_MESSAGE, isDegraded } from "../../lib/degraded";
 import { verifyGoogleIdToken } from "../../lib/google";
 import { ipKey } from "../../lib/ip";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../../lib/login-code";
-import { badRequest, rateLimited, unavailable } from "../../shared/errors";
+import { badRequest, conflict, rateLimited, unavailable } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import * as repo from "./auth.repository";
 
@@ -30,6 +30,7 @@ const LINK_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 /** A PKCE code verifier (RFC 7636): 43–128 unreserved characters. */
 const LINK_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const LINK_ERROR = "El link venció o ya se usó. Pedí otro código.";
+export const GOOGLE_USE_CODE = "Ya tenés una cuenta con este email. Entrá con el código que te mandamos por mail.";
 
 /** "send_failed" means the email provider failed (the controller answers 502). */
 export type StartResult = "sent" | "send_failed";
@@ -189,14 +190,18 @@ async function signIn(db: D1Database, email: string, now: number): Promise<Signe
  * none, the email Google verified signs into that email's account (or creates it) and links it, in one batch.
  */
 export async function signInWithGoogle(env: Env, idToken: string): Promise<SignedIn> {
-  const { subject, email, name } = await verifyGoogleIdToken(env, idToken);
+  const { subject, email, name, emailIsGoogles } = await verifyGoogleIdToken(env, idToken);
   const now = Date.now();
 
   const linked = await repo.findUserByIdentity(env.DB, "google", subject);
   if (linked) return newSession(env.DB, linked, now);
 
+  const exists = await repo.userExists(env.DB, email);
+  // Google checked a non-Gmail, non-Workspace address only when that Google account was made: the address may have changed hands
+  // since. Linking it to the Rollo account with that email could hand someone else's account over, so that owner uses the code.
+  if (exists && !emailIsGoogles) throw conflict(GOOGLE_USE_CODE);
   // Degraded mode blocks new accounts, as in `startLogin`; existing ones still get in.
-  if (!(await repo.userExists(env.DB, email)) && (await isDegraded(env))) throw unavailable(DEGRADED_MESSAGE);
+  if (!exists && (await isDegraded(env))) throw unavailable(DEGRADED_MESSAGE);
   // The Google name prefills "Completá tu perfil" (the user can change it there); an account that already has a name keeps it.
   const suggested = profileNameFrom(name);
   await env.DB.batch([
