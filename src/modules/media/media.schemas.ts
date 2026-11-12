@@ -160,6 +160,14 @@ export const DEFAULT_FEED_PAGE = 30;
 export const MAX_FEED_PAGE = 100;
 
 export const FeedQuery = z.object({
+  order: z
+    .enum(["asc", "desc"])
+    .optional()
+    .openapi({
+      param: { name: "order", in: "query" },
+      description:
+        "`asc` (default): oldest first. `desc`: newest first. A cursor is only valid with the order it was produced with: keep the same `order` on every page.",
+    }),
   cursor: z.string().optional().openapi({ param: { name: "cursor", in: "query" }, description: "`nextCursor` of the previous page" }),
   limit: z.coerce
     .number()

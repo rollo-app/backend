@@ -17,11 +17,11 @@ async function fixture(opts: { reveal?: boolean } = {}) {
 }
 
 /** Walks every page and returns them all. */
-async function walk(tripId: string, token: string, limit: number) {
+async function walk(tripId: string, token: string, limit: number, order = "") {
   const pages: Array<{ ids: string[]; nextCursor: string | null }> = [];
   let cursor: string | null = null;
   do {
-    const qs: string = `?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const qs: string = `?limit=${limit}${order ? `&order=${order}` : ""}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
     const res = await feed(tripId, token, qs);
     expect(res.status).toBe(200);
     pages.push({ ids: ids(res), nextCursor: res.body.nextCursor });
@@ -119,5 +119,64 @@ describe("GET /trips/:id/feed validation", () => {
     }
     expect((await feed(fx.tripId, fx.adminToken, "?limit=100")).status).toBe(200);
     expect((await feed(fx.tripId, fx.adminToken, "?limit=1")).status).toBe(200);
+  });
+});
+
+describe.each([false, true])("GET /trips/:id/feed order=desc (revealed: %s)", (reveal) => {
+  it("order omitted is asc; without cursor or limit order=desc returns the whole feed reversed, nextCursor null", async () => {
+    const fx = await fixture({ reveal });
+    const asc = ids(await feed(fx.tripId, fx.adminToken));
+    expect(ids(await feed(fx.tripId, fx.adminToken, "?order=asc"))).toEqual(asc);
+    const res = await feed(fx.tripId, fx.adminToken, "?order=desc");
+    expect(res.status).toBe(200);
+    expect(ids(res)).toEqual([...asc].reverse());
+    expect(res.body.nextCursor).toBeNull();
+  });
+
+  it("pages of 2 over 5 photos are 2, 2, 1 in exact reverse order, without duplicates or gaps", async () => {
+    const fx = await fixture({ reveal });
+    const asc = ids(await feed(fx.tripId, fx.adminToken));
+    const pages = await walk(fx.tripId, fx.adminToken, 2, "desc");
+    expect(pages.map((p) => p.ids.length)).toEqual([2, 2, 1]);
+    expect(pages.map((p) => p.nextCursor === null)).toEqual([false, false, true]);
+    expect(pages.flatMap((p) => p.ids)).toEqual([...asc].reverse());
+  });
+
+  it("only cursor with order=desc: default page size, everything before the cursor", async () => {
+    const fx = await fixture({ reveal });
+    const asc = ids(await feed(fx.tripId, fx.adminToken));
+    const first = await feed(fx.tripId, fx.adminToken, "?order=desc&limit=2");
+    const rest = await feed(fx.tripId, fx.adminToken, `?order=desc&cursor=${encodeURIComponent(first.body.nextCursor)}`);
+    expect(ids(rest)).toEqual([...asc].reverse().slice(2));
+    expect(rest.body.nextCursor).toBeNull();
+  });
+
+  it("ties on the same takenAt walk in desc by id without skips or repeats", async () => {
+    const fx = await newTrip({ startsAt: Date.now() - 5 * DAY });
+    const at = Date.now() - 2 * DAY;
+    const same = await addMediaDirect(fx.tripId, [{ userId: fx.adminUserId, memberId: fx.adminId }], 5, { from: at, to: at });
+    if (reveal) await api("POST", `/trips/${fx.tripId}/reveal`, { token: fx.adminToken });
+    const desc = [...same].sort().reverse();
+    expect(ids(await feed(fx.tripId, fx.adminToken, "?order=desc"))).toEqual(desc);
+    for (const limit of [1, 2]) {
+      expect((await walk(fx.tripId, fx.adminToken, limit, "desc")).flatMap((p) => p.ids)).toEqual(desc);
+    }
+  });
+
+  it("filters apply in desc: a deleted photo and one archived by someone else never show up", async () => {
+    const fx = await fixture({ reveal: true });
+    expect((await api("DELETE", `/media/${fx.photos[1]}`, { token: fx.fede.token })).status).toBeLessThan(300);
+    expect((await api("POST", `/media/${fx.photos[3]}/archive`, { token: fx.fede.token })).status).toBe(204);
+    const pages = await walk(fx.tripId, fx.adminToken, 2, "desc");
+    expect(pages.flatMap((p) => p.ids)).toEqual([fx.photos[4], fx.photos[2], fx.photos[0]]);
+    expect(pages.map((p) => p.ids.length)).toEqual([2, 1]);
+    expect((await walk(fx.tripId, fx.fede.token, 2, "desc")).flatMap((p) => p.ids)).toContain(fx.photos[3]);
+  });
+
+  it("400 for an invalid order", async () => {
+    const fx = await fixture({ reveal });
+    for (const order of ["up", "DESC", ""]) {
+      expect((await feed(fx.tripId, fx.adminToken, `?order=${order}`)).status, `order=${order}`).toBe(400);
+    }
   });
 });

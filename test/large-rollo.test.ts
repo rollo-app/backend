@@ -94,6 +94,26 @@ describe("large rollo (100 members, 2,000 photos)", () => {
     expect(new Set(seen).size).toBe(PHOTOS);
     expect(seen).toEqual(expected);
   }, 120_000);
+
+  it("walks the whole revealed feed in desc with the default page size: 2,000 unique ids in exact reverse order", async () => {
+    const fx = await setup();
+    expect((await api("POST", `/trips/${fx.tripId}/reveal`, { token: fx.adminToken })).status).toBeLessThan(300);
+    const token = fx.members[0]!.token;
+    const compat = await api("GET", `/trips/${fx.tripId}/feed`, { token });
+    const expected = compat.body.items.map((i: { id: string }) => i.id).reverse();
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const path: string = `/trips/${fx.tripId}/feed?order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : "&limit=30"}`;
+      const res = await api("GET", path, { token });
+      expect(res.status).toBe(200);
+      seen.push(...res.body.items.map((i: { id: string }) => i.id));
+      cursor = res.body.nextCursor;
+    } while (cursor);
+    expect(new Set(seen).size).toBe(PHOTOS);
+    expect(seen).toEqual(expected);
+  }, 120_000);
 });
 
 describe("momentPosted in a large rollo", () => {

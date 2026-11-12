@@ -210,16 +210,17 @@ export async function getFeed(
   db: D1Database,
   trip: TripRow,
   viewerId: string,
-  opts: { cursor?: string; limit?: number } = {},
+  opts: { cursor?: string; limit?: number; order?: "asc" | "desc" } = {},
 ): Promise<{ revealed: boolean; rows: repo.FeedRow[]; nextCursor: string | null }> {
   const revealed = isRevealed(trip);
+  const order = opts.order ?? "asc";
   // Older app builds send neither param and expect the whole feed.
   if (opts.cursor === undefined && opts.limit === undefined) {
-    return { revealed, rows: await repo.listFeed(db, trip.id, viewerId, null), nextCursor: null };
+    return { revealed, rows: await repo.listFeed(db, trip.id, viewerId, null, order), nextCursor: null };
   }
   const limit = opts.limit ?? DEFAULT_FEED_PAGE;
   const after = opts.cursor !== undefined ? decodeCursor(opts.cursor) : null;
-  const fetched = await repo.listFeed(db, trip.id, viewerId, { limit: limit + 1, after: after && { takenAt: after.at, id: after.id } });
+  const fetched = await repo.listFeed(db, trip.id, viewerId, { limit: limit + 1, after: after && { takenAt: after.at, id: after.id } }, order);
   const rows = fetched.slice(0, limit);
   const last = rows[rows.length - 1];
   return { revealed, rows, nextCursor: fetched.length > limit && last ? encodeCursor({ at: last.takenAt, id: last.id }) : null };

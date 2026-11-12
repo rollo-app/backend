@@ -67,8 +67,9 @@ export const feedRoute = createRoute({
     "After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, " +
     "and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`; before the reveal only a daily moment's photo has `commentCount`). " +
     "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out. " +
-    "Oldest first (`takenAt`, ties by id), paginated with a keyset cursor: send `limit` and then each page's `nextCursor` as `cursor`. " +
-    "Without cursor or limit returns the whole feed, for older app builds; new clients should always send limit.",
+    "Oldest first by default (`order=asc`; `order=desc` for newest first), ordered by `takenAt` with ties by id, paginated with a keyset cursor: send `limit` and then each page's `nextCursor` as `cursor`. " +
+    "A cursor is only valid with the `order` it came from: keep `order` the same across pages. " +
+    "Without cursor or limit returns the whole feed (in the requested order), for older app builds; new clients should always send limit.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams, query: FeedQuery },
