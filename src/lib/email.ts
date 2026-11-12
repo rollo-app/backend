@@ -6,7 +6,7 @@ import { renderLoginEmail } from "./login-email";
  * Test-visible: tests read the code from here instead of an inbox.
  */
 /** Public support mailbox (Email Routing → Juani's inbox). */
-export const SUPPORT_EMAIL = "soporte@somosrollo.com";
+export const SUPPORT_EMAIL = "soporte@rolloproject.com";
 
 export const devSentCodes = new Map<string, string>();
 
@@ -42,7 +42,7 @@ export async function sendLoginCode(env: Env, email: string, code: string, linkT
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <no-reply@somosrollo.com>",
+      from: env.EMAIL_FROM ?? "Rollo <no-reply@rolloproject.com>",
       to: [email],
       // The sender is no-reply@ (it receives nothing): a reply goes to support instead of getting lost.
       reply_to: SUPPORT_EMAIL,
@@ -88,7 +88,7 @@ async function deliverToSupport(env: Env, subject: string, text: string): Promis
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <no-reply@somosrollo.com>",
+      from: env.EMAIL_FROM ?? "Rollo <no-reply@rolloproject.com>",
       to: [env.REPORTS_EMAIL ?? SUPPORT_EMAIL],
       subject,
       text,
