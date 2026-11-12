@@ -25,11 +25,15 @@ const waitlist = createApp();
 waitlist.openapi(joinRoute, controller.join);
 
 /**
- * The links in the confirmation email (`GET /waitlist/confirm?token=` and `/waitlist/unsubscribe?token=`) open in a browser and
+ * The links in the confirmation email (`/waitlist/confirm?token=` and `/waitlist/unsubscribe?token=`) open in a browser and
  * answer a small HTML page, not JSON: a plain Hono app outside the contract (the mobile app never calls them), like `/admin/*`.
  */
 export const waitlistPages = new Hono<AppEnv>();
-waitlistPages.get("/confirm", controller.confirm);
-waitlistPages.get("/unsubscribe", controller.unsubscribe);
+// GET shows a page with a button and changes nothing (mail scanners open links); the button POSTs the token.
+waitlistPages.get("/confirm", controller.confirmPageGet);
+waitlistPages.post("/confirm", controller.confirm);
+waitlistPages.get("/unsubscribe", controller.unsubscribePageGet);
+// Also the RFC 8058 one-click target (`List-Unsubscribe-Post`): the token stays in the query, the body is `List-Unsubscribe=One-Click`.
+waitlistPages.post("/unsubscribe", controller.unsubscribe);
 
 export default waitlist;

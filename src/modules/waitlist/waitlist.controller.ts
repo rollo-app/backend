@@ -2,7 +2,7 @@ import type { RouteHandler } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "../../types";
-import { CONFIRMED_PAGE, INVALID_LINK_PAGE, UNSUBSCRIBED_PAGE } from "./waitlist.pages";
+import { CONFIRMED_PAGE, confirmPage, INVALID_LINK_PAGE, UNSUBSCRIBED_PAGE, unsubscribePage } from "./waitlist.pages";
 import type { joinRoute } from "./waitlist.router";
 import * as service from "./waitlist.service";
 
@@ -22,15 +22,37 @@ export const join: RouteHandler<typeof joinRoute, AppEnv> = async (c) => {
 
 /** Pages: the token is in the URL, so they are never cached and never leak it through the Referer. */
 function page(c: Context<AppEnv>, html: string, status: 200 | 400) {
-  return c.html(html, status, { "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" });
+  return c.html(html, status, {
+    "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+  });
+}
+
+/** The token comes in the query (the emailed link, the RFC 8058 one-click POST) or in the form body (the page button). */
+async function tokenOf(c: Context<AppEnv>): Promise<string | undefined> {
+  const fromQuery = c.req.query("token");
+  if (fromQuery) return fromQuery;
+  const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+  return typeof form.token === "string" ? form.token : undefined;
+}
+
+// GET only shows the button (read-only: mail scanners open every link); the POST acts.
+export async function confirmPageGet(c: Context<AppEnv>) {
+  const token = c.req.query("token");
+  return token && (await service.peekWaitlist(c.env.DB, "confirm", token)) ? page(c, confirmPage(token), 200) : page(c, INVALID_LINK_PAGE, 400);
+}
+
+export async function unsubscribePageGet(c: Context<AppEnv>) {
+  const token = c.req.query("token");
+  return token && (await service.peekWaitlist(c.env.DB, "unsubscribe", token)) ? page(c, unsubscribePage(token), 200) : page(c, INVALID_LINK_PAGE, 400);
 }
 
 export async function confirm(c: Context<AppEnv>) {
-  const ok = await service.confirmWaitlist(c.env.DB, c.req.query("token"));
+  const ok = await service.confirmWaitlist(c.env.DB, await tokenOf(c));
   return ok ? page(c, CONFIRMED_PAGE, 200) : page(c, INVALID_LINK_PAGE, 400);
 }
 
 export async function unsubscribe(c: Context<AppEnv>) {
-  const ok = await service.unsubscribeWaitlist(c.env.DB, c.req.query("token"));
+  const ok = await service.unsubscribeWaitlist(c.env.DB, await tokenOf(c));
   return ok ? page(c, UNSUBSCRIBED_PAGE, 200) : page(c, INVALID_LINK_PAGE, 400);
 }

@@ -18,6 +18,12 @@ export const WAITLIST_EMAILS_PER_DAY = 30;
 /** Waitlist posts one IP can make per UTC day (every valid post counts, sent or not). */
 export const WAITLIST_POSTS_PER_IP_PER_DAY = 20;
 
+/**
+ * Waitlist emails only go out while today's login + support + waitlist emails stay at or under this: Resend's free plan is 100 a day
+ * and login codes must always have room, so the optional waitlist mail yields first.
+ */
+export const WAITLIST_COMBINED_EMAILS_PER_DAY = 70;
+
 export type EmailKind = "login" | "login_new" | "support" | "waitlist" | `login_new_ip:${string}` | `waitlist_ip:${string}`;
 
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -36,6 +42,15 @@ export async function reserveEmailSlot(db: D1Database, kind: EmailKind, cap: num
     .bind(kind, utcDay())
     .first<{ count: number }>();
   return (row?.count ?? 0) <= cap;
+}
+
+/** Emails counted today (UTC) against Resend's daily quota: login, support and waitlist (per-IP and new-user counters are subsets, not extra). */
+export async function combinedEmailsToday(db: D1Database): Promise<number> {
+  const row = await db
+    .prepare("SELECT COALESCE(SUM(count), 0) AS n FROM email_counters WHERE day = ? AND kind IN ('login', 'support', 'waitlist')")
+    .bind(utcDay())
+    .first<{ n: number }>();
+  return row?.n ?? 0;
 }
 
 /** Gives back a slot taken with `reserveEmailSlot` when the email was not actually sent. */

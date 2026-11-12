@@ -237,7 +237,8 @@ export async function sendWaitlistEmail(env: Env, email: string, links: Waitlist
       from: env.EMAIL_FROM ?? "Rollo <no-reply@rolloproject.com>",
       to: [email],
       reply_to: SUPPORT_EMAIL,
-      headers: { "List-Unsubscribe": `<${links.unsubscribeUrl}>` },
+      // RFC 8058 one-click: the mail client POSTs `List-Unsubscribe=One-Click` to that same URL.
+      headers: { "List-Unsubscribe": `<${links.unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
       ...renderWaitlistEmail(links),
     }),
   });

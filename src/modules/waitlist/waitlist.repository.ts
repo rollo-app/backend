@@ -66,6 +66,15 @@ export async function unsubscribeByTokenHash(db: D1Database, hash: string, now: 
   return !!row;
 }
 
+/** Whether a token hash matches a row that the action would still apply to (confirming needs no unsubscribe). Writes nothing. */
+export async function tokenIsLive(db: D1Database, action: "confirm" | "unsubscribe", hash: string): Promise<boolean> {
+  const sqlText =
+    action === "confirm"
+      ? "SELECT 1 FROM waitlist WHERE confirm_token_hash = ? AND unsubscribed_at IS NULL"
+      : "SELECT 1 FROM waitlist WHERE unsubscribe_token_hash = ?";
+  return !!(await db.prepare(sqlText).bind(hash).first());
+}
+
 // ---------- Backoffice ----------
 
 const isUnsubscribed = isNotNull(waitlist.unsubscribedAt);

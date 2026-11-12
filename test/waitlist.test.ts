@@ -1,8 +1,9 @@
-import { env } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { devSentWaitlist } from "../src/lib/email";
 import { WAITLIST_EMAILS_PER_DAY, WAITLIST_POSTS_PER_IP_PER_DAY } from "../src/lib/email-caps";
 import { api, DAY, HOUR } from "./helpers";
+import type { ApiResponse } from "./helpers";
 
 beforeEach(() => {
   devSentWaitlist.length = 0;
@@ -14,6 +15,19 @@ const row = (email: string) => env.DB.prepare("SELECT * FROM waitlist WHERE emai
 const today = () => new Date().toISOString().slice(0, 10);
 /** Path + query of a link sent in the email, to call it on the test origin. */
 const path = (url: string) => url.replace("https://rollo.test", "");
+/** POST like the page button does: form-encoded, token in the body. */
+async function postForm(url: string, action: "confirm" | "unsubscribe", token = new URL(url).searchParams.get("token")!): Promise<ApiResponse<string>> {
+  const res = await exports.default.fetch(
+    new Request(`https://rollo.test/waitlist/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token }).toString(),
+    }),
+  );
+  return { status: res.status, body: await res.text(), headers: res.headers };
+}
+const confirm = (url: string) => postForm(url, "confirm");
+const unsub = (url: string) => postForm(url, "unsubscribe");
 const lastSent = () => devSentWaitlist.at(-1)!;
 
 describe("POST /waitlist", () => {
@@ -69,13 +83,13 @@ describe("POST /waitlist", () => {
     expect(devSentWaitlist).toHaveLength(2);
     expect(lastSent().confirmUrl).not.toBe(first.confirmUrl);
     // The old link no longer matches the stored hash.
-    expect((await api("GET", path(first.confirmUrl))).status).toBe(400);
-    expect((await api("GET", path(lastSent().confirmUrl))).status).toBe(200);
+    expect((await confirm(first.confirmUrl)).status).toBe(400);
+    expect((await confirm(lastSent().confirmUrl)).status).toBe(200);
   });
 
   it("already confirmed and not unsubscribed: 204 and no email, even after 24 h", async () => {
     await join("ana@rollo.test");
-    await api("GET", path(lastSent().confirmUrl));
+    await confirm(lastSent().confirmUrl);
     await env.DB.prepare("UPDATE waitlist SET last_sent_at = last_sent_at - ?").bind(3 * DAY).run();
     devSentWaitlist.length = 0;
     expect((await join("ana@rollo.test")).status).toBe(204);
@@ -140,21 +154,22 @@ describe("POST /waitlist", () => {
     expect(sent.text).toMatch(/https:\/\/rollo\.test\/waitlist\/confirm\?token=/);
     expect(sent.text).toMatch(/https:\/\/rollo\.test\/waitlist\/unsubscribe\?token=/);
     expect(sent.headers["List-Unsubscribe"]).toMatch(/^<https:\/\/rollo\.test\/waitlist\/unsubscribe\?token=/);
+    expect(sent.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
     expect(sent.reply_to).toBeTruthy();
   });
 });
 
-describe("GET /waitlist/confirm", () => {
+describe("/waitlist/confirm", () => {
   it("confirms with a Spanish HTML page; opening it again is idempotent", async () => {
     await join("ana@rollo.test");
-    const res = await api("GET", path(lastSent().confirmUrl));
+    const res = await confirm(lastSent().confirmUrl);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(res.headers.get("cache-control")).toContain("no-store");
     expect(res.body).toContain("¡Listo! Te vamos a avisar cuando Rollo abra para todos.");
     const confirmedAt = (await row("ana@rollo.test"))!.confirmed_at;
     expect(typeof confirmedAt).toBe("number");
-    const again = await api("GET", path(lastSent().confirmUrl));
+    const again = await confirm(lastSent().confirmUrl);
     expect(again.status).toBe(200);
     expect(again.body).toContain("¡Listo!");
     expect((await row("ana@rollo.test"))!.confirmed_at).toBe(confirmedAt);
@@ -176,23 +191,23 @@ describe("GET /waitlist/confirm", () => {
 
   it("does not confirm someone who already unsubscribed", async () => {
     await join("ana@rollo.test");
-    await api("GET", path(lastSent().unsubscribeUrl));
-    expect((await api("GET", path(lastSent().confirmUrl))).status).toBe(400);
+    await unsub(lastSent().unsubscribeUrl);
+    expect((await confirm(lastSent().confirmUrl)).status).toBe(400);
     expect((await row("ana@rollo.test"))!.confirmed_at).toBeNull();
   });
 });
 
-describe("GET /waitlist/unsubscribe", () => {
+describe("/waitlist/unsubscribe", () => {
   it("unsubscribes with a Spanish page, idempotently", async () => {
     await join("ana@rollo.test");
-    await api("GET", path(lastSent().confirmUrl));
-    const res = await api("GET", path(lastSent().unsubscribeUrl));
+    await confirm(lastSent().confirmUrl);
+    const res = await unsub(lastSent().unsubscribeUrl);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(res.body).toContain("Te diste de baja de la lista.");
     const at = (await row("ana@rollo.test"))!.unsubscribed_at;
     expect(typeof at).toBe("number");
-    expect((await api("GET", path(lastSent().unsubscribeUrl))).status).toBe(200);
+    expect((await unsub(lastSent().unsubscribeUrl)).status).toBe(200);
     expect((await row("ana@rollo.test"))!.unsubscribed_at).toBe(at);
   });
 
@@ -206,13 +221,90 @@ describe("GET /waitlist/unsubscribe", () => {
 
   it("posting again re-subscribes: a new confirmation is sent right away and confirming clears the unsubscribe", async () => {
     await join("ana@rollo.test");
-    await api("GET", path(lastSent().confirmUrl));
-    await api("GET", path(lastSent().unsubscribeUrl));
+    await confirm(lastSent().confirmUrl);
+    await unsub(lastSent().unsubscribeUrl);
     expect((await join("ana@rollo.test")).status).toBe(204);
     expect(devSentWaitlist).toHaveLength(2);
     expect(await row("ana@rollo.test")).toMatchObject({ confirmed_at: null, unsubscribed_at: null });
-    expect((await api("GET", path(lastSent().confirmUrl))).status).toBe(200);
+    expect((await confirm(lastSent().confirmUrl)).status).toBe(200);
     expect(await row("ana@rollo.test")).toMatchObject({ unsubscribed_at: null });
     expect(typeof (await row("ana@rollo.test"))!.confirmed_at).toBe("number");
+  });
+});
+
+describe("mail scanners: GET never changes anything", () => {
+  it("GET confirm and unsubscribe show a page with a POST button and leave the row untouched", async () => {
+    await join("ana@rollo.test");
+    const before = await row("ana@rollo.test");
+    const c = await api("GET", path(lastSent().confirmUrl));
+    expect(c.status).toBe(200);
+    expect(c.headers.get("content-type")).toContain("text/html");
+    expect(c.headers.get("cache-control")).toContain("no-store");
+    expect(c.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(c.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(c.body).toContain('method="post"');
+    expect(c.body).toContain('action="/waitlist/confirm"');
+    expect(c.body).toContain("Confirmar");
+    expect(c.body).not.toContain("¡Listo!");
+    const u = await api("GET", path(lastSent().unsubscribeUrl));
+    expect(u.status).toBe(200);
+    expect(u.body).toContain('action="/waitlist/unsubscribe"');
+    expect(u.body).toContain("Darme de baja");
+    expect(await row("ana@rollo.test")).toEqual(before);
+  });
+
+  it("POST with a bad or missing token is the 400 page and changes nothing", async () => {
+    await join("ana@rollo.test");
+    for (const action of ["confirm", "unsubscribe"] as const) {
+      const bad = await postForm(lastSent().confirmUrl, action, "x".repeat(43));
+      expect(bad.status).toBe(400);
+      expect(bad.body).toContain("El link no es válido.");
+      expect((await postForm(lastSent().confirmUrl, action, "")).status).toBe(400);
+    }
+    expect(await row("ana@rollo.test")).toMatchObject({ confirmed_at: null, unsubscribed_at: null });
+  });
+
+  it("RFC 8058 one-click: POST to the unsubscribe URL (token in the query) with List-Unsubscribe=One-Click unsubscribes", async () => {
+    await join("ana@rollo.test");
+    const res = await exports.default.fetch(
+      new Request(lastSent().unsubscribeUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "List-Unsubscribe=One-Click",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(typeof (await row("ana@rollo.test"))!.unsubscribed_at).toBe("number");
+  });
+});
+
+describe("combined daily budget (login codes win)", () => {
+  const set = (kind: string, count: number) =>
+    env.DB.prepare("INSERT INTO email_counters (kind, day, count) VALUES (?, ?, ?)").bind(kind, today(), count).run();
+
+  it("with login + support + waitlist at 70 or more it answers 204 and sends and stores nothing", async () => {
+    await set("login", 60);
+    await set("support", 5);
+    await set("waitlist", 5);
+    const res = await join("ana@rollo.test");
+    expect(res.status).toBe(204);
+    expect(devSentWaitlist).toHaveLength(0);
+    expect(await row("ana@rollo.test")).toBeNull();
+  });
+
+  it("at 69 it still sends one more, and the slot it takes counts", async () => {
+    await set("login", 69);
+    expect((await join("a@rollo.test")).status).toBe(204);
+    expect(devSentWaitlist).toHaveLength(1);
+    await join("b@rollo.test");
+    expect(devSentWaitlist).toHaveLength(1);
+  });
+
+  it("per-IP and login_new counters are not double counted", async () => {
+    await set("login", 40);
+    await set("login_new", 40);
+    await set("login_new_ip:1.2.3.4", 20);
+    expect((await join("a@rollo.test")).status).toBe(204);
+    expect(devSentWaitlist).toHaveLength(1);
   });
 });

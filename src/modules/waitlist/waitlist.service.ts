@@ -1,6 +1,6 @@
 import { generateToken, hashToken } from "../../lib/auth";
 import { sendWaitlistEmail } from "../../lib/email";
-import { releaseEmailSlot, reserveEmailSlot, WAITLIST_EMAILS_PER_DAY, WAITLIST_POSTS_PER_IP_PER_DAY } from "../../lib/email-caps";
+import { combinedEmailsToday, releaseEmailSlot, reserveEmailSlot, WAITLIST_COMBINED_EMAILS_PER_DAY, WAITLIST_EMAILS_PER_DAY, WAITLIST_POSTS_PER_IP_PER_DAY } from "../../lib/email-caps";
 import { ipKey } from "../../lib/ip";
 import { type Page, type PageQuery, paginate } from "../../lib/paging";
 import type { Env } from "../../types";
@@ -46,6 +46,12 @@ export async function joinWaitlist(
     console.warn("[waitlist] daily waitlist email cap reached");
     return "ok";
   }
+  // Login codes win: past the combined budget (this slot included) the waitlist mail is not sent.
+  if ((await combinedEmailsToday(env.DB)) > WAITLIST_COMBINED_EMAILS_PER_DAY) {
+    await releaseEmailSlot(env.DB, "waitlist");
+    console.warn("[waitlist] combined daily email budget reached");
+    return "ok";
+  }
   const giveBack = async () => {
     await releaseEmailSlot(env.DB, "waitlist");
     if (ipKind) await releaseEmailSlot(env.DB, ipKind);
@@ -87,6 +93,12 @@ export async function confirmWaitlist(db: D1Database, token: string | undefined)
 export async function unsubscribeWaitlist(db: D1Database, token: string | undefined): Promise<boolean> {
   if (!token || !TOKEN.test(token)) return false;
   return repo.unsubscribeByTokenHash(db, await hashToken(token), Date.now());
+}
+
+/** Read-only check for the GET pages (scanners open them): is there a link like this that a click would act on? */
+export async function peekWaitlist(db: D1Database, action: "confirm" | "unsubscribe", token: string | undefined): Promise<boolean> {
+  if (!token || !TOKEN.test(token)) return false;
+  return repo.tokenIsLive(db, action, await hashToken(token));
 }
 
 // ---------- Backoffice ----------
