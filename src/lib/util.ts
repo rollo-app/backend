@@ -108,3 +108,13 @@ export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">,
 export function isEmail(s: string): boolean {
   return s.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
+
+/** Ids per `IN (...)` query: D1 allows 100 bound parameters per statement; 90 leaves room for the fixed ones. */
+export const D1_IN_CHUNK = 90;
+
+/** Splits `items` into slices of at most `size` (for `IN (...)` queries under D1's bound-parameter limit). */
+export function inChunks<T>(items: T[], size = D1_IN_CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}

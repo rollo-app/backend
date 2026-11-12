@@ -1,3 +1,4 @@
+import { inChunks } from "../../lib/util";
 import type { MemberRow, Role, TripRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -72,6 +73,19 @@ export function insertAdminMember(db: D1Database, id: string, tripId: string, us
 
 export function findMember(db: D1Database, tripId: string, userId: string): Promise<MemberRow | null> {
   return db.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?").bind(tripId, userId).first<MemberRow>();
+}
+
+/** Memberships (any state) of `userIds` in the trip, keyed by user id. One query per `D1_IN_CHUNK` ids. */
+export async function findMembersByUsers(db: D1Database, tripId: string, userIds: string[]): Promise<Map<string, MemberRow>> {
+  const found = new Map<string, MemberRow>();
+  for (const chunk of inChunks(userIds)) {
+    const { results } = await db
+      .prepare(`SELECT * FROM members WHERE trip_id = ? AND user_id IN (${chunk.map(() => "?").join(", ")})`)
+      .bind(tripId, ...chunk)
+      .all<MemberRow>();
+    for (const m of results) found.set(m.user_id, m);
+  }
+  return found;
 }
 
 export function insertMember(db: D1Database, id: string, tripId: string, userId: string, now: number, addedBy: string | null): D1PreparedStatement {

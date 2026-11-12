@@ -168,3 +168,13 @@ export async function areFriends(db: D1Database, a: string, b: string): Promise<
 export async function isCompleteUser(db: D1Database, id: string): Promise<boolean> {
   return (await repo.findUser(db, id)) !== null;
 }
+
+/** Which of `ids` are friends of `me` (one query). Nobody is their own friend. */
+export async function friendIdsAmong(db: D1Database, me: string, ids: string[]): Promise<Set<string>> {
+  return repo.friendIdsAmong(db, me, ids.filter((id) => id !== me));
+}
+
+/** Which of `ids` are complete users (one query); bulk `isCompleteUser`. */
+export async function completeUserIdsAmong(db: D1Database, ids: string[]): Promise<Set<string>> {
+  return repo.completeUserIdsAmong(db, ids);
+}

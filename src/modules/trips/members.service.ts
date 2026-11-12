@@ -6,7 +6,7 @@ import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedByOthersOfMember } from "../featured/featured.repository";
 import { blockedIdsFor } from "../blocks/blocks.service";
-import { areFriends, isCompleteUser } from "../friends/friends.service";
+import { completeUserIdsAmong, friendIdsAmong } from "../friends/friends.service";
 import * as repo from "./trips.repository";
 
 // ---------- Membership ----------
@@ -16,12 +16,55 @@ type AddResult =
   | { status: "already_member"; member: MemberRow }
   | { status: "removed" };
 
+/** What to do to make someone a member, given what the trip already has on them. */
+type MembershipDecision =
+  | { action: "insert" }
+  | { action: "reactivate_left"; existing: MemberRow }
+  | { action: "reactivate_removed"; existing: MemberRow }
+  | { action: "already_member"; existing: MemberRow }
+  | { action: "removed" };
+
 /**
- * Single place where someone becomes a member of a trip (by code or added by a friend).
- * An active member stays as is; someone who left gets their old membership back (same id, so their
- * photos stay linked); someone the admin removed only comes back when `reactivateRemoved` is set
- * (an admin adding them as a friend). Does not check the reveal.
+ * The membership rule, in one place (by code and when added by a friend): an active member stays as is;
+ * someone who left gets their old membership back (same id, so their photos stay linked); someone the admin
+ * removed only comes back when `reactivateRemoved` is set (an admin adding them as a friend). Pure.
  */
+export function decideMembership(existing: MemberRow | null, reactivateRemoved: boolean): MembershipDecision {
+  if (!existing) return { action: "insert" };
+  if (existing.removed_at !== null) return reactivateRemoved ? { action: "reactivate_removed", existing } : { action: "removed" };
+  if (existing.left_at === null) return { action: "already_member", existing };
+  return { action: "reactivate_left", existing };
+}
+
+/**
+ * Turns a decision into its write (unexecuted, to run alone or in a batch) and the result for the caller.
+ * Does not check the reveal.
+ */
+function applyDecision(
+  db: D1Database,
+  decision: MembershipDecision,
+  tripId: string,
+  userId: string,
+  addedBy: string | null,
+  now: number,
+): { result: AddResult; write: D1PreparedStatement | null } {
+  switch (decision.action) {
+    case "insert": {
+      const member = { id: crypto.randomUUID(), user_id: userId, role: "member" as Role };
+      return { result: { status: "added", member }, write: repo.insertMember(db, member.id, tripId, userId, now, addedBy) };
+    }
+    case "reactivate_left":
+      return { result: { status: "added", member: decision.existing }, write: repo.reactivateLeftMember(db, decision.existing.id, addedBy) };
+    case "reactivate_removed":
+      return { result: { status: "added", member: decision.existing }, write: repo.reactivateRemovedMember(db, decision.existing.id, addedBy) };
+    case "already_member":
+      return { result: { status: "already_member", member: decision.existing }, write: null };
+    case "removed":
+      return { result: { status: "removed" }, write: null };
+  }
+}
+
+/** Someone becomes a member of a trip by code (see `decideMembership`). Does not check the reveal. */
 async function addMember(
   db: D1Database,
   tripId: string,
@@ -31,19 +74,9 @@ async function addMember(
   reactivateRemoved = false,
 ): Promise<AddResult> {
   const existing = await repo.findMember(db, tripId, userId);
-  if (existing) {
-    if (existing.removed_at !== null) {
-      if (!reactivateRemoved) return { status: "removed" };
-      await repo.reactivateRemovedMember(db, existing.id, addedBy).run();
-      return { status: "added", member: existing };
-    }
-    if (existing.left_at === null) return { status: "already_member", member: existing };
-    await repo.reactivateLeftMember(db, existing.id, addedBy).run();
-    return { status: "added", member: existing };
-  }
-  const member = { id: crypto.randomUUID(), user_id: userId, role: "member" as Role };
-  await repo.insertMember(db, member.id, tripId, userId, now, addedBy).run();
-  return { status: "added", member };
+  const { result, write } = applyDecision(db, decideMembership(existing, reactivateRemoved), tripId, userId, addedBy, now);
+  if (write) await write.run();
+  return result;
 }
 
 // ---------- Join ----------
@@ -85,20 +118,27 @@ export async function addFriendsToTrip(
 ): Promise<{ results: AddMembersResult[]; notify: AfterResponse }> {
   if (isRevealed(trip)) throw conflict("Este rollo ya se reveló");
 
-  const results: AddMembersResult[] = [];
-  for (const userId of new Set(friendIds)) {
-    if (userId === me.id) {
-      results.push({ userId, status: "already_member" });
-      continue;
-    }
-    // A friend who lost their name or @ is hidden from friend lists, so they can't be added either.
-    if (!(await areFriends(env.DB, me.id, userId)) || !(await isCompleteUser(env.DB, userId))) {
-      results.push({ userId, status: "unavailable" });
-      continue;
-    }
-    const added = await addMember(env.DB, trip.id, userId, me.id, Date.now(), myRole === "admin");
-    results.push({ userId, status: added.status === "removed" ? "unavailable" : added.status });
-  }
+  const now = Date.now();
+  const userIds = [...new Set(friendIds)];
+  const others = userIds.filter((id) => id !== me.id);
+  // Three reads for the whole request (the friends module owns friendship and complete-user checks).
+  // A friend who lost their name or @ is hidden from friend lists, so they can't be added either.
+  const [friends, complete, memberships] = await Promise.all([
+    friendIdsAmong(env.DB, me.id, others),
+    completeUserIdsAmong(env.DB, others),
+    repo.findMembersByUsers(env.DB, trip.id, others),
+  ]);
+
+  const writes: D1PreparedStatement[] = [];
+  const results: AddMembersResult[] = userIds.map((userId) => {
+    if (userId === me.id) return { userId, status: "already_member" };
+    if (!friends.has(userId) || !complete.has(userId)) return { userId, status: "unavailable" };
+    const { result, write } = applyDecision(env.DB, decideMembership(memberships.get(userId) ?? null, myRole === "admin"), trip.id, userId, me.id, now);
+    if (write) writes.push(write);
+    return { userId, status: result.status === "removed" ? "unavailable" : result.status };
+  });
+  // One atomic batch (D1 has no interactive transactions).
+  if (writes.length) await env.DB.batch(writes);
   const addedIds = results.filter((r) => r.status === "added").map((r) => r.userId);
   const notify: AfterResponse = addedIds.length
     ? () => sendPush(env, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id })
