@@ -320,13 +320,13 @@ destacadas, "me gusta", notificaciones push con cron, moderación, backoffice (r
   `develop` → `main`; el admin saltea la aprobación desde el PR).
 - D1 `rollo` (región ENAM, id en `wrangler.jsonc`) y bucket R2 `rollo-media`.
 - Secrets del Worker: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (token de R2 con Object
-  Read & Write sobre `rollo-media`) `RESEND_API_KEY` (Sending access a `somosrollo.com`; la anterior era solo de `juanifraga.com`) y `CF_ANALYTICS_TOKEN` (token de Cloudflare con "Account Analytics: Read"; sin él no se mide el uso, ver "Backoffice"). Se cargan con
+  Read & Write sobre `rollo-media`) `RESEND_API_KEY` (Sending access a todos los dominios; la anterior era solo de `juanifraga.com`) y `CF_ANALYTICS_TOKEN` (token de Cloudflare con "Account Analytics: Read"; sin él no se mide el uso, ver "Backoffice"). Se cargan con
   `npx wrangler secret put <NOMBRE>` desde una terminal interactiva y no se pueden volver a leer.
-- Mail: dominio `somosrollo.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
-  DMARC `p=none` en `_dmarc`), DNS en Cloudflare; los mails salen de `no-reply@somosrollo.com` (`EMAIL_FROM` en `wrangler.jsonc`; esa casilla no recibe: el mail del código lleva `reply_to` a `soporte@`, `SUPPORT_EMAIL` en `src/lib/email.ts`)
-  y las denuncias van a `soporte@somosrollo.com`, que recibe por Email Routing de Cloudflare → Gmail de Juani.
-  Hasta noviembre de 2026 era `juanifraga.com` (decisión `0003`). Plan gratis: 100 mails por día y 3.000 por mes.
-- Secrets de moderación: `ADMIN_TOKEN` (habilita los dos `DELETE /admin/*` y el acceso por token; sin él esos `DELETE` dan 404, y las rutas de lectura y `PUT /admin/degraded-mode` quedan solo para la sesión de un superadmin) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `soporte@somosrollo.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
+- Mail: dominio `rolloproject.com` verificado en Resend (DKIM en `resend._domainkey`, MX/SPF en `send`,
+  DMARC `p=none` en `_dmarc`), DNS en Cloudflare; los mails salen de `no-reply@rolloproject.com` (`EMAIL_FROM` en `wrangler.jsonc`; esa casilla no recibe: el mail del código lleva `reply_to` a `support@`, `SUPPORT_EMAIL` en `src/lib/email.ts`)
+  y las denuncias van a `support@rolloproject.com`, que recibe por Email Routing de Cloudflare → Gmail de Juani.
+  Hasta noviembre de 2026 era `juanifraga.com` (decisión `0003`; `somosrollo.com` se usó unas horas y quedó redirigiendo). Plan gratis: 100 mails por día y 3.000 por mes.
+- Secrets de moderación: `ADMIN_TOKEN` (habilita los dos `DELETE /admin/*` y el acceso por token; sin él esos `DELETE` dan 404, y las rutas de lectura y `PUT /admin/degraded-mode` quedan solo para la sesión de un superadmin) y opcional `REPORTS_EMAIL` (mail de las denuncias, default `support@rolloproject.com`). Las rutas `/admin/*` (`src/modules/admin/`) están **fuera del contrato** (no van a `openapi.json`). Cómo actuar sobre una denuncia: [`docs/moderacion.md`](docs/moderacion.md).
 - Faltan `REVIEW_EMAIL` y `REVIEW_CODE` (cuenta de App Review); hacen falta antes de mandar a revisión.
 
 Para deployar una versión nueva, con `main` al día:
