@@ -645,6 +645,10 @@
           "momentPosted": {
             "type": "boolean",
             "description": "Someone in a rollo you are in uploaded their daily moment"
+          },
+          "originalsExpiring": {
+            "type": "boolean",
+            "description": "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)"
           }
         },
         "required": [
@@ -657,7 +661,8 @@
           "photoCommented",
           "friendRequest",
           "dailyMoment",
-          "momentPosted"
+          "momentPosted",
+          "originalsExpiring"
         ]
       },
       "PrivacySettings": {
@@ -717,6 +722,10 @@
               "momentPosted": {
                 "type": "boolean",
                 "description": "Someone in a rollo you are in uploaded their daily moment"
+              },
+              "originalsExpiring": {
+                "type": "boolean",
+                "description": "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)"
               }
             },
             "additionalProperties": false
@@ -1326,6 +1335,32 @@
             "type": "integer",
             "description": "Maximum number of active participants (15 for free rollos); joining or adding past it is refused"
           },
+          "originals": {
+            "type": "object",
+            "properties": {
+              "keep": {
+                "type": "boolean",
+                "description": "The rollo keeps its full-quality originals forever (rollos that existed before the policy, and later the paid pass)"
+              },
+              "expiresAt": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "When the originals are deleted: 30 days after the reveal; null when `keep`"
+              },
+              "purged": {
+                "type": "boolean",
+                "description": "The cron already deleted every purgeable original (the display versions stay)"
+              }
+            },
+            "required": [
+              "keep",
+              "expiresAt",
+              "purged"
+            ],
+            "description": "Retention of the full-quality originals; the 2048px display version of every photo is kept forever"
+          },
           "createdBy": {
             "type": [
               "object",
@@ -1365,6 +1400,7 @@
           "momentWindowStart",
           "momentWindowEnd",
           "maxMembers",
+          "originals",
           "createdBy"
         ]
       },
@@ -1776,6 +1812,11 @@
                 "type": "string",
                 "format": "uri",
                 "description": "PUT of the JPEG thumbnail (~800px); send exactly `thumbSizeBytes` bytes as Content-Length"
+              },
+              "display": {
+                "type": "string",
+                "format": "uri",
+                "description": "Only when `displaySizeBytes` was sent: PUT of the display JPEG (2048px); send exactly `displaySizeBytes` bytes as Content-Length"
               }
             },
             "required": [
@@ -1900,6 +1941,11 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "description": "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length"
+          },
+          "displaySizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Photos only. Exact byte size of the display JPEG (2048 px, compressed, up to 4 MB); when present the response's `upload` also has a signed `display` URL for exactly this Content-Length. Omit it (older builds) and the photo keeps its original forever."
           },
           "momentDay": {
             "type": [
@@ -2070,7 +2116,12 @@
                 "type": "string"
               },
               "original": {
-                "type": "string"
+                "type": "string",
+                "description": "Always present. Once the original was purged (30 days after the reveal) the same path serves the display file instead; see `originalAvailable`"
+              },
+              "display": {
+                "type": "string",
+                "description": "2048px version, kept forever; absent for uploads from builds that predate it (they keep their original)"
               }
             },
             "required": [
@@ -2078,6 +2129,10 @@
               "original"
             ],
             "description": "Download paths; only after the reveal, except for the photos of a daily moment (main and linked image), which any active member gets as soon as they are uploaded"
+          },
+          "originalAvailable": {
+            "type": "boolean",
+            "description": "Comes with `files`: false once the full-quality original was deleted (the `original` path then serves the display file). Always true for videos and for uploads without a display"
           },
           "featuredByMe": {
             "type": "boolean",
@@ -2153,6 +2208,9 @@
                   },
                   "original": {
                     "type": "string"
+                  },
+                  "display": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -2160,6 +2218,10 @@
                   "original"
                 ],
                 "description": "Download paths (the linked image of a moment is visible to active members as soon as it is uploaded)"
+              },
+              "originalAvailable": {
+                "type": "boolean",
+                "description": "false once the linked image's original was deleted (the `original` path then serves the display file)"
               }
             },
             "required": [
@@ -5913,7 +5975,7 @@
           "Media"
         ],
         "summary": "Register a photo or video",
-        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. 503 when the storage limit is reached (new registrations only, never retries). 429 comes in two kinds: too fast (carries `Retry-After`, retry later) or photo quota used up (no `Retry-After`, do not retry).",
+        "description": "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). Photos can also declare `displaySizeBytes` (2048px JPEG, kept forever): the response then adds `upload.display`. Photos registered without it keep their original forever. Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. 503 when the storage limit is reached (new registrations only, never retries). 429 comes in two kinds: too fast (carries `Retry-After`, retry later) or photo quota used up (no `Retry-After`, do not retry).",
         "security": [
           {
             "bearerAuth": []
@@ -6254,7 +6316,7 @@
           "Media"
         ],
         "summary": "Download a file (only after the reveal, except daily moment photos)",
-        "description": "Streamed from R2 with the same Bearer token. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
+        "description": "Streamed from R2 with the same Bearer token. `display` is the 2048px version (the original for uploads that have none); `original` serves the display once the original was purged 30 days after the reveal. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
         "security": [
           {
             "bearerAuth": []
@@ -6282,7 +6344,8 @@
               "type": "string",
               "enum": [
                 "thumb",
-                "original"
+                "original",
+                "display"
               ]
             },
             "required": true,
@@ -7000,7 +7063,8 @@
               "type": "string",
               "enum": [
                 "thumb",
-                "original"
+                "original",
+                "display"
               ]
             },
             "required": true,

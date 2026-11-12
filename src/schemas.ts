@@ -43,6 +43,13 @@ export const TripSchema = z
     momentWindowStart: z.number().int().openapi({ description: "Moment window start, minutes from midnight in the rollo's time zone" }),
     momentWindowEnd: z.number().int().openapi({ description: "Moment window end, minutes from midnight in the rollo's time zone" }),
     maxMembers: z.number().int().openapi({ description: "Maximum number of active participants (15 for free rollos); joining or adding past it is refused" }),
+    originals: z
+      .object({
+        keep: z.boolean().openapi({ description: "The rollo keeps its full-quality originals forever (rollos that existed before the policy, and later the paid pass)" }),
+        expiresAt: z.number().int().nullable().openapi({ description: "When the originals are deleted: 30 days after the reveal; null when `keep`" }),
+        purged: z.boolean().openapi({ description: "The cron already deleted every purgeable original (the display versions stay)" }),
+      })
+      .openapi({ description: "Retention of the full-quality originals; the 2048px display version of every photo is kept forever" }),
     createdBy: z
       .object({ userId: z.string().uuid(), name: z.string() })
       .nullable()

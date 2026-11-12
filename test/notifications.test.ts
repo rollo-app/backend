@@ -144,6 +144,7 @@ const ALL_ON = {
   friendRequest: true,
   dailyMoment: true,
   momentPosted: true,
+  originalsExpiring: true,
 };
 
 describe("GET /me/settings", () => {

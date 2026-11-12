@@ -1,6 +1,7 @@
 import { rejectMomentFeaturing, rejectSelfieById } from "../moments/moments.service";
 import { canSeeProfile } from "../users/users.service";
 import { decodeCursor, encodeCursor } from "../../lib/cursor";
+import { resolveVariantKey, type MediaVariant } from "../../lib/media-variant";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
@@ -136,12 +137,15 @@ export async function getFeaturedFileKey(
   viewerId: string,
   userId: string,
   mediaId: string,
-  variant: "thumb" | "original",
-): Promise<string> {
+  variant: MediaVariant,
+): Promise<{ key: string; fallbackKey: string | null }> {
   const owner = await visibleOwner(db, viewerId, userId);
   const row = await repo.findVisibleFeaturedKeys(db, viewerId, owner.id, mediaId, Date.now());
   if (!row) throw notFound();
-  return variant === "thumb" ? row.thumb_key : row.original_key;
+  return resolveVariantKey(
+    { originalKey: row.original_key, thumbKey: row.thumb_key, displayKey: row.display_key, originalPurgedAt: row.original_purged_at },
+    variant,
+  );
 }
 
 /**

@@ -10,6 +10,7 @@ export const NOTIFICATION_COLUMNS = {
   friendRequest: "notify_friend_request",
   dailyMoment: "notify_daily_moment",
   momentPosted: "notify_moment_posted",
+  originalsExpiring: "notify_originals_expiring",
 } as const;
 
 export type NotificationKind = keyof typeof NOTIFICATION_COLUMNS;

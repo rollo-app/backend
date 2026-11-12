@@ -6,6 +6,8 @@ export const MAX_VIDEO_SECONDS = 15.5; // 15 s + rounding margin
 const MB = 1024 * 1024;
 export const MAX_SIZE = { photo: 12 * MB, video: 30 * MB } as const;
 export const MAX_THUMB_SIZE = 2 * MB;
+/** 2048 px compressed JPEG, kept forever (a 2048 px JPEG at decent quality is well under this). */
+export const MAX_DISPLAY_SIZE = 4 * MB;
 
 export const RegisterMediaSchema = z
   .object({
@@ -36,6 +38,11 @@ export const RegisterMediaSchema = z
     thumbSizeBytes: z.number().int().positive().openapi({
       description: "Exact byte size of the thumbnail JPEG; the upload URL is signed for exactly this Content-Length",
     }),
+    displaySizeBytes: z.number().int().positive().optional().openapi({
+      description:
+        "Photos only. Exact byte size of the display JPEG (2048 px, compressed, up to 4 MB); when present the response's `upload` also has a signed `display` URL for exactly this Content-Length. " +
+        "Omit it (older builds) and the photo keeps its original forever.",
+    }),
     momentDay: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -60,6 +67,14 @@ export const RegisterMediaSchema = z
     message: "Solo las fotos pueden ser del momento del día",
     path: ["momentDay"],
   })
+  .refine((d) => d.type === "photo" || d.displaySizeBytes == null, {
+    message: "Solo las fotos tienen versión de visualización",
+    path: ["displaySizeBytes"],
+  })
+  .refine((d) => d.displaySizeBytes == null || d.displaySizeBytes <= MAX_DISPLAY_SIZE, {
+    message: "La versión de visualización es demasiado grande",
+    path: ["displaySizeBytes"],
+  })
   .refine((d) => d.sizeBytes <= MAX_SIZE[d.type], { message: "El archivo es demasiado grande", path: ["sizeBytes"] })
   .refine((d) => d.thumbSizeBytes <= MAX_THUMB_SIZE, {
     message: "El thumbnail es demasiado grande",
@@ -76,6 +91,9 @@ export const MediaRegisteredSchema = z
     upload: z.object({
       original: z.string().url().openapi({ description: "PUT of the original file; send exactly `sizeBytes` bytes as Content-Length" }),
       thumb: z.string().url().openapi({ description: "PUT of the JPEG thumbnail (~800px); send exactly `thumbSizeBytes` bytes as Content-Length" }),
+      display: z.string().url().optional().openapi({
+        description: "Only when `displaySizeBytes` was sent: PUT of the display JPEG (2048px); send exactly `displaySizeBytes` bytes as Content-Length",
+      }),
     }),
     expiresIn: z.number().int().openapi({ description: "Seconds the URLs stay valid" }),
   })
@@ -112,9 +130,18 @@ export const FeedItemSchema = z
     width: nullableNumber.optional().openapi({ description: "Only after the reveal (and for the photos of a daily moment, right away)" }),
     height: nullableNumber.optional().openapi({ description: "Only after the reveal (and for the photos of a daily moment, right away)" }),
     files: z
-      .object({ thumb: z.string(), original: z.string() })
+      .object({
+        thumb: z.string(),
+        original: z.string().openapi({
+          description: "Always present. Once the original was purged (30 days after the reveal) the same path serves the display file instead; see `originalAvailable`",
+        }),
+        display: z.string().optional().openapi({ description: "2048px version, kept forever; absent for uploads from builds that predate it (they keep their original)" }),
+      })
       .optional()
       .openapi({ description: "Download paths; only after the reveal, except for the photos of a daily moment (main and linked image), which any active member gets as soon as they are uploaded" }),
+    originalAvailable: z.boolean().optional().openapi({
+      description: "Comes with `files`: false once the full-quality original was deleted (the `original` path then serves the display file). Always true for videos and for uploads without a display",
+    }),
     featuredByMe: z.boolean().optional().openapi({ description: "Only after the reveal: you featured it on your profile" }),
     featureBlocked: z.boolean().optional().openapi({
       description: "Only after the reveal: the author does not let others feature it (they still can)",
@@ -143,9 +170,10 @@ export const FeedItemSchema = z
         width: nullableNumber,
         height: nullableNumber,
         thumbhash: z.string().nullable(),
-        files: z.object({ thumb: z.string(), original: z.string() }).nullable().openapi({
+        files: z.object({ thumb: z.string(), original: z.string(), display: z.string().optional() }).nullable().openapi({
           description: "Download paths (the linked image of a moment is visible to active members as soon as it is uploaded)",
         }),
+        originalAvailable: z.boolean().optional().openapi({ description: "false once the linked image's original was deleted (the `original` path then serves the display file)" }),
       })
       .nullable()
       .optional()
@@ -195,5 +223,5 @@ const pathParam = (name: string) => z.string().openapi({ param: { name, in: "pat
 export const MediaFileParams = z.object({
   tripId: pathParam("tripId"),
   mediaId: pathParam("mediaId"),
-  variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
+  variant: z.enum(["thumb", "original", "display"]).openapi({ param: { name: "variant", in: "path" } }),
 });

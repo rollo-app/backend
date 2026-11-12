@@ -296,7 +296,8 @@ export function deleteTripStatements(db: D1Database, tripId: string, now: number
       .prepare(
         `INSERT OR IGNORE INTO r2_purge (key, created_at)
          SELECT original_key, ?1 FROM media WHERE trip_id = ?2
-         UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2`,
+         UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2
+         UNION SELECT display_key, ?1 FROM media WHERE trip_id = ?2 AND display_key IS NOT NULL`,
       )
       .bind(now, tripId),
     db.prepare("INSERT OR IGNORE INTO deleted_trips (trip_id, deleted_at) VALUES (?, ?)").bind(tripId, now),
@@ -304,4 +305,87 @@ export function deleteTripStatements(db: D1Database, tripId: string, now: number
     db.prepare("DELETE FROM members WHERE trip_id = ?").bind(tripId),
     db.prepare("DELETE FROM trips WHERE id = ?").bind(tripId),
   ];
+}
+
+// ---------- Original retention (see originals.service.ts) ----------
+
+/** The rollo's reveal moment: the admin's manual reveal when there was one, else the scheduled one. */
+const REVEAL_SQL = "COALESCE(t.revealed_at, t.reveal_at)";
+/** A photo whose original the cron may still delete: it has a display, so deleting the original leaves a usable image. */
+const PURGEABLE_MEDIA_SQL =
+  "m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL AND m.display_key IS NOT NULL AND m.original_purged_at IS NULL";
+
+/**
+ * Rollos whose "originals expire soon" push is due: they do not keep their originals, nothing was purged or announced
+ * yet, the notice window (`ttlMs - noticeMs` after the reveal) has begun but the expiry has not come, and some photo
+ * still has an original to lose.
+ */
+export async function listTripsToNoticeOriginals(db: D1Database, now: number, ttlMs: number, noticeMs: number, limit: number): Promise<TripRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.* FROM trips t
+       WHERE t.keep_originals = 0 AND t.originals_purged_at IS NULL AND t.originals_notice_at IS NULL
+         AND ${REVEAL_SQL} + ?1 <= ?3 AND ${REVEAL_SQL} + ?2 > ?3
+         AND EXISTS (SELECT 1 FROM media m WHERE m.trip_id = t.id AND ${PURGEABLE_MEDIA_SQL})
+       ORDER BY ${REVEAL_SQL}, t.id LIMIT ?4`,
+    )
+    .bind(ttlMs - noticeMs, ttlMs, now, limit)
+    .all<TripRow>();
+  return results;
+}
+
+/** Claims the notice (set only while still null), so whoever changes the row is the only one who sends. */
+export function claimOriginalsNotice(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare("UPDATE trips SET originals_notice_at = ? WHERE id = ? AND originals_notice_at IS NULL AND keep_originals = 0")
+    .bind(now, tripId);
+}
+
+/** Rollos past their expiry that still may have originals to delete. */
+export async function listTripsToPurgeOriginals(db: D1Database, now: number, ttlMs: number, limit: number): Promise<{ id: string }[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.id FROM trips t
+       WHERE t.keep_originals = 0 AND t.originals_purged_at IS NULL AND ${REVEAL_SQL} + ?1 <= ?2
+       ORDER BY ${REVEAL_SQL}, t.id LIMIT ?3`,
+    )
+    .bind(ttlMs, now, limit)
+    .all<{ id: string }>();
+  return results;
+}
+
+export async function listPurgeableOriginalIds(db: D1Database, tripId: string, limit: number): Promise<string[]> {
+  const { results } = await db
+    .prepare(`SELECT m.id FROM media m WHERE m.trip_id = ? AND ${PURGEABLE_MEDIA_SQL} ORDER BY m.id LIMIT ?`)
+    .bind(tripId, limit)
+    .all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
+const TRIP_KEEPS_NOT = "EXISTS (SELECT 1 FROM trips k WHERE k.id = ?2 AND k.keep_originals = 0)";
+
+/**
+ * Statements that queue the originals of these media (at most 80 ids) in `r2_purge` and mark them purged. Both only
+ * touch rows still unmarked of a rollo that does not keep its originals at that moment, so a concurrent run or an
+ * admin turning "keep" on in between cannot make them delete anything they should not.
+ */
+export function purgeOriginalsStatements(db: D1Database, tripId: string, mediaIds: string[], now: number): D1PreparedStatement[] {
+  const ids = mediaIds.map((_, i) => `?${i + 3}`).join(",");
+  return [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO r2_purge (key, created_at)
+         SELECT original_key, ?1 FROM media WHERE trip_id = ?2 AND id IN (${ids}) AND original_purged_at IS NULL AND ${TRIP_KEEPS_NOT}`,
+      )
+      .bind(now, tripId, ...mediaIds),
+    db
+      .prepare(`UPDATE media SET original_purged_at = ?1 WHERE trip_id = ?2 AND id IN (${ids}) AND original_purged_at IS NULL AND ${TRIP_KEEPS_NOT}`)
+      .bind(now, tripId, ...mediaIds),
+  ];
+}
+
+export function markOriginalsPurged(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare("UPDATE trips SET originals_purged_at = ? WHERE id = ? AND keep_originals = 0 AND originals_purged_at IS NULL")
+    .bind(now, tripId);
 }

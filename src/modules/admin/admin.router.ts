@@ -25,6 +25,8 @@ admin.get("/users", adminAuth({ session: true }), controller.listUsers);
 admin.get("/users/:id", adminAuth({ session: true }), controller.getUser);
 // Editing is session only: the token is for scripts that don't edit profiles.
 admin.patch("/users/:id", adminAuth({ session: true, token: false }), controller.editUser);
+admin.get("/trips", adminAuth({ session: true }), controller.listTrips);
+admin.get("/trips/:tripId", adminAuth({ session: true }), controller.getTrip);
 // Raising a rollo's member cap (paid rollos) is session only, like editing users.
 admin.patch("/trips/:tripId", adminAuth({ session: true, token: false }), controller.editTrip);
 admin.delete("/media/:mediaId", adminAuth({ session: false }), controller.deleteMedia);

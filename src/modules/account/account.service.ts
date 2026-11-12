@@ -2,8 +2,8 @@ import { BACKFILL_CREATOR_SQL } from "../../lib/creator";
 import type { Env, UserRow } from "../../types";
 import * as repo from "./account.repository";
 
-async function deleteR2Keys(bucket: R2Bucket, rows: { original_key: string; thumb_key: string }[]) {
-  const keys = rows.flatMap((r) => [r.original_key, r.thumb_key]);
+async function deleteR2Keys(bucket: R2Bucket, rows: { original_key: string; thumb_key: string; display_key: string | null }[]) {
+  const keys = rows.flatMap((r) => [r.original_key, r.thumb_key, ...(r.display_key ? [r.display_key] : [])]);
   // R2 deletes accept at most 1000 keys per call.
   for (let i = 0; i < keys.length; i += 1000) await bucket.delete(keys.slice(i, i + 1000));
 }
