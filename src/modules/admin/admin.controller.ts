@@ -6,7 +6,7 @@ import { storageLimitBytes, storageUsage } from "../../lib/storage";
 import { badRequest } from "../../shared/errors";
 import { getMetrics as readMetrics } from "../metrics/metrics.service";
 import { PageQuerySchema } from "../../lib/paging";
-import { AdminEditUserSchema, DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
+import { AdminEditTripSchema, AdminEditUserSchema, DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
 import * as service from "./admin.service";
 
 type Person = { id: string; name: string | null; username: string | null; email: string };
@@ -91,4 +91,14 @@ export async function editUser(c: Context<AppEnv>) {
   }
   if (Object.values(parsed.data).every((v) => v === undefined)) throw badRequest("Mandá al menos un campo para editar");
   return c.json(await service.editUser(c.env.DB, c.req.param("id")!, parsed.data, Date.now()));
+}
+
+export async function editTrip(c: Context<AppEnv>) {
+  const parsed = AdminEditTripSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    const issue = parsed.error.issues.find((i) => i.code === "unrecognized_keys") ?? parsed.error.issues[0];
+    if (issue?.code === "unrecognized_keys") throw badRequest(`Campo no editable: ${issue.keys[0]}`);
+    throw badRequest("maxMembers: tiene que ser un entero entre 1 y 1000");
+  }
+  return c.json(await service.editTrip(c.env.DB, c.req.param("tripId")!, parsed.data));
 }

@@ -26,6 +26,7 @@ const baseTrip: TripRow = {
   moment_window_start: 540,
   moment_window_end: 1380, moment_from_day: null,
   created_by_user_id: null,
+  max_members: 15,
 };
 
 describe("localDate", () => {
@@ -96,6 +97,7 @@ describe("publicTrip", () => {
       momentMode: "off",
       momentWindowStart: 540,
       momentWindowEnd: 1380,
+      maxMembers: 15,
       createdBy: null,
     });
   });

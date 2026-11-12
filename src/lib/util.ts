@@ -58,6 +58,7 @@ export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId:
     momentMode: trip.moment_mode,
     momentWindowStart: trip.moment_window_start,
     momentWindowEnd: trip.moment_window_end,
+    maxMembers: trip.max_members,
     createdBy,
   };
 }

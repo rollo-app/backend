@@ -698,6 +698,8 @@ describe("POST /trips/:id/members with many friends", () => {
 
   async function setup(n: number) {
     const { tripId, code, adminToken } = await newTrip();
+    // These tests add dozens of friends at once: lift the default cap of 15 (the cap itself is covered in trip-max-members.test.ts).
+    await env.DB.prepare("UPDATE trips SET max_members = 1000 WHERE id = ?").bind(tripId).run();
     const actor = await joinAs(code, "Actor");
     const friends = await addUsersDirect(n);
     await befriendDirect(actor.userId, friends.map((f) => f.userId));

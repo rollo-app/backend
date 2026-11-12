@@ -76,6 +76,8 @@ export type TripRow = {
   /** First trip-local day the moment config applies to (YYYY-MM-DD); null = no restriction. */
   moment_from_day: string | null;
   created_by_user_id: string | null;
+  /** Maximum active members (neither left nor removed); 15 for free rollos. */
+  max_members: number;
 };
 
 /** Global backoffice role (distinct from the per-rollo `Role`). */

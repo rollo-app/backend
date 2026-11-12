@@ -173,3 +173,24 @@ export function updateUserFlags(db: D1Database, userId: string, flags: { badge?:
   }
   return db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...values, userId);
 }
+
+/** Cap and active member count of a rollo (active = neither left nor removed), or null if it does not exist. */
+export function findTripCapacity(db: D1Database, tripId: string): Promise<{ active: number; max: number } | null> {
+  return db
+    .prepare(
+      `SELECT (SELECT COUNT(*) FROM members WHERE trip_id = t.id AND left_at IS NULL AND removed_at IS NULL) AS active, t.max_members AS max
+       FROM trips t WHERE t.id = ?`,
+    )
+    .bind(tripId)
+    .first<{ active: number; max: number }>();
+}
+
+/** Sets the cap only while it stays at or above the active member count (checked in the statement, so a concurrent join cannot slip under it). */
+export function setTripMaxMembers(db: D1Database, tripId: string, maxMembers: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE trips SET max_members = ?1
+       WHERE id = ?2 AND (SELECT COUNT(*) FROM members WHERE trip_id = ?2 AND left_at IS NULL AND removed_at IS NULL) <= ?1`,
+    )
+    .bind(maxMembers, tripId);
+}

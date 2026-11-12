@@ -1,11 +1,11 @@
 import { deleteAccount } from "../account/account.service";
 import { DEGRADED_KEY, resetDegradedCache } from "../../lib/degraded";
-import { notFound } from "../../shared/errors";
+import { badRequest, notFound } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import { deleteTripMedia } from "../media/media.service";
 import { type Page, type PageQuery, paginate } from "../../lib/paging";
 import { prepareProfileUpdate, withUsernameConflict } from "../me/me.service";
-import type { AdminEditUser } from "./admin.schemas";
+import type { AdminEditTrip, AdminEditUser } from "./admin.schemas";
 import * as repo from "./admin.repository";
 
 export async function deleteMedia(env: Env, mediaId: string): Promise<void> {
@@ -77,4 +77,19 @@ export async function editUser(db: D1Database, id: string, patch: AdminEditUser,
   if (badge !== undefined || unlimitedRollos !== undefined) statements.push(repo.updateUserFlags(db, id, { badge, unlimitedRollos }));
   await withUsernameConflict(() => db.batch(statements));
   return getUser(db, id, now);
+}
+
+/** Changes a rollo's member cap (a paid rollo/event gets more room). Never below the people already in it. */
+export async function editTrip(db: D1Database, tripId: string, patch: AdminEditTrip) {
+  const before = await repo.findTripCapacity(db, tripId);
+  if (!before) throw notFound();
+  const tooLow = (active: number) =>
+    badRequest(`El cupo no puede ser menor a la cantidad de participantes activos (${active}).`);
+  if (patch.maxMembers < before.active) throw tooLow(before.active);
+  const res = await repo.setTripMaxMembers(db, tripId, patch.maxMembers).run();
+  const after = await repo.findTripCapacity(db, tripId);
+  if (!after) throw notFound();
+  // Zero changes with a valid value: someone joined between the read and the write.
+  if (!res.meta.changes) throw tooLow(after.active);
+  return { id: tripId, maxMembers: after.max, activeMembers: after.active };
 }

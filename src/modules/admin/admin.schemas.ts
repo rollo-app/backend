@@ -35,3 +35,9 @@ export const AdminEditUserSchema = z
   })
   .strict();
 export type AdminEditUser = z.infer<typeof AdminEditUserSchema>;
+
+export const MAX_TRIP_MEMBERS = 1000;
+
+/** Only the cap is editable; the lower bound (the current active count) depends on the rollo, so the service checks it. */
+export const AdminEditTripSchema = z.object({ maxMembers: z.number().int().min(1).max(MAX_TRIP_MEMBERS) }).strict();
+export type AdminEditTrip = z.infer<typeof AdminEditTripSchema>;

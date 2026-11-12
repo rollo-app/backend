@@ -100,9 +100,9 @@ export const AddMembersResponseSchema = z
     results: z.array(
       z.object({
         userId: z.string(),
-        status: z.enum(["added", "already_member", "unavailable"]).openapi({
+        status: z.enum(["added", "already_member", "unavailable", "full"]).openapi({
           description:
-            "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin (unless the caller is the admin), or unknown",
+            "added: now a member (also if they had left); already_member; unavailable: not your friend, removed by the admin (unless the caller is the admin), or unknown; full: the rollo reached its member cap before this friend (friends are processed in request order)",
         }),
       }),
     ),

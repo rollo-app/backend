@@ -39,6 +39,7 @@ export const TripSchema = z
     momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     momentWindowStart: z.number().int().openapi({ description: "Moment window start, minutes from midnight in the rollo's time zone" }),
     momentWindowEnd: z.number().int().openapi({ description: "Moment window end, minutes from midnight in the rollo's time zone" }),
+    maxMembers: z.number().int().openapi({ description: "Maximum number of active participants (15 for free rollos); joining or adding past it is refused" }),
     createdBy: z
       .object({ userId: z.string().uuid(), name: z.string() })
       .nullable()
