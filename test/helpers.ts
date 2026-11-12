@@ -3,8 +3,11 @@ import { vi } from "vitest";
 import app from "../src/index";
 import { generateToken, hashToken, SESSION_TTL } from "../src/lib/auth";
 import { devSentCodes } from "../src/lib/email";
+import { mediaKeys } from "../src/lib/r2";
+import { localDate } from "../src/lib/util";
 import { nameSearchColumn } from "../src/lib/search-text";
 import { insertSession } from "../src/modules/auth/auth.repository";
+import { insertMedia } from "../src/modules/media/media.repository";
 import { insertMember } from "../src/modules/trips/trips.repository";
 
 export const MINUTE = 60_000;
@@ -194,6 +197,62 @@ export async function addMembersDirect(
   return out;
 }
 
+/**
+ * Inserts `count` uploaded photos straight into D1 (no API, no daily/total photo limits, no push side effects).
+ * NOTE: only the D1 rows exist; nothing is put in R2, so downloading the files of these photos would 404.
+ * Authors are used round-robin; `takenAt` is spread evenly between `opts.from` and `opts.to`
+ * (default: from 4 days ago to 1 minute ago, i.e. inside an ongoing trip made with `newTrip`), ascending.
+ * Rows use the real `insertMedia` and `mediaKeys` layout; sizes are filled like `photoBody` does.
+ * Returns the media ids in `takenAt` order.
+ */
+export async function addMediaDirect(
+  tripId: string,
+  authors: Array<{ userId: string; memberId: string }>,
+  count: number,
+  opts: { from?: number; to?: number; timezone?: string } = {},
+): Promise<string[]> {
+  if (authors.length === 0) throw new Error("addMediaDirect needs at least one author");
+  const now = Date.now();
+  const from = opts.from ?? now - 4 * DAY;
+  const to = opts.to ?? now - MINUTE;
+  const timezone = opts.timezone ?? TZ;
+  const ids: string[] = [];
+  const statements: D1PreparedStatement[] = [];
+  for (let i = 0; i < count; i++) {
+    const id = crypto.randomUUID();
+    const takenAt = count > 1 ? Math.round(from + ((to - from) * i) / (count - 1)) : to;
+    const keys = mediaKeys(tripId, id, "photo");
+    statements.push(
+      insertMedia(env.DB, {
+        id,
+        tripId,
+        memberId: authors[i % authors.length]!.memberId,
+        type: "photo",
+        takenAt,
+        localDate: localDate(takenAt, timezone),
+        lat: -49.33,
+        lng: -72.88,
+        accuracyM: 12,
+        caption: `foto ${i + 1}`,
+        width: 4032,
+        height: 3024,
+        sizeBytes: originalContent(id).length,
+        thumbSizeBytes: thumbContent(id).length,
+        originalKey: keys.original,
+        thumbKey: keys.thumb,
+        status: "uploaded",
+        createdAt: now,
+        uploadedAt: now,
+      }),
+    );
+    ids.push(id);
+  }
+  // Each insert binds well under 100 params (D1's per-statement limit); 100 statements per batch keeps each request small.
+  const CHUNK = 100;
+  for (let i = 0; i < statements.length; i += CHUNK) await env.DB.batch(statements.slice(i, i + CHUNK));
+  return ids;
+}
+
 /** The bytes `putFiles` stores, so the sizes declared at registration match what is "uploaded". */
 export const originalContent = (mediaId: string) => `original-${mediaId}`;
 export const thumbContent = (mediaId: string) => `thumb-${mediaId}`;
@@ -310,4 +369,26 @@ export async function registerToken(token: string, name = crypto.randomUUID().re
   const res = await api("PUT", `/me/push-tokens/${encodeURIComponent(pushToken)}`, { token });
   if (res.status !== 204) throw new Error(`register token failed: ${res.status} ${JSON.stringify(res.body)}`);
   return pushToken;
+}
+
+/**
+ * Gives each user one push token straight in D1 (no API calls), tied to one of their sessions
+ * (the ones `signUp` / `addMembersDirect` created). Returns the tokens in the same order as `userIds`.
+ */
+export async function addPushTokensDirect(userIds: string[]): Promise<string[]> {
+  const now = Date.now();
+  const tokens: string[] = [];
+  const statements: D1PreparedStatement[] = [];
+  for (const userId of userIds) {
+    const token = `ExponentPushToken[${crypto.randomUUID().replaceAll("-", "")}]`;
+    statements.push(
+      env.DB.prepare(
+        "INSERT INTO push_tokens (token, user_id, session_id, created_at, last_seen_at) VALUES (?, ?, (SELECT id FROM sessions WHERE user_id = ? LIMIT 1), ?, ?)",
+      ).bind(token, userId, userId, now, now),
+    );
+    tokens.push(token);
+  }
+  const CHUNK = 100;
+  for (let i = 0; i < statements.length; i += CHUNK) await env.DB.batch(statements.slice(i, i + CHUNK));
+  return tokens;
 }
