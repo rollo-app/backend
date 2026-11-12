@@ -119,7 +119,7 @@ De ahí salen la validación de requests, los tipos de las respuestas y el contr
 
 ## API
 
-Todas las rutas salvo `/auth/email/*` llevan `Authorization: Bearer <token de sesión>`.
+Todas las rutas salvo `/auth/*`, `/config` y `/waitlist` llevan `Authorization: Bearer <token de sesión>`.
 Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 
 > Tabla parcial (las rutas originales). La referencia completa y al día es `GET /docs` / `openapi.json`.
@@ -128,6 +128,9 @@ Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 |---|---|---|---|
 | POST | `/auth/email/start` | cualquiera | `{email}` → manda un código de 6 caracteres (letras y números, vence a los 5 min) (204) |
 | POST | `/auth/email/verify` | cualquiera | `{email, code}` → `{token, user, isNew}` |
+| GET | `/config` | cualquiera | `{registrationsOpen}`: false si un superadmin cerró las altas (cuentas nuevas: 403 con `code: "REGISTRATIONS_CLOSED"` al verificar) |
+| POST | `/waitlist` | cualquiera | `{email, source?, consent: true}` → 204 siempre; manda un mail para confirmar (doble opt-in, máx. 1 cada 24 h por mail) |
+| GET | `/waitlist/confirm?token=` y `/waitlist/unsubscribe?token=` | cualquiera | Páginas HTML de los links del mail (200, o 400 si el link no es válido); fuera del contrato |
 | POST | `/auth/logout` | sesión | Cierra la sesión actual |
 | GET / PATCH | `/me` | sesión | Perfil (`{name, username}` para editar; el username es único) |
 | GET | `/usernames/{username}` | sesión | `{available, username}` (normalizado); 400 si el formato es inválido |
