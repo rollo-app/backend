@@ -75,34 +75,60 @@ async function addMember(
   addedBy: string | null,
   now = Date.now(),
   reactivateRemoved = false,
+  groupIds: string[] = [],
 ): Promise<AddResult> {
   const existing = await repo.findMember(db, tripId, userId);
   const { result, write } = applyDecision(db, decideMembership(existing, reactivateRemoved), tripId, userId, addedBy, now);
-  if (write && !(await write.run()).meta.changes) return { status: "full" };
-  return result;
+  if (!write) return result;
+  // The groups go in the same batch, after the member write; they only land if that write did (see `addMemberGroups`).
+  const outcomes = await db.batch([write, ...(result.status === "added" ? repo.addMemberGroups(db, result.member.id, groupIds, now) : [])]);
+  return outcomes[0]!.meta.changes ? result : { status: "full" };
 }
 
 // ---------- Join ----------
+
+const EVENT_NEEDS_UPDATE = "Actualizá Rollo para sumarte a este evento.";
+
+/** `groupIds` without repeats, 400 if any is not a group of this event. */
+async function validGroupIds(db: D1Database, tripId: string, groupIds: string[]): Promise<string[]> {
+  const known = new Set((await repo.listGroups(db, tripId)).map((g) => g.id));
+  const unique = [...new Set(groupIds)];
+  if (!unique.every((id) => known.has(id))) throw badRequest("Grupo inválido");
+  return unique;
+}
 
 /** Joins by invite code. `created` is false when `user` was already an active member. */
 export async function joinTrip(
   db: D1Database,
   user: UserRow,
   code: string,
+  groupIds?: string[],
 ): Promise<{ created: boolean; trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> }> {
   const now = Date.now();
 
   const trip = await repo.findTripByJoinCode(db, code);
   if (!trip) throw notFound("Código inválido");
 
+  // An event is joined choosing groups. A 1.3 client sends none: it gets this before anything else (even if already a member
+  // or the event is revealed), so it never half-joins. A regular trip ignores `groupIds`.
+  let chosen: string[] = [];
+  if (trip.type === "event") {
+    if (!groupIds) throw conflict(EVENT_NEEDS_UPDATE, "EVENT_NEEDS_UPDATE");
+    chosen = await validGroupIds(db, trip.id, groupIds);
+  }
+
   // Active members are answered before the reveal check (they get 200 even after it).
   const current = await repo.findMember(db, trip.id, user.id);
   if (current?.removed_at != null) throw forbidden("El admin te sacó de este rollo");
-  if (current && current.left_at === null) return { created: false, trip, member: current };
+  if (current && current.left_at === null) {
+    // Rejoining an event with more groups adds them (before the reveal).
+    if (chosen.length && !isRevealed(trip, now)) await db.batch(repo.addMemberGroups(db, current.id, chosen, now));
+    return { created: false, trip, member: current };
+  }
 
-  if (isRevealed(trip, now)) throw conflict("Este rollo ya se reveló");
+  if (isRevealed(trip, now)) throw conflict(trip.type === "event" ? "Este evento ya se reveló." : "Este rollo ya se reveló");
 
-  const added = await addMember(db, trip.id, user.id, null, now);
+  const added = await addMember(db, trip.id, user.id, null, now, false, chosen);
   // The joiner is not a member yet: the message must not reveal how many people the rollo holds.
   if (added.status === "full") throw conflict("Este rollo está lleno. Pedile a quien lo creó que haga lugar.");
   if (added.status !== "added") throw forbidden("El admin te sacó de este rollo");
@@ -121,6 +147,7 @@ export async function addFriendsToTrip(
   myRole: Role,
   friendIds: string[],
 ): Promise<{ results: AddMembersResult[]; notify: AfterResponse }> {
+  if (trip.type === "event") throw conflict("En un evento se entra con el código.");
   if (isRevealed(trip)) throw conflict("Este rollo ya se reveló");
 
   const now = Date.now();
@@ -189,6 +216,15 @@ export async function updateMyMembership(
     allowFeaturing: patch.allowFeaturing ?? member.allow_featuring !== 0,
     archived: patch.archived ?? member.archived_at !== null,
   };
+}
+
+/** Replaces my groups in an event. Guests need at least one; organizers (admins) may have none. */
+export async function setMyGroups(db: D1Database, trip: TripRow, member: MemberRow, groupIds: string[]): Promise<string[]> {
+  if (trip.type !== "event") throw conflict("Solo los eventos tienen grupos.");
+  if (groupIds.length === 0 && member.role !== "admin") throw badRequest("Elegí al menos un grupo");
+  const chosen = await validGroupIds(db, trip.id, groupIds);
+  await db.batch(repo.setMemberGroups(db, member.id, chosen));
+  return repo.listMemberGroupIds(db, member.id);
 }
 
 // ---------- Leave ----------

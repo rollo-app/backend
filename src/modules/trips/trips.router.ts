@@ -10,7 +10,9 @@ import {
   AddMembersSchema,
   CreateTripSchema,
   JoinTripSchema,
+  MyGroupsSchema,
   MyMembershipSchema,
+  SetMyGroupsSchema,
   TripMemberParams,
   UpdateMyMembershipSchema,
   UpdateTripSchema,
@@ -36,8 +38,9 @@ export const joinTripRoute = createRoute({
   tags,
   summary: "Join a trip",
   description:
-    "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), " +
-    "200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409. A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
+    "With the invite code. An event is joined choosing groups (`groupIds`, all from that event, else 400): without them 409 with `code` EVENT_NEEDS_UPDATE, " +
+    "checked before anything else, even for an active member. The member and their groups are written together. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), " +
+    "200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409 ('Este evento ya se reveló.' for an event).  A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: JoinTripSchema } }, required: true } },
@@ -109,6 +112,7 @@ export const addMembersRoute = createRoute({
   description:
     "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they " +
     "had left and come back), `already_member`, `unavailable` (not your friend, removed by the admin, or unknown) or `full` (no room left: the rollo has a cap on active members and friends are processed in request order). " +
+    "An event refuses it (409): guests enter with the code. " +
     "The rollo's admin can add back someone who was removed (they become active again with their old photos); " +
     "for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
   security: bearerAuth,
@@ -118,6 +122,19 @@ export const addMembersRoute = createRoute({
     body: { content: { "application/json": { schema: AddMembersSchema } }, required: true },
   },
   responses: { 200: json(AddMembersResponseSchema, "Result per friend"), ...errors(400, 401, 403, 409, 428, 429) },
+});
+
+export const setMyGroupsRoute = createRoute({
+  method: "put",
+  path: "/{tripId}/members/me/groups",
+  tags,
+  summary: "Set your groups in an event",
+  description:
+    "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip.",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember] as const,
+  request: { params: TripParams, body: { content: { "application/json": { schema: SetMyGroupsSchema } }, required: true } },
+  responses: { 200: json(MyGroupsSchema, "Your groups"), ...errors(400, 401, 403, 409, 428) },
 });
 
 export const leaveRoute = createRoute({
@@ -198,6 +215,7 @@ trips.openapi(updateTripRoute, controller.update);
 trips.openapi(revealRoute, controller.reveal);
 trips.openapi(addMembersRoute, controller.addMembers);
 trips.openapi(updateMyMembershipRoute, controller.updateMyMembership);
+trips.openapi(setMyGroupsRoute, controller.setMyGroups);
 trips.openapi(leaveRoute, controller.leave);
 trips.openapi(removeMemberRoute, controller.removeMember);
 trips.openapi(makeAdminRoute, controller.makeAdmin);

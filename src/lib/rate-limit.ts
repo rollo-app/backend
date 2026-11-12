@@ -41,6 +41,14 @@ export const rateLimit = (name: "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_
     await next();
   });
 
+/** Per-route limiter keyed by client IP, for routes without a session. */
+export const rateLimitByIp = (name: "RL_SEARCH") =>
+  createMiddleware<AppEnv>(async (c, next) => {
+    const rawIp = c.req.header("cf-connecting-ip");
+    if (!(await allowed(c.env, name, `ip:${rawIp ? ipKey(rawIp) : "unknown"}`))) throw tooFast();
+    await next();
+  });
+
 /** Paths that cost nothing (static docs, the dev upload) and are not limited. */
 const SKIPPED = new Set(["/openapi.json", "/docs"]);
 

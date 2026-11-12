@@ -68,8 +68,17 @@ export const CreateTripSchema = z
 export const JoinTripSchema = z
   .object({
     code: z.string().trim().toUpperCase().length(6).openapi({ example: "HUB5FT" }),
+    groupIds: z.array(z.string().uuid()).min(1).max(30).optional().openapi({
+      description: "Event groups to join (required for an event: without them 409 EVENT_NEEDS_UPDATE; ignored for a regular trip). An active member who sends more groups adds them to the ones they had",
+    }),
   })
   .openapi("JoinTripRequest");
+
+export const SetMyGroupsSchema = z
+  .object({ groupIds: z.array(z.string().uuid()).max(30) })
+  .openapi("SetMyGroupsRequest");
+
+export const MyGroupsSchema = z.object({ groupIds: z.array(z.string().uuid()) }).openapi("MyGroups");
 
 export const UpdateTripSchema = z
   .object({

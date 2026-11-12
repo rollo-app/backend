@@ -120,6 +120,16 @@ export async function listPublicGroups(db: D1Database, trip: Pick<TripRow, "id" 
   return (await repo.listGroups(db, trip.id)).map((g) => ({ id: g.id, name: g.name }));
 }
 
+/** `publicTrip` with its groups: the shape every trip response uses. */
+export async function publicTripWithGroups(db: D1Database, trip: TripRow, createdBy: Parameters<typeof publicTrip>[2]) {
+  return publicTrip(trip, Date.now(), createdBy, await listPublicGroups(db, trip));
+}
+
+/** The ids of the event groups `member` is in (`[]` for a regular trip, without querying). */
+export async function listMyGroupIds(db: D1Database, trip: Pick<TripRow, "type">, member: Pick<MemberRow, "id">): Promise<string[]> {
+  return trip.type === "event" ? repo.listMemberGroupIds(db, member.id) : [];
+}
+
 /** The rollo's creator as the API shows it (null if unknown). */
 export const getCreator = repo.findCreator;
 

@@ -245,6 +245,49 @@
           "registrationsOpen"
         ]
       },
+      "EventPreview": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path of the cover (prefix the API base URL), null if none"
+          },
+          "revealed": {
+            "type": "boolean"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "coverUrl",
+          "revealed",
+          "groups"
+        ]
+      },
       "WaitlistJoinRequest": {
         "type": "object",
         "properties": {
@@ -1639,6 +1682,16 @@
             "minLength": 6,
             "maxLength": 6,
             "example": "HUB5FT"
+          },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 30,
+            "description": "Event groups to join (required for an event: without them 409 EVENT_NEEDS_UPDATE; ignored for a regular trip). An active member who sends more groups adds them to the ones they had"
           }
         },
         "required": [
@@ -1879,6 +1932,37 @@
             "description": "Archive the rollo for you only (revealed rollos only, 409 otherwise); it stays in your list marked as archived"
           }
         }
+      },
+      "MyGroups": {
+        "type": "object",
+        "properties": {
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "groupIds"
+        ]
+      },
+      "SetMyGroupsRequest": {
+        "type": "object",
+        "properties": {
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 30
+          }
+        },
+        "required": [
+          "groupIds"
+        ]
       },
       "MediaRegistered": {
         "type": "object",
@@ -3190,6 +3274,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{code}": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Preview an event by its invite code",
+        "description": "No token. The name, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. 404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "HUB5FT"
+            },
+            "required": true,
+            "name": "code",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -5137,7 +5273,7 @@
           "Trips"
         ],
         "summary": "Join a trip",
-        "description": "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), 200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409. A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
+        "description": "With the invite code. An event is joined choosing groups (`groupIds`, all from that event, else 400): without them 409 with `code` EVENT_NEEDS_UPDATE, checked before anything else, even for an active member. The member and their groups are written together. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), 200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409 ('Este evento ya se reveló.' for an event).  A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
         "security": [
           {
             "bearerAuth": []
@@ -5536,7 +5672,7 @@
           "Trips"
         ],
         "summary": "Add your friends to the trip",
-        "description": "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they had left and come back), `already_member`, `unavailable` (not your friend, removed by the admin, or unknown) or `full` (no room left: the rollo has a cap on active members and friends are processed in request order). The rollo's admin can add back someone who was removed (they become active again with their old photos); for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
+        "description": "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they had left and come back), `already_member`, `unavailable` (not your friend, removed by the admin, or unknown) or `full` (no room left: the rollo has a cap on active members and friends are processed in request order). An event refuses it (409): guests enter with the code. The rollo's admin can add back someone who was removed (they become active again with their old photos); for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
         "security": [
           {
             "bearerAuth": []
@@ -5755,6 +5891,102 @@
         "responses": {
           "204": {
             "description": "You left the trip"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/members/me/groups": {
+      "put": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Set your groups in an event",
+        "description": "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMyGroupsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Your groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyGroups"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid session token",

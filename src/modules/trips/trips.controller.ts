@@ -2,7 +2,7 @@ import type { RouteHandler } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { isCreator } from "../../lib/creator";
 import { deferPush } from "../../lib/push";
-import { publicMember, publicTrip } from "../../lib/util";
+import { publicMember } from "../../lib/util";
 import type { AppEnv } from "../../types";
 import type {
   addMembersRoute,
@@ -15,6 +15,7 @@ import type {
   removeAdminRoute,
   removeMemberRoute,
   revealRoute,
+  setMyGroupsRoute,
   updateMyMembershipRoute,
   updateTripRoute,
 } from "./trips.router";
@@ -27,14 +28,15 @@ export const create: RouteHandler<typeof createTripRoute, AppEnv> = async (c) =>
   // No kind in `src/shared/errors.ts` for a 500, so this one stays an HTTPException.
   if (!created) throw new HTTPException(500, { message: "No se pudo generar un código" });
   const createdBy = { userId: user.id, name: user.name ?? "" };
-  return c.json({ trip: publicTrip(created.trip, Date.now(), createdBy, await service.listPublicGroups(c.env.DB, created.trip)), member: publicMember(created.member, user, false, true) }, 201);
+  return c.json({ trip: await service.publicTripWithGroups(c.env.DB, created.trip, createdBy), member: publicMember(created.member, user, false, true) }, 201);
 };
 
 export const join: RouteHandler<typeof joinTripRoute, AppEnv> = async (c) => {
   const user = c.get("user");
-  const { created, trip, member } = await members.joinTrip(c.env.DB, user, c.req.valid("json").code);
+  const { code, groupIds } = c.req.valid("json");
+  const { created, trip, member } = await members.joinTrip(c.env.DB, user, code, groupIds);
   const createdBy = await service.getCreator(c.env.DB, trip);
-  const body = { trip: publicTrip(trip, Date.now(), createdBy, await service.listPublicGroups(c.env.DB, trip)), member: publicMember(member, user, false, isCreator(trip, user.id)) };
+  const body = { trip: await service.publicTripWithGroups(c.env.DB, trip, createdBy), member: publicMember(member, user, false, isCreator(trip, user.id)) };
   if (created) return c.json(body, 201);
   return c.json(body, 200);
 };
@@ -46,8 +48,8 @@ export const detail: RouteHandler<typeof getTripRoute, AppEnv> = async (c) => {
   const createdBy = await service.getCreator(c.env.DB, trip);
   return c.json(
     {
-      trip: publicTrip(trip, Date.now(), createdBy, await service.listPublicGroups(c.env.DB, trip)),
-      me: { ...publicMember(c.get("member"), user, false, isCreator(trip, user.id)), allowFeaturing: c.get("member").allow_featuring !== 0, groupIds: [] as string[] },
+      trip: await service.publicTripWithGroups(c.env.DB, trip, createdBy),
+      me: { ...publicMember(c.get("member"), user, false, isCreator(trip, user.id)), allowFeaturing: c.get("member").allow_featuring !== 0, groupIds: await service.listMyGroupIds(c.env.DB, trip, c.get("member")) },
       members: members.map((m) => publicMember(m, m, blocked.has(m.user_id), isCreator(trip, m.user_id))),
       today,
       totalUploaded,
@@ -58,13 +60,13 @@ export const detail: RouteHandler<typeof getTripRoute, AppEnv> = async (c) => {
 
 export const update: RouteHandler<typeof updateTripRoute, AppEnv> = async (c) => {
   const trip = await service.updateTrip(c.env.DB, c.get("trip"), c.get("user").id, c.req.valid("json"));
-  return c.json({ trip: publicTrip(trip, Date.now(), await service.getCreator(c.env.DB, trip), await service.listPublicGroups(c.env.DB, trip)) }, 200);
+  return c.json({ trip: await service.publicTripWithGroups(c.env.DB, trip, await service.getCreator(c.env.DB, trip)) }, 200);
 };
 
 export const reveal: RouteHandler<typeof revealRoute, AppEnv> = async (c) => {
   const { trip, notify } = await service.revealTrip(c.env, c.get("trip"), c.get("user").id);
   if (notify) deferPush(c, notify());
-  return c.json({ trip: publicTrip(trip, Date.now(), await service.getCreator(c.env.DB, trip), await service.listPublicGroups(c.env.DB, trip)) }, 200);
+  return c.json({ trip: await service.publicTripWithGroups(c.env.DB, trip, await service.getCreator(c.env.DB, trip)) }, 200);
 };
 
 export const addMembers: RouteHandler<typeof addMembersRoute, AppEnv> = async (c) => {
@@ -77,6 +79,11 @@ export const addMembers: RouteHandler<typeof addMembersRoute, AppEnv> = async (c
   );
   if (notify) deferPush(c, notify());
   return c.json({ results }, 200);
+};
+
+export const setMyGroups: RouteHandler<typeof setMyGroupsRoute, AppEnv> = async (c) => {
+  const groupIds = await members.setMyGroups(c.env.DB, c.get("trip"), c.get("member"), c.req.valid("json").groupIds);
+  return c.json({ groupIds }, 200);
 };
 
 export const updateMyMembership: RouteHandler<typeof updateMyMembershipRoute, AppEnv> = async (c) => {

@@ -13,6 +13,7 @@ import blocks from "./modules/blocks/blocks.router";
 import featured from "./modules/featured/featured.router";
 import { meFriendRequests, userFriendRequests } from "./modules/friend-requests/friend-requests.router";
 import friends, { friendLinks } from "./modules/friends/friends.router";
+import events from "./modules/events/events.router";
 import config from "./modules/config/config.router";
 import waitlist, { waitlistPages } from "./modules/waitlist/waitlist.router";
 import comments from "./modules/comments/comments.router";
@@ -51,6 +52,7 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 app.route("/admin", admin);
 app.route("/auth", auth);
 app.route("/config", config);
+app.route("/events", events);
 app.route("/waitlist", waitlist);
 app.route("/waitlist", waitlistPages);
 app.route("/me", meFriendRequests);

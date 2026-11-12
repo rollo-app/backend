@@ -91,6 +91,30 @@ export async function listGroups(db: D1Database, tripId: string): Promise<{ id: 
   return results;
 }
 
+const ACTIVE_MEMBER_SQL = "EXISTS (SELECT 1 FROM members WHERE id = ? AND left_at IS NULL AND removed_at IS NULL)";
+
+/** Adds the member to the groups, keeping the ones they already have. Writes only while they are an active member, so a skipped join leaves nothing behind. */
+export function addMemberGroups(db: D1Database, memberId: string, groupIds: string[], now: number): D1PreparedStatement[] {
+  return groupIds.map((groupId) =>
+    db
+      .prepare(`INSERT OR IGNORE INTO member_groups (member_id, group_id, created_at) SELECT ?, ?, ? WHERE ${ACTIVE_MEMBER_SQL}`)
+      .bind(memberId, groupId, now, memberId),
+  );
+}
+
+/** Replaces the member's groups with `groupIds` (deletes, then inserts). */
+export function setMemberGroups(db: D1Database, memberId: string, groupIds: string[], now = Date.now()): D1PreparedStatement[] {
+  return [db.prepare("DELETE FROM member_groups WHERE member_id = ?").bind(memberId), ...addMemberGroups(db, memberId, groupIds, now)];
+}
+
+export async function listMemberGroupIds(db: D1Database, memberId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare("SELECT mg.group_id FROM member_groups mg JOIN event_groups g ON g.id = mg.group_id WHERE mg.member_id = ? ORDER BY g.position")
+    .bind(memberId)
+    .all<{ group_id: string }>();
+  return results.map((r) => r.group_id);
+}
+
 export function findMember(db: D1Database, tripId: string, userId: string): Promise<MemberRow | null> {
   return db.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?").bind(tripId, userId).first<MemberRow>();
 }
