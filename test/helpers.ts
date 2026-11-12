@@ -1,7 +1,11 @@
 import { env, exports } from "cloudflare:workers";
 import { vi } from "vitest";
 import app from "../src/index";
+import { generateToken, hashToken, SESSION_TTL } from "../src/lib/auth";
 import { devSentCodes } from "../src/lib/email";
+import { nameSearchColumn } from "../src/lib/search-text";
+import { insertSession } from "../src/modules/auth/auth.repository";
+import { insertMember } from "../src/modules/trips/trips.repository";
 
 export const MINUTE = 60_000;
 export const HOUR = 60 * MINUTE;
@@ -148,6 +152,46 @@ export async function joinAs(code: string, name: string): Promise<{ token: strin
   const user = await signUp(undefined, name);
   const { memberId } = await join(code, user.token);
   return { token: user.token, memberId, userId: user.userId };
+}
+
+/**
+ * Adds `count` complete users straight into D1 as active members of the trip (no login flow).
+ * Fast enough for 100+ members: 3 statements per user (user, session, member) in `db.batch` chunks.
+ * Names are `${namePrefix} ${n}` (default "Viajero"); usernames and emails are random, so repeated calls never collide.
+ */
+export async function addMembersDirect(
+  tripId: string,
+  count: number,
+  opts: { namePrefix?: string } = {},
+): Promise<Array<{ token: string; userId: string; memberId: string }>> {
+  const prefix = opts.namePrefix ?? "Viajero";
+  const now = Date.now();
+  const run = Math.random().toString(36).slice(2, 8);
+  const out: Array<{ token: string; userId: string; memberId: string }> = [];
+  const statements: D1PreparedStatement[] = [];
+  for (let i = 0; i < count; i++) {
+    const userId = crypto.randomUUID();
+    const memberId = crypto.randomUUID();
+    const token = generateToken();
+    const name = `${prefix} ${i + 1}`;
+    statements.push(
+      env.DB.prepare("INSERT INTO users (id, email, name, name_search, username, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(
+        userId,
+        `direct-${run}-${i}@rollo.test`,
+        name,
+        nameSearchColumn(name),
+        `d${run}${i}`,
+        now,
+      ),
+      insertSession(env.DB, { id: crypto.randomUUID(), userId, tokenHash: await hashToken(token), now, expiresAt: now + SESSION_TTL }),
+      insertMember(env.DB, memberId, tripId, userId, now + i, null),
+    );
+    out.push({ token, userId, memberId });
+  }
+  // 3 statements per user; chunks of 90 stay well under D1's per-batch limits (each statement binds <= 6 params, limit 100).
+  const CHUNK = 90;
+  for (let i = 0; i < statements.length; i += CHUNK) await env.DB.batch(statements.slice(i, i + CHUNK));
+  return out;
 }
 
 /** The bytes `putFiles` stores, so the sizes declared at registration match what is "uploaded". */
