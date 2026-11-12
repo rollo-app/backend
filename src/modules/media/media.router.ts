@@ -49,9 +49,10 @@ export const completeRoute = createRoute({
   summary: "Confirm the files were uploaded",
   description:
     "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. " +
-    "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
+    "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs). " +
+    "429 comes in two kinds: too fast (carries `Retry-After`, retry later) or a quota error (no `Retry-After`, do not retry).",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireMediaMember] as const,
+  middleware: [requireUser, rateLimit("RL_UPLOAD"), requireMediaMember] as const,
   request: { params: MediaParams },
   responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404, 428, 429) },
 });

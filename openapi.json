@@ -5898,7 +5898,7 @@
           "Media"
         ],
         "summary": "Confirm the files were uploaded",
-        "description": "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
+        "description": "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs). 429 comes in two kinds: too fast (carries `Retry-After`, retry later) or a quota error (no `Retry-After`, do not retry).",
         "security": [
           {
             "bearerAuth": []

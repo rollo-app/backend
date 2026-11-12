@@ -88,11 +88,10 @@ describe("expensive endpoints", () => {
     expect((await api("GET", "/me", { token: a.token, env: e })).status).toBe(200);
   });
 
-  it("cover completing, avatar, likes and adding members", async () => {
+  it("cover avatar, likes and adding members", async () => {
     const trip = await newTrip();
     const e = { RL_EXPENSIVE: fakeLimiter(0) };
     const token = trip.adminToken;
-    expect((await api("POST", `/media/${crypto.randomUUID()}/complete`, { token, env: e })).status).toBe(429);
     expect((await api("POST", "/me/avatar/complete", { token, env: e })).status).toBe(429);
     expect((await api("PUT", `/media/${crypto.randomUUID()}/like`, { token, env: e })).status).toBe(429);
     expect((await api("POST", `/trips/${trip.tripId}/members`, { token, body: { friendIds: [] }, env: e })).status).toBe(429);
@@ -110,6 +109,18 @@ describe("media registration", () => {
     expect(blocked.headers.get("retry-after")).toBe("60");
     // A denying RL_EXPENSIVE does not block it: the invalid body gets past the limiter and fails validation (400).
     expect((await api("POST", url, { token, body: {}, env: { RL_EXPENSIVE: fakeLimiter(0) } })).status).toBe(400);
+  });
+
+  it("completing is limited by RL_UPLOAD (429 with Retry-After) and not by RL_EXPENSIVE", async () => {
+    const trip = await newTrip();
+    const token = trip.adminToken;
+    const url = `/media/${crypto.randomUUID()}/complete`;
+    const blocked = await api("POST", url, { token, env: { RL_UPLOAD: fakeLimiter(0) } });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: TOO_FAST });
+    expect(blocked.headers.get("retry-after")).toBe("60");
+    // A denying RL_EXPENSIVE does not block it: unknown media id gets past the limiter (404).
+    expect((await api("POST", url, { token, env: { RL_EXPENSIVE: fakeLimiter(0) } })).status).toBe(404);
   });
 
   it("the daily photo quota 429 has no Retry-After (the app must not retry it)", async () => {
