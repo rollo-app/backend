@@ -67,7 +67,7 @@ describe("magic link in the login email", () => {
     const email = "link+uno@rollo.test";
     const { url, token } = await requestLogin(email);
     expect(token).toMatch(/^[A-Za-z0-9_-]{43,}$/);
-    expect(url).toBe(`https://rollo.juanifraga.com/entrar#t=${token}&e=${encodeURIComponent(email)}`);
+    expect(url).toBe(`https://rolloproject.com/login#t=${token}&e=${encodeURIComponent(email)}`);
   });
 
   it("uses LOGIN_LINK_URL as the base of the link", async () => {
@@ -88,7 +88,7 @@ describe("magic link in the login email", () => {
     const email = "mail@rollo.test";
     const { subject, text, html } = await captureResendEmail({ email, linkChallenge: await challengeOf(newVerifier()) });
     const code = subject.match(/([A-Z0-9]{6})$/)![1]!;
-    const url = text.match(/(https:\/\/rollo\.juanifraga\.com\/entrar#t=[A-Za-z0-9_-]+&e=mail%40rollo\.test)/)?.[1];
+    const url = text.match(/(https:\/\/rolloproject\.com\/login#t=[A-Za-z0-9_-]+&e=mail%40rollo\.test)/)?.[1];
     expect(url).toBeDefined();
     expect(text).toContain(`Tu código de Rollo es ${code}`);
     expect(text).toContain(`O tocá este link desde tu iPhone: ${url}`);
