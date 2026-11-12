@@ -48,7 +48,9 @@ Worker `rollo-site` de Cloudflare. El DNS de los dominios sigue en Cloudflare, c
    Gmail (los mails salen de `no-reply@`, que no recibe; el mail del código responde a `support@`). Registrar el
    remitente en el portal de Apple (relay de "Ocultar mi email").
 3. **App (próximo build, 1.4.0):** `API_URL`, `SITE_URL` y los links (`/login`, antes `/entrar`, y `/friends`) al dominio nuevo, y
-   `associatedDomains` con el dominio nuevo **y** `rollo.juanifraga.com`. El backend pasa `LOGIN_LINK_URL` y el link de
+   `associatedDomains` solo con el dominio nuevo (`rollo.juanifraga.com` redirige, así que Apple no puede bajar su archivo
+   de Universal Links); la app sigue reconociendo los links viejos de amistad y de mail. Rutas del sitio en inglés
+   (`/login`, `/support`, `/privacy`, `/terms`; las viejas en español redirigen). El backend pasa `LOGIN_LINK_URL` y el link de
    amistad al dominio nuevo (los builds viejos igual los abren: esas páginas mandan a `rollo://`).
 4. **A mano:** URLs de App Store Connect (soporte, privacidad, marketing), pantalla de consentimiento de Google
    (dominio autorizado, links), `front-admin` (URL de la API) y Web Analytics del sitio nuevo. BIMI después.
