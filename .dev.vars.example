@@ -7,8 +7,8 @@ DEV_LOCAL_UPLOADS=1
 
 # Opcionales. Sin RESEND_API_KEY el código de login aparece en la consola de wrangler.
 # RESEND_API_KEY=re_xxx
-# Base del link mágico del mail (default https://rollo.juanifraga.com/entrar)
-# LOGIN_LINK_URL=https://rollo.juanifraga.com/entrar
+# Base del link mágico del mail (default https://rolloproject.com/login)
+# LOGIN_LINK_URL=https://rolloproject.com/login
 # Login con Google: ya viene en wrangler.jsonc (vars); acá solo para probar con otros client IDs
 # GOOGLE_CLIENT_IDS=xxx.apps.googleusercontent.com,yyy.apps.googleusercontent.com
 # Sign in with Apple: también en wrangler.jsonc (bundle ids)

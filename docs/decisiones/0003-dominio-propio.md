@@ -27,7 +27,7 @@ relay de "Ocultar mi email" de Apple conviene un dominio de Rollo.
 
 | Qué | Nuevo | Viejo (queda andando) |
 |---|---|---|
-| Sitio | `rolloproject.com` | `rollo.juanifraga.com`; `somosrollo.com` redirige |
+| Sitio | `rolloproject.com` | `rollo.juanifraga.com` y `somosrollo.com` redirigen |
 | API | `api.rolloproject.com` | `rollo-api.juanifraga.com`; `api.somosrollo.com` queda como alias |
 | Mails | `no-reply@rolloproject.com` (envía), `support@rolloproject.com` (recibe) | `rollo@` / `soporte@juanifraga.com` |
 
@@ -41,13 +41,16 @@ Worker `rollo-site` de Cloudflare. El DNS de los dominios sigue en Cloudflare, c
 ## Etapas
 
 1. **Infraestructura en paralelo (sin cambiar a nadie):** el Worker de la API atiende también `api.rolloproject.com`;
-   el sitio se publica en Vercel con `rolloproject.com` (canónico), `somosrollo.com` redirige, y `rollo.juanifraga.com`
-   pasa a Vercel; después se apaga el Worker `rollo-site`.
+   el sitio se publica en Vercel con `rolloproject.com` (canónico); `somosrollo.com` y `rollo.juanifraga.com` redirigen
+   (308, con ruta y fragmento: los builds viejos siguen abriendo `/entrar` y `/friends`, aunque pasan por Safari porque
+   Apple no sigue redirecciones para el archivo de Universal Links); se borra el Worker `rollo-site`.
 2. **Mail:** verificar `rolloproject.com` en Resend (DKIM, SPF, DMARC), Email Routing de Cloudflare para `support@` →
    Gmail (los mails salen de `no-reply@`, que no recibe; el mail del código responde a `support@`). Registrar el
    remitente en el portal de Apple (relay de "Ocultar mi email").
-3. **App (próximo build, 1.4.0):** `API_URL`, `SITE_URL` y los links (`/entrar`, `/friends`) al dominio nuevo, y
-   `associatedDomains` con el dominio nuevo **y** `rollo.juanifraga.com`. El backend pasa `LOGIN_LINK_URL` y el link de
+3. **App (próximo build, 1.4.0):** `API_URL`, `SITE_URL` y los links (`/login`, antes `/entrar`, y `/friends`) al dominio nuevo, y
+   `associatedDomains` solo con el dominio nuevo (`rollo.juanifraga.com` redirige, así que Apple no puede bajar su archivo
+   de Universal Links); la app sigue reconociendo los links viejos de amistad y de mail. Rutas del sitio en inglés
+   (`/login`, `/support`, `/privacy`, `/terms`; las viejas en español redirigen). El backend pasa `LOGIN_LINK_URL` y el link de
    amistad al dominio nuevo (los builds viejos igual los abren: esas páginas mandan a `rollo://`).
 4. **A mano:** URLs de App Store Connect (soporte, privacidad, marketing), pantalla de consentimiento de Google
    (dominio autorizado, links), `front-admin` (URL de la API) y Web Analytics del sitio nuevo. BIMI después.
