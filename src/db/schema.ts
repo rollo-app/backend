@@ -402,6 +402,26 @@ export const emailCounters = sqliteTable(
   (t) => [primaryKey({ columns: [t.kind, t.day] })],
 );
 
+export const waitlist = sqliteTable(
+  "waitlist",
+  {
+    email: text("email").primaryKey(),
+    source: text("source").notNull().default("app"),
+    createdAt: integer("created_at").notNull(),
+    confirmTokenHash: text("confirm_token_hash").notNull(),
+    confirmedAt: integer("confirmed_at"),
+    unsubscribeTokenHash: text("unsubscribe_token_hash").notNull(),
+    unsubscribedAt: integer("unsubscribed_at"),
+    lastSentAt: integer("last_sent_at"),
+  },
+  (t) => [
+    uniqueIndex("idx_waitlist_confirm_token").on(t.confirmTokenHash),
+    uniqueIndex("idx_waitlist_unsubscribe_token").on(t.unsubscribeTokenHash),
+    index("idx_waitlist_created").on(t.createdAt),
+    check("waitlist_source_check", sql`${t.source} IN ('app', 'web')`),
+  ],
+);
+
 // Relations (for the relational query API, `db.query.x.findFirst({ with })`); one per foreign key.
 
 export const tripsRelations = relations(trips, ({ many }) => ({
@@ -528,5 +548,6 @@ export type CronState = typeof cronState.$inferSelect;
 export type NewCronState = typeof cronState.$inferInsert;
 export type MetricDaily = typeof metricsDaily.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;
+export type WaitlistRow = typeof waitlist.$inferSelect;
 export type EmailCounter = typeof emailCounters.$inferSelect;
 export type NewEmailCounter = typeof emailCounters.$inferInsert;

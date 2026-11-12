@@ -6,7 +6,8 @@ import { storageLimitBytes, storageUsage } from "../../lib/storage";
 import { badRequest } from "../../shared/errors";
 import { getMetrics as readMetrics } from "../metrics/metrics.service";
 import { PageQuerySchema } from "../../lib/paging";
-import { AdminEditTripSchema, AdminTripsQuerySchema, AdminEditUserSchema, DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
+import { AdminEditTripSchema, AdminTripsQuerySchema, AdminEditUserSchema, DegradedModeBodySchema, MetricsQuerySchema, RegistrationsBodySchema, WaitlistQuerySchema } from "./admin.schemas";
+import { confirmedCsv, listForAdmin } from "../waitlist/waitlist.service";
 import * as service from "./admin.service";
 
 type Person = { id: string; name: string | null; username: string | null; email: string };
@@ -56,6 +57,30 @@ export async function setDegradedMode(c: Context<AppEnv>) {
   const parsed = DegradedModeBodySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) throw badRequest("Cuerpo inválido");
   return c.json(await service.setDegradedMode(c.env.DB, parsed.data.on, c.get("adminUser")));
+}
+
+export async function getRegistrations(c: Context<AppEnv>) {
+  return c.json(await service.getRegistrations(c.env.DB));
+}
+
+export async function setRegistrations(c: Context<AppEnv>) {
+  const parsed = RegistrationsBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw badRequest("Cuerpo inválido");
+  return c.json(await service.setRegistrations(c.env.DB, parsed.data.open, c.get("adminUser")));
+}
+
+export async function listWaitlist(c: Context<AppEnv>) {
+  const parsed = WaitlistQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) throw badRequest("Parámetros inválidos");
+  return c.json(await listForAdmin(c.env.DB, parsed.data));
+}
+
+export async function waitlistCsv(c: Context<AppEnv>) {
+  return c.body(await confirmedCsv(c.env.DB), 200, {
+    "content-type": "text/csv; charset=utf-8",
+    "content-disposition": 'attachment; filename="rollo-waitlist.csv"',
+    "cache-control": "no-store",
+  });
 }
 
 export async function getMetrics(c: Context<AppEnv>) {

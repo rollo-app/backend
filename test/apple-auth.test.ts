@@ -4,7 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEGRADED_MESSAGE, resetDegradedCache } from "../src/lib/degraded";
 import { APPLE_ERROR, APPLE_UNAVAILABLE, setAppleKeysForTests } from "../src/lib/apple";
 import { USE_EMAIL_CODE } from "../src/modules/auth/auth.service";
-import { api, signUp } from "./helpers";
+import { REGISTRATIONS_CLOSED_MESSAGE, resetRegistrationsCache } from "../src/lib/registrations";
+import { api, closeRegistrations, signUp } from "./helpers";
 
 // Audiences come from APPLE_CLIENT_IDS in vitest.config.ts.
 const PROD_APP = "com.juanifraga.rollo.app";
@@ -20,7 +21,10 @@ beforeAll(async () => {
   setAppleKeysForTests(createLocalJWKSet({ keys: [jwk] }));
 });
 afterAll(() => setAppleKeysForTests(null));
-beforeEach(() => resetDegradedCache());
+beforeEach(() => {
+  resetDegradedCache();
+  resetRegistrationsCache();
+});
 
 let subCounter = 0;
 
@@ -127,5 +131,27 @@ describe("POST /auth/apple", () => {
     const apple = await signInWithApple({ identityToken: await appleToken({ sub: "a-both", email: "both@icloud.com" }) });
     const links = await env.DB.prepare("SELECT provider FROM user_identities WHERE user_id = ?").bind(apple.body.user.id).all();
     expect(links.results.map((r) => r.provider)).toEqual(["apple"]);
+  });
+});
+
+describe("closed registrations", () => {
+  it("a new account gets 403 with the code; an existing email account and a linked identity still get in", async () => {
+    const existing = await signUp("ana@icloud.com");
+    const linked = await signInWithApple({ identityToken: await appleToken({ sub: "a-linked", email: "linkeada@icloud.com" }) });
+    expect(linked.status).toBe(200);
+    await closeRegistrations();
+
+    const fresh = await signInWithApple({ identityToken: await appleToken({ sub: "a-fresh", email: "nadie@icloud.com" }) });
+    expect(fresh.status).toBe(403);
+    expect(fresh.body).toEqual({ error: REGISTRATIONS_CLOSED_MESSAGE, code: "REGISTRATIONS_CLOSED" });
+    expect(await env.DB.prepare("SELECT 1 FROM users WHERE email = 'nadie@icloud.com'").first()).toBeNull();
+    expect(await env.DB.prepare("SELECT 1 FROM user_identities WHERE subject = 'a-fresh'").first()).toBeNull();
+
+    const byEmail = await signInWithApple({ identityToken: await appleToken({ sub: "a-ana", email: "ana@icloud.com" }) });
+    expect(byEmail.status).toBe(200);
+    expect(byEmail.body.user.id).toBe(existing.userId);
+    const bySub = await signInWithApple({ identityToken: await appleToken({ sub: "a-linked", email: "otro-mail@icloud.com" }) });
+    expect(bySub.status).toBe(200);
+    expect(bySub.body.user.id).toBe(linked.body.user.id);
   });
 });

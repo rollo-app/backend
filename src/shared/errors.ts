@@ -5,6 +5,8 @@ export class AppError extends Error {
   constructor(
     readonly kind: AppErrorKind,
     message: string,
+    /** Optional machine-readable code the app can branch on (sent as `code` next to `error`). */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "AppError";
@@ -21,7 +23,7 @@ export const STATUS_BY_KIND: Record<AppErrorKind, 400 | 403 | 404 | 409 | 429 | 
 };
 
 export const badRequest = (message: string) => new AppError("bad_request", message);
-export const forbidden = (message: string) => new AppError("forbidden", message);
+export const forbidden = (message: string, code?: string) => new AppError("forbidden", message, code);
 export const notFound = (message = "No encontrado") => new AppError("not_found", message);
 export const conflict = (message: string) => new AppError("conflict", message);
 export const rateLimited = (message: string) => new AppError("rate_limited", message);
