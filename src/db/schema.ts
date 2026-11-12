@@ -30,6 +30,9 @@ export const trips = sqliteTable("trips", {
   momentFromDay: text("moment_from_day"),
   createdByUserId: text("created_by_user_id"),
   maxMembers: integer("max_members").notNull().default(15),
+  keepOriginals: integer("keep_originals").notNull().default(0),
+  originalsNoticeAt: integer("originals_notice_at"),
+  originalsPurgedAt: integer("originals_purged_at"),
 });
 
 export const users = sqliteTable(
@@ -165,6 +168,9 @@ export const media = sqliteTable(
     momentDay: text("moment_day"),
     pairedMediaId: text("paired_media_id"),
     archivedAt: integer("archived_at"),
+    displayKey: text("display_key"),
+    displaySizeBytes: integer("display_size_bytes"),
+    originalPurgedAt: integer("original_purged_at"),
   },
   (t) => [
     index("idx_media_trip_time").on(t.tripId, t.takenAt),
@@ -310,6 +316,7 @@ export const userSettings = sqliteTable("user_settings", {
   allowFeaturing: integer("allow_featuring").notNull().default(1),
   notifyDailyMoment: integer("notify_daily_moment").notNull().default(1),
   notifyMomentPosted: integer("notify_moment_posted").notNull().default(1),
+  notifyOriginalsExpiring: integer("notify_originals_expiring").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
 

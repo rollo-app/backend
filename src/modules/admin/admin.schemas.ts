@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PageQuerySchema } from "../../lib/paging";
 import { UpdateProfileSchema, UserBadgeSchema } from "../../schemas";
 
 export const DegradedModeBodySchema = z.object({ on: z.boolean() });
@@ -38,6 +39,21 @@ export type AdminEditUser = z.infer<typeof AdminEditUserSchema>;
 
 export const MAX_TRIP_MEMBERS = 1000;
 
-/** Only the cap is editable; the lower bound (the current active count) depends on the rollo, so the service checks it. */
-export const AdminEditTripSchema = z.object({ maxMembers: z.number().int().min(1).max(MAX_TRIP_MEMBERS) }).strict();
+/**
+ * The member cap (its lower bound, the current active count, depends on the rollo, so the service checks it) and
+ * `keepOriginals` (the rollo's originals are never deleted) are editable, either or both; anything else is rejected.
+ */
+export const AdminEditTripSchema = z
+  .object({ maxMembers: z.number().int().min(1).max(MAX_TRIP_MEMBERS).optional(), keepOriginals: z.boolean().optional() })
+  .strict();
 export type AdminEditTrip = z.infer<typeof AdminEditTripSchema>;
+
+/** Paging for the rollos list; `q` is 2 to 60 characters once trimmed (empty means no search). */
+export const AdminTripsQuerySchema = PageQuerySchema.extend({
+  q: z
+    .string()
+    .trim()
+    .max(60)
+    .refine((s) => s === "" || s.length >= 2)
+    .optional(),
+});

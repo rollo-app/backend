@@ -83,7 +83,8 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
             type: media.type,
             caption: media.caption,
             takenAt: media.taken_at,
-            url: await presignGet(env, media.original_key),
+            // Once the original was purged only the display is left.
+            url: await presignGet(env, media.original_purged_at !== null && media.display_key ? media.display_key : media.original_key),
           },
         }),
         adminBase,

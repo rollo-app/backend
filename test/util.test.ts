@@ -27,6 +27,9 @@ const baseTrip: TripRow = {
   moment_window_end: 1380, moment_from_day: null,
   created_by_user_id: null,
   max_members: 15,
+  keep_originals: 0,
+  originals_notice_at: null,
+  originals_purged_at: null,
 };
 
 describe("localDate", () => {
@@ -98,6 +101,7 @@ describe("publicTrip", () => {
       momentWindowStart: 540,
       momentWindowEnd: 1380,
       maxMembers: 15,
+      originals: { keep: false, expiresAt: 3_000 + 30 * 24 * 60 * 60 * 1000, purged: false },
       createdBy: null,
     });
   });
@@ -122,6 +126,7 @@ describe("R2", () => {
     expect(mediaKeys("t1", "m1", "photo")).toEqual({
       original: "trips/t1/m1/original.jpg",
       thumb: "trips/t1/m1/thumb.jpg",
+      display: "trips/t1/m1/display.jpg",
     });
     expect(mediaKeys("t1", "m1", "video").original).toBe("trips/t1/m1/original.mp4");
   });

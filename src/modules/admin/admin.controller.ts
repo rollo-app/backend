@@ -6,7 +6,7 @@ import { storageLimitBytes, storageUsage } from "../../lib/storage";
 import { badRequest } from "../../shared/errors";
 import { getMetrics as readMetrics } from "../metrics/metrics.service";
 import { PageQuerySchema } from "../../lib/paging";
-import { AdminEditTripSchema, AdminEditUserSchema, DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
+import { AdminEditTripSchema, AdminTripsQuerySchema, AdminEditUserSchema, DegradedModeBodySchema, MetricsQuerySchema } from "./admin.schemas";
 import * as service from "./admin.service";
 
 type Person = { id: string; name: string | null; username: string | null; email: string };
@@ -79,6 +79,16 @@ export async function getUser(c: Context<AppEnv>) {
   return c.json(await service.getUser(c.env.DB, c.req.param("id")!, Date.now()));
 }
 
+export async function listTrips(c: Context<AppEnv>) {
+  const parsed = AdminTripsQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) throw badRequest("Parámetros inválidos");
+  return c.json(await service.listTrips(c.env.DB, parsed.data, Date.now()));
+}
+
+export async function getTrip(c: Context<AppEnv>) {
+  return c.json(await service.getTrip(c.env.DB, c.req.param("tripId")!, Date.now()));
+}
+
 export async function editUser(c: Context<AppEnv>) {
   const parsed = AdminEditUserSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
@@ -98,7 +108,9 @@ export async function editTrip(c: Context<AppEnv>) {
   if (!parsed.success) {
     const issue = parsed.error.issues.find((i) => i.code === "unrecognized_keys") ?? parsed.error.issues[0];
     if (issue?.code === "unrecognized_keys") throw badRequest(`Campo no editable: ${issue.keys[0]}`);
+    if (issue?.path[0] === "keepOriginals") throw badRequest("keepOriginals: tiene que ser true o false");
     throw badRequest("maxMembers: tiene que ser un entero entre 1 y 1000");
   }
-  return c.json(await service.editTrip(c.env.DB, c.req.param("tripId")!, parsed.data));
+  if (Object.values(parsed.data).every((v) => v === undefined)) throw badRequest("Mandá al menos un campo para editar");
+  return c.json(await service.editTrip(c.env.DB, c.req.param("tripId")!, parsed.data, Date.now()));
 }

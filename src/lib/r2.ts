@@ -72,6 +72,8 @@ export function mediaKeys(tripId: string, mediaId: string, type: MediaType) {
   return {
     original: `${base}/original.${type === "video" ? "mp4" : "jpg"}`,
     thumb: `${base}/thumb.jpg`,
+    /** 2048 px compressed JPEG of a photo, kept forever (the original is deleted 30 days after the reveal). */
+    display: `${base}/display.jpg`,
   };
 }
 
@@ -104,11 +106,13 @@ export async function verifyDevUpload(
 
 /**
  * Streams a media file from R2 with long private caching (keys never change content).
- * Throws 404 if the object is missing.
+ * With `fallbackKey`, a missing object is replaced by that one (e.g. the display file standing in for a purged original).
+ * Throws 404 if neither exists.
  */
-export async function serveMediaFile(bucket: R2Bucket, key: string): Promise<Response> {
-  const object = await bucket.get(key);
+export async function serveMediaFile(bucket: R2Bucket, key: string, fallbackKey?: string | null): Promise<Response> {
+  const object = (await bucket.get(key)) ?? (fallbackKey ? await bucket.get(fallbackKey) : null);
   if (!object) throw new HTTPException(404, { message: "Archivo no encontrado" });
+  key = object.key;
 
   const headers = new Headers();
   object.writeHttpMetadata(headers);
@@ -125,10 +129,11 @@ export async function serveMediaFile(bucket: R2Bucket, key: string): Promise<Res
  * buffered and served without metadata (EXIF GPS/date/caption/author, XMP, comments). Fails closed: anything
  * that isn't a well-formed JPEG is a 404, never the stored bytes.
  */
-export async function serveStrippedJpeg(bucket: R2Bucket, key: string): Promise<Response> {
+export async function serveStrippedJpeg(bucket: R2Bucket, key: string, fallbackKey?: string | null): Promise<Response> {
   const notFound = () => new HTTPException(404, { message: "Archivo no encontrado" });
-  const object = await bucket.get(key);
+  const object = (await bucket.get(key)) ?? (fallbackKey ? await bucket.get(fallbackKey) : null);
   if (!object) throw notFound();
+  key = object.key;
   const contentType = object.httpMetadata?.contentType;
   if (key.endsWith(".mp4") || (contentType && contentType !== "image/jpeg")) throw notFound();
 

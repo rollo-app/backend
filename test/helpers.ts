@@ -209,7 +209,7 @@ export async function addMediaDirect(
   tripId: string,
   authors: Array<{ userId: string; memberId: string }>,
   count: number,
-  opts: { from?: number; to?: number; timezone?: string } = {},
+  opts: { from?: number; to?: number; timezone?: string; display?: boolean } = {},
 ): Promise<string[]> {
   if (authors.length === 0) throw new Error("addMediaDirect needs at least one author");
   const now = Date.now();
@@ -240,6 +240,7 @@ export async function addMediaDirect(
         thumbSizeBytes: thumbContent(id).length,
         originalKey: keys.original,
         thumbKey: keys.thumb,
+        ...(opts.display && { displayKey: keys.display, displaySizeBytes: displayContent(id).length }),
         status: "uploaded",
         createdAt: now,
         uploadedAt: now,
@@ -256,6 +257,7 @@ export async function addMediaDirect(
 /** The bytes `putFiles` stores, so the sizes declared at registration match what is "uploaded". */
 export const originalContent = (mediaId: string) => `original-${mediaId}`;
 export const thumbContent = (mediaId: string) => `thumb-${mediaId}`;
+export const displayContent = (mediaId: string) => `display-${mediaId}`;
 
 /** A moment shortly before now that falls on the same local day (in `TZ`) as now, even right after midnight. */
 function recentTakenAt(): number {
@@ -265,7 +267,8 @@ function recentTakenAt(): number {
   return localDay(ago) === localDay(now) ? ago : now;
 }
 
-export function photoBody(overrides: Record<string, unknown> = {}) {
+/** `opts.display` also declares the display file (`displaySizeBytes`), like the current app builds do. */
+export function photoBody(overrides: Record<string, unknown> = {}, opts: { display?: boolean } = {}) {
   const id = (overrides.id as string | undefined) ?? crypto.randomUUID();
   return {
     id,
@@ -279,6 +282,7 @@ export function photoBody(overrides: Record<string, unknown> = {}) {
     height: 3024,
     sizeBytes: originalContent(id).length,
     thumbSizeBytes: thumbContent(id).length,
+    ...(opts.display && { displaySizeBytes: displayContent(id).length }),
     ...overrides,
   };
 }
@@ -288,8 +292,9 @@ export function videoBody(overrides: Record<string, unknown> = {}) {
 }
 
 /** Simulates the phone uploading the files to R2 (in tests the signed PUT never hits the network). */
-export async function putFiles(tripId: string, mediaId: string, type: "photo" | "video" = "photo") {
+export async function putFiles(tripId: string, mediaId: string, type: "photo" | "video" = "photo", opts: { display?: boolean } = {}) {
   const base = `trips/${tripId}/${mediaId}`;
+  if (opts.display) await env.MEDIA.put(`${base}/display.jpg`, displayContent(mediaId));
   await env.MEDIA.put(`${base}/original.${type === "video" ? "mp4" : "jpg"}`, originalContent(mediaId));
   await env.MEDIA.put(`${base}/thumb.jpg`, thumbContent(mediaId));
 }
@@ -299,11 +304,12 @@ export async function uploadMedia(
   tripId: string,
   token: string,
   overrides: Record<string, unknown> = {},
+  opts: { display?: boolean } = {},
 ): Promise<string> {
-  const body = overrides.type === "video" ? videoBody(overrides) : photoBody(overrides);
+  const body = overrides.type === "video" ? videoBody(overrides) : photoBody(overrides, opts);
   const reg = await api("POST", `/trips/${tripId}/media`, { body, token });
   if (reg.status !== 201) throw new Error(`registration failed: ${reg.status} ${JSON.stringify(reg.body)}`);
-  await putFiles(tripId, body.id, body.type as "photo" | "video");
+  await putFiles(tripId, body.id, body.type as "photo" | "video", opts);
   const done = await api("POST", `/media/${body.id}/complete`, { token });
   if (done.status !== 200) throw new Error(`complete failed: ${done.status} ${JSON.stringify(done.body)}`);
   return body.id;

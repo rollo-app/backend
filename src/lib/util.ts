@@ -39,6 +39,14 @@ export function generateJoinCode(length = 6): string {
   return randomFromAlphabet(LOGIN_CODE_ALPHABET, length);
 }
 
+/** Originals are deleted this long after the reveal unless the rollo keeps them. */
+export const ORIGINALS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** When a rollo's originals expire: 30 days after the reveal (manual or scheduled); null if it keeps them. */
+export function originalsExpireAt(trip: Pick<TripRow, "keep_originals" | "revealed_at" | "reveal_at">): number | null {
+  return trip.keep_originals !== 0 ? null : (trip.revealed_at ?? trip.reveal_at) + ORIGINALS_TTL_MS;
+}
+
 /** Public shape of a trip (what the app sees). */
 export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId: string; name: string } | null = null) {
   return {
@@ -59,6 +67,7 @@ export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId:
     momentWindowStart: trip.moment_window_start,
     momentWindowEnd: trip.moment_window_end,
     maxMembers: trip.max_members,
+    originals: { keep: trip.keep_originals !== 0, expiresAt: originalsExpireAt(trip), purged: trip.originals_purged_at !== null },
     createdBy,
   };
 }

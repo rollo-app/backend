@@ -78,6 +78,12 @@ export type TripRow = {
   created_by_user_id: string | null;
   /** Maximum active members (neither left nor removed); 15 for free rollos. */
   max_members: number;
+  /** 1 = the originals are never deleted (rollos that existed before the retention policy; later the paid pass). */
+  keep_originals: number;
+  /** When the "originals expire in 5 days" push was claimed. */
+  originals_notice_at: number | null;
+  /** When the cron found no purgeable original left. */
+  originals_purged_at: number | null;
 };
 
 /** Global backoffice role (distinct from the per-rollo `Role`). */
@@ -153,6 +159,11 @@ export type MediaRow = {
   comments_since_notified: number;
   /** The author archived it (after the reveal): only they still see it. */
   archived_at: number | null;
+  /** R2 key of the 2048 px display JPEG (kept forever); null for uploads from builds that predate it. */
+  display_key: string | null;
+  display_size_bytes: number | null;
+  /** When the original was queued for deletion by the retention cron. */
+  original_purged_at: number | null;
 };
 
 export type AppEnv = {

@@ -36,7 +36,11 @@ const setState = (env: Pick<Env, "DB">, key: string, value: string) =>
 export async function storageUsage(env: Pick<Env, "DB">): Promise<number> {
   const [estimate, measured] = await Promise.all([
     env.DB.batch<{ bytes: number }>([
-      env.DB.prepare("SELECT COALESCE(SUM(size_bytes + COALESCE(thumb_size_bytes, 0)), 0) AS bytes FROM media WHERE deleted_at IS NULL"),
+      // A purged original no longer takes space; the display file does.
+      env.DB.prepare(
+        `SELECT COALESCE(SUM(CASE WHEN original_purged_at IS NULL THEN COALESCE(size_bytes, 0) ELSE 0 END + COALESCE(thumb_size_bytes, 0) + COALESCE(display_size_bytes, 0)), 0) AS bytes
+         FROM media WHERE deleted_at IS NULL`,
+      ),
       env.DB.prepare("SELECT COUNT(*) * ? AS bytes FROM users WHERE avatar_key IS NOT NULL").bind(AVATAR_ALLOWANCE_BYTES),
     ]),
     getState(env, MEASURED_BYTES_KEY),

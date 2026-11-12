@@ -169,14 +169,14 @@ export function findVisibleFeaturedKeys(
   ownerId: string,
   mediaId: string,
   now: number,
-): Promise<Pick<MediaRow, "original_key" | "thumb_key"> | null> {
+): Promise<Pick<MediaRow, "original_key" | "thumb_key" | "display_key" | "original_purged_at"> | null> {
   return db
     .prepare(
-      `SELECT m.original_key, m.thumb_key FROM ${VISIBLE_FROM}
+      `SELECT m.original_key, m.thumb_key, m.display_key, m.original_purged_at FROM ${VISIBLE_FROM}
      WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND f.media_id = ? AND ${hiddenMediaSql("m", "author")}`,
     )
     .bind(now, ownerId, mediaId, viewerId, viewerId)
-    .first<Pick<MediaRow, "original_key" | "thumb_key">>();
+    .first<Pick<MediaRow, "original_key" | "thumb_key" | "display_key" | "original_purged_at">>();
 }
 
 export type FeaturedByRow = {

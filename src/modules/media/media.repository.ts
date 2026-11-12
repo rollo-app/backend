@@ -42,6 +42,12 @@ export type FeedRow = {
   selfieHeight: number | null;
   selfieThumbhash: string | null;
   archived: boolean;
+  /** The photo has a display file (uploads from older builds do not). */
+  hasDisplay: boolean;
+  /** Its original was deleted by the retention cron. */
+  originalPurged: boolean;
+  selfieHasDisplay: boolean | null;
+  selfieOriginalPurged: boolean | null;
 };
 
 export type AuthoredMedia = { id: string; tripId: string; authorUserId: string };
@@ -187,6 +193,10 @@ export async function listFeed(
       selfieHeight: selfie.height,
       selfieThumbhash: selfie.thumbhash,
       archived: sql<boolean>`${media.archivedAt} IS NOT NULL`.mapWith(Boolean),
+      hasDisplay: sql<boolean>`${media.displayKey} IS NOT NULL`.mapWith(Boolean),
+      originalPurged: sql<boolean>`${media.originalPurgedAt} IS NOT NULL`.mapWith(Boolean),
+      selfieHasDisplay: sql<boolean | null>`CASE WHEN ${selfie.id} IS NULL THEN NULL ELSE ${selfie.displayKey} IS NOT NULL END`.mapWith((v) => (v === null ? null : Boolean(v))),
+      selfieOriginalPurged: sql<boolean | null>`CASE WHEN ${selfie.id} IS NULL THEN NULL ELSE ${selfie.originalPurgedAt} IS NOT NULL END`.mapWith((v) => (v === null ? null : Boolean(v))),
     })
     .from(media)
     .innerJoin(members, eq(members.id, media.memberId))
@@ -230,11 +240,13 @@ export async function findDownloadKeys(
   id: string,
   tripId: string,
   viewerId: string,
-): Promise<(Pick<Media, "originalKey" | "thumbKey"> & { isMoment: boolean }) | null> {
+): Promise<(Pick<Media, "originalKey" | "thumbKey" | "displayKey" | "originalPurgedAt"> & { isMoment: boolean }) | null> {
   const row = await orm(db)
     .select({
       originalKey: media.originalKey,
       thumbKey: media.thumbKey,
+      displayKey: media.displayKey,
+      originalPurgedAt: media.originalPurgedAt,
       // Either image of a daily moment (the main photo or the linked one).
       isMoment: sql<boolean>`${media.momentDay} IS NOT NULL OR ${media.pairedMediaId} IS NOT NULL`.mapWith(Boolean),
     })

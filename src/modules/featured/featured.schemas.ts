@@ -43,7 +43,7 @@ export const FeaturedPhotosSchema = z
 export const FeaturedFileParams = z.object({
   userId: pathParam("userId"),
   mediaId: pathParam("mediaId"),
-  variant: z.enum(["thumb", "original"]).openapi({ param: { name: "variant", in: "path" } }),
+  variant: z.enum(["thumb", "original", "display"]).openapi({ param: { name: "variant", in: "path" } }),
 });
 
 export const DEFAULT_FEATURED_BY_PAGE = 60;
