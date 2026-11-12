@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderLoginEmail } from "../src/lib/login-email";
 
-const URL_WITH_AMP = "https://rollo.juanifraga.com/entrar#t=abc&e=a%40b.com";
+const URL_WITH_AMP = "https://rolloproject.com/entrar#t=abc&e=a%40b.com";
 
 describe("renderLoginEmail", () => {
   it("builds the subject with the code", () => {
@@ -23,7 +23,7 @@ describe("renderLoginEmail", () => {
 
   it("puts the escaped url in the button href", () => {
     const { html } = renderLoginEmail({ code: "ABC234", url: URL_WITH_AMP });
-    expect(html).toContain('href="https://rollo.juanifraga.com/entrar#t=abc&amp;e=a%40b.com"');
+    expect(html).toContain('href="https://rolloproject.com/entrar#t=abc&amp;e=a%40b.com"');
     expect(html).toContain("Abrir Rollo");
     expect(html).toContain("iPhone");
   });

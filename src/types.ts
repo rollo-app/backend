@@ -24,7 +24,7 @@ export type Env = {
   REPORTS_EMAIL?: string;
   /** Bearer token for the `/admin/*` routes (delete media or accounts). Without it those routes are disabled. */
   ADMIN_TOKEN?: string;
-  /** Base URL of the login magic link (default https://rollo.juanifraga.com/entrar); token and email go in its fragment. */
+  /** Base URL of the login magic link (default https://rolloproject.com/entrar); token and email go in its fragment. */
   LOGIN_LINK_URL?: string;
   /** R2 storage limit in bytes (decimal string). Defaults to 10 GB, R2's free tier; uploads stop at 95% of it. */
   STORAGE_LIMIT_BYTES?: string;
