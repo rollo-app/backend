@@ -50,6 +50,7 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
     caption: r.caption,
     thumbhash: r.thumbhash,
     durationS: r.durationS,
+    groupIds: r.groupIds,
     author: {
       id: r.authorId,
       userId: r.authorUserId,

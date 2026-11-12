@@ -1,3 +1,4 @@
+import { mediaVisibleToSql } from "../../lib/event-visibility";
 import { inChunks } from "../../lib/util";
 import type { MemberRow, Role, TripRow } from "../../types";
 
@@ -175,14 +176,27 @@ export function reactivateLeftMember(db: D1Database, memberId: string, addedBy: 
     .bind(addedBy, memberId);
 }
 
-export function listActiveMembers(db: D1Database, tripId: string): Promise<{ results: ActiveMemberRow[] }> {
+/**
+ * Active members the viewer sees. In a regular trip, all of them. In an event, the organizers (admins), the viewer themself and
+ * the guests who share at least one group with the viewer; an organizer sees everyone.
+ */
+export function listActiveMembers(db: D1Database, tripId: string, viewerUserId: string): Promise<{ results: ActiveMemberRow[] }> {
   return db
     .prepare(
       `SELECT m.id, m.user_id, m.role, u.name, u.username, u.avatar_key
        FROM members m JOIN users u ON u.id = m.user_id
-       WHERE m.trip_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL ORDER BY m.created_at`,
+       WHERE m.trip_id = ?1 AND m.removed_at IS NULL AND m.left_at IS NULL
+         AND ((SELECT t.type FROM trips t WHERE t.id = ?1) = 'trip'
+              OR m.role = 'admin' OR m.user_id = ?2
+              OR EXISTS (SELECT 1 FROM members va WHERE va.trip_id = ?1 AND va.user_id = ?2 AND va.role = 'admin'
+                         AND va.removed_at IS NULL AND va.left_at IS NULL)
+              OR EXISTS (SELECT 1 FROM member_groups g JOIN member_groups vg ON vg.group_id = g.group_id
+                         JOIN members vm ON vm.id = vg.member_id
+                         WHERE g.member_id = m.id AND vm.trip_id = ?1 AND vm.user_id = ?2
+                           AND vm.removed_at IS NULL AND vm.left_at IS NULL))
+       ORDER BY m.created_at`,
     )
-    .bind(tripId)
+    .bind(tripId, viewerUserId)
     .all<ActiveMemberRow>();
 }
 
@@ -205,14 +219,14 @@ export function countMediaByTypeTotal(db: D1Database, memberId: string): Promise
     .all<{ type: string; n: number }>();
 }
 
-/** Uploaded, not deleted items of the rollo; archived ones only count for their author (`viewerMemberId`), who still sees them. */
-export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberId: string): Promise<{ n: number } | null> {
+/** Uploaded, not deleted items of the rollo the viewer sees; archived ones only count for their author (`viewerMemberId`), who still sees them. */
+export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberId: string, viewerUserId: string): Promise<{ n: number } | null> {
   return db
     .prepare(
       `SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL
-       AND (archived_at IS NULL OR member_id = ?)`,
+       AND (archived_at IS NULL OR member_id = ?) AND ${mediaVisibleToSql("?", "media.id", "media.trip_id")}`,
     )
-    .bind(tripId, viewerMemberId)
+    .bind(tripId, viewerMemberId, viewerUserId, viewerUserId)
     .first<{ n: number }>();
 }
 

@@ -153,9 +153,9 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
   const today = localDate(now, trip.timezone);
 
   const [members, usage, totals, blocked] = await Promise.all([
-    repo.listActiveMembers(db, trip.id),
+    repo.listActiveMembers(db, trip.id, userId),
     trip.photo_limit_mode === "total" ? repo.countMediaByTypeTotal(db, me.id) : repo.countMediaByType(db, me.id, today),
-    repo.countUploadedMedia(db, trip.id, me.id),
+    repo.countUploadedMedia(db, trip.id, me.id, userId),
     blockedIdsFor(db, userId),
   ]);
 

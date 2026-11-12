@@ -118,6 +118,7 @@ export const FeedItemSchema = z
         "it only encodes blurry colors (~25 bytes), the photo cannot be reconstructed from it.",
     }),
     durationS: nullableNumber,
+    groupIds: z.array(z.string().uuid()).openapi({ description: "Event groups the photo was sent to. Always empty in a regular trip." }),
     author: z
       .object({
         id: z.string().uuid(),

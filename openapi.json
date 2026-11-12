@@ -2235,6 +2235,14 @@
               "null"
             ]
           },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Event groups the photo was sent to. Always empty in a regular trip."
+          },
           "author": {
             "type": "object",
             "properties": {
@@ -2421,6 +2429,7 @@
           "caption",
           "thumbhash",
           "durationS",
+          "groupIds",
           "author"
         ]
       },

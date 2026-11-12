@@ -1,3 +1,4 @@
+import { mediaVisibleToSql } from "../../lib/event-visibility";
 import { hiddenMediaSql } from "../reports/reports.repository";
 import { nameSearchColumn } from "../../lib/search-text";
 import type { Role, TripRow } from "../../types";
@@ -32,10 +33,11 @@ export async function listMyTrips(db: D1Database, userId: string): Promise<MyTri
     .prepare(
       `SELECT t.*, m.role AS my_role, m.archived_at AS my_archived_at,
             (SELECT COUNT(*) FROM media WHERE trip_id = t.id AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL
-               AND (archived_at IS NULL OR member_id = m.id)) AS total_uploaded,
+               AND (archived_at IS NULL OR member_id = m.id) AND ${mediaVisibleToSql("m.user_id", "media.id", "media.trip_id")}) AS total_uploaded,
             (SELECT cm.thumbhash FROM media cm JOIN members cmem ON cmem.id = cm.member_id
              WHERE cm.trip_id = t.id AND cm.status = 'uploaded' AND cm.deleted_at IS NULL AND cm.paired_media_id IS NULL AND cm.thumbhash IS NOT NULL
                AND (cm.archived_at IS NULL OR cm.member_id = m.id) AND ${hiddenMediaSql("cm", "cmem")}
+               AND ${mediaVisibleToSql("m.user_id", "cm.id", "cm.trip_id")}
              ORDER BY cm.taken_at DESC, cm.id DESC LIMIT 1) AS cover_thumbhash
      FROM members m JOIN trips t ON t.id = m.trip_id
      WHERE m.user_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL

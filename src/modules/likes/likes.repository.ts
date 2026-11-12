@@ -1,3 +1,4 @@
+import { mediaVisibleToSql, MEDIA_VISIBLE_BINDS } from "../../lib/event-visibility";
 import { hiddenMediaSql } from "../reports/reports.repository";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 // A repository importing another module's SQL fragments is OK for now: the likes visibility rules mirror the featured ones.
@@ -9,18 +10,22 @@ import { VISIBLE_FROM, VISIBLE_WHERE } from "../featured/featured.repository";
 export type LikeableRow = Pick<MediaRow, "id" | "type" | "trip_id" | "paired_media_id"> &
   Pick<TripRow, "revealed_at" | "reveal_at"> & { author_user_id: string; is_member: number };
 
-/** The live uploaded media the viewer hasn't hidden (reported or blocked author), with whether they are an active member of its rollo. */
+/**
+ * The live uploaded media the viewer hasn't hidden (reported or blocked author), with whether they are an active member of its rollo
+ * who sees the photo (in an event, only the photos of their groups: `is_member` is 0 for the rest).
+ */
 export function findLikeableRow(db: D1Database, viewerId: string, mediaId: string): Promise<LikeableRow | null> {
   return db
     .prepare(
       `SELECT m.id, m.type, m.trip_id, m.paired_media_id, author.user_id AS author_user_id, t.revealed_at, t.reveal_at,
-              EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
-                        AND me.removed_at IS NULL AND me.left_at IS NULL) AS is_member
+              (EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
+                        AND me.removed_at IS NULL AND me.left_at IS NULL)
+               AND ${mediaVisibleToSql("?", "m.id", "m.trip_id")}) AS is_member
        FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
        WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "author")}
          AND (m.archived_at IS NULL OR author.user_id = ?)`,
     )
-    .bind(viewerId, mediaId, viewerId, viewerId, viewerId)
+    .bind(viewerId, ...Array<string>(MEDIA_VISIBLE_BINDS).fill(viewerId), mediaId, viewerId, viewerId, viewerId)
     .first<LikeableRow>();
 }
 
@@ -68,9 +73,10 @@ export type LikedPhotoRow = {
  */
 const VIEWER = "CROSS JOIN (SELECT ? AS viewer_id, ? AS now) v";
 
-/** Active member of the photo's revealed rollo. */
+/** Active member of the photo's revealed rollo who sees the photo (in an event, one of its groups or an organizer). */
 const VIA_TRIP = `((t.revealed_at IS NOT NULL OR t.reveal_at <= v.now)
-  AND EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = v.viewer_id AND me.removed_at IS NULL AND me.left_at IS NULL))`;
+  AND EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = v.viewer_id AND me.removed_at IS NULL AND me.left_at IS NULL)
+  AND ${mediaVisibleToSql("v.viewer_id", "m.id", "m.trip_id")})`;
 
 /**
  * The profile owner (the viewer's own profile first) where the photo shows as featured and the viewer can see it:

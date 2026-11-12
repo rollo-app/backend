@@ -2,6 +2,7 @@ import { rejectSelfie } from "../moments/moments.service";
 import { actorName, sendPush, type PushMessage } from "../../lib/push";
 import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { decodeCursor, encodeCursor } from "../../lib/cursor";
+import { canSeeMediaInTrip } from "../../lib/event-visibility";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import type { AfterResponse } from "../../shared/after-response";
 import { badRequest, forbidden, notFound } from "../../shared/errors";
@@ -130,7 +131,10 @@ async function notifyComment(
   const silenced = await claimCommentPush(env.DB, photo.id, now);
   if (silenced === null) return;
   const opts = { actorId: commenter.id };
-  await sendPush(env, [photo.authorUserId], "photoCommented", photoCommentedMessage(commenter, silenced, photo), opts);
+  // The author may have left the groups the photo was sent to: then they get no push about a photo they cannot open.
+  if (await canSeeMediaInTrip(env.DB, photo.authorUserId, photo.id, photo.tripId)) {
+    await sendPush(env, [photo.authorUserId], "photoCommented", photoCommentedMessage(commenter, silenced, photo), opts);
+  }
   const others = await repo.listEarlierCommenters(env.DB, photo.tripId, photo.id, photo.authorUserId);
   if (others.length) await sendPush(env, others, "photoCommented", alsoCommentedMessage(commenter, silenced, photo), opts);
 }
