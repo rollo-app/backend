@@ -173,15 +173,29 @@ describe("file downloads and the global limit", () => {
     expect((await api("GET", "/me", { token: t.token, env: { RL_GLOBAL: fakeLimiter(0) } })).status).toBe(429);
   });
 
-  it("are still limited by RL_FILES (429 with Retry-After) and by RL_IP", async () => {
+  it("with a token they skip RL_IP too: a shared IP (event Wi-Fi) does not block downloads", async () => {
+    const t = await revealed();
+    await env.MEDIA.put(`trips/${t.tripId}/${t.mediaId}/thumb.jpg`, BASELINE_JPEG);
+    expect((await api("PUT", `/me/featured/${t.mediaId}`, { token: t.token })).status).toBe(204);
+    const e = { RL_IP: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/thumb`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/original`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", `/featured/${t.adminUserId}/${t.mediaId}/thumb`, { token: t.token, env: e })).status).toBe(200);
+  });
+
+  it("with a token, a denying RL_IP still blocks the feed and /me/trips", async () => {
+    const t = await revealed();
+    const e = { RL_IP: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/media`, { token: t.token, env: e })).status).toBe(429);
+    expect((await api("GET", "/me/trips", { token: t.token, env: e })).status).toBe(429);
+  });
+
+  it("are still limited per user by RL_FILES (429 with Retry-After)", async () => {
     const t = await revealed();
     const url = `/trips/${t.tripId}/media/${t.mediaId}/thumb`;
     const files = await api("GET", url, { token: t.token, env: { RL_FILES: fakeLimiter(0) } });
     expect(files.status).toBe(429);
     expect(files.headers.get("retry-after")).toBe("60");
-    const ip = await api("GET", url, { token: t.token, env: { RL_IP: fakeLimiter(0) } });
-    expect(ip.status).toBe(429);
-    expect(ip.headers.get("retry-after")).toBe("60");
   });
 
   it("without a token they keep RL_GLOBAL by IP (and would get 401 anyway)", async () => {
