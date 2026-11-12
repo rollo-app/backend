@@ -3,6 +3,7 @@ import { vi } from "vitest";
 import app from "../src/index";
 import { generateToken, hashToken, SESSION_TTL } from "../src/lib/auth";
 import { devSentCodes } from "../src/lib/email";
+import { resetRegistrationsCache } from "../src/lib/registrations";
 import { mediaKeys } from "../src/lib/r2";
 import { localDate } from "../src/lib/util";
 import { nameSearchColumn } from "../src/lib/search-text";
@@ -391,4 +392,12 @@ export async function addPushTokensDirect(userIds: string[]): Promise<string[]> 
   const CHUNK = 100;
   for (let i = 0; i < statements.length; i += CHUNK) await env.DB.batch(statements.slice(i, i + CHUNK));
   return tokens;
+}
+
+/** Closes new registrations (the switch the superadmin flips from the panel) and drops this isolate's cache. */
+export async function closeRegistrations(): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES ('registrations_closed', '1', 0) ON CONFLICT(key) DO UPDATE SET value = '1'",
+  ).run();
+  resetRegistrationsCache();
 }

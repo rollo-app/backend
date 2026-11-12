@@ -1,5 +1,6 @@
 import { deleteAccount } from "../account/account.service";
 import { DEGRADED_KEY, resetDegradedCache } from "../../lib/degraded";
+import { REGISTRATIONS_CLOSED_KEY, resetRegistrationsCache } from "../../lib/registrations";
 import { badRequest, notFound } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
 import { deleteTripMedia } from "../media/media.service";
@@ -35,6 +36,22 @@ export async function setDegradedMode(db: D1Database, on: boolean, actor: UserRo
   await repo.setSetting(db, { key: DEGRADED_KEY, value: on ? "1" : "0", updatedAt: Date.now(), updatedByUserId: actor?.id ?? null }).run();
   resetDegradedCache();
   return getDegradedMode(db);
+}
+
+export type RegistrationsSwitch = { open: boolean; updatedAt: number | null; updatedBy: { id: string; email: string } | null };
+
+/** Registrations are open unless `registrations_closed` is "1" (no row = open). */
+export async function getRegistrations(db: D1Database): Promise<RegistrationsSwitch> {
+  const s = await repo.getSetting(db, REGISTRATIONS_CLOSED_KEY);
+  if (!s) return { open: true, updatedAt: null, updatedBy: null };
+  const updatedBy = s.updatedByUserId ? await repo.findUserEmail(db, s.updatedByUserId) : null;
+  return { open: s.value !== "1", updatedAt: s.updatedAt, updatedBy };
+}
+
+export async function setRegistrations(db: D1Database, open: boolean, actor: UserRow | null): Promise<RegistrationsSwitch> {
+  await repo.setSetting(db, { key: REGISTRATIONS_CLOSED_KEY, value: open ? "0" : "1", updatedAt: Date.now(), updatedByUserId: actor?.id ?? null }).run();
+  resetRegistrationsCache();
+  return getRegistrations(db);
 }
 
 export function listUsers(db: D1Database, query: PageQuery): Promise<Page<repo.AdminUserRow>> {

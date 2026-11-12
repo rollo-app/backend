@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { isEmail } from "../../lib/util";
 
-const emailField = z
+export const emailField = z
   .string()
   .trim()
   .toLowerCase()

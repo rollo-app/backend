@@ -13,7 +13,12 @@ export const SUPPORT_EMAILS_PER_USER_PER_DAY = 3;
 /** Most reports and (separately) blocks a user can make per rolling 24 hours; beyond it the API answers 429. */
 export const MODERATION_ACTIONS_PER_DAY = 50;
 
-export type EmailKind = "login" | "login_new" | "support" | `login_new_ip:${string}`;
+/** Waitlist confirmation emails per UTC day (their own counter; the login and support caps above are untouched). */
+export const WAITLIST_EMAILS_PER_DAY = 30;
+/** Waitlist posts one IP can make per UTC day (every valid post counts, sent or not). */
+export const WAITLIST_POSTS_PER_IP_PER_DAY = 20;
+
+export type EmailKind = "login" | "login_new" | "support" | "waitlist" | `login_new_ip:${string}` | `waitlist_ip:${string}`;
 
 const utcDay = () => new Date().toISOString().slice(0, 10);
 

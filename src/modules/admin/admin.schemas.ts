@@ -1,7 +1,12 @@
 import { z } from "zod";
+import { PageQuerySchema } from "../../lib/paging";
 import { UpdateProfileSchema, UserBadgeSchema } from "../../schemas";
 
 export const DegradedModeBodySchema = z.object({ on: z.boolean() });
+
+export const RegistrationsBodySchema = z.object({ open: z.boolean() });
+
+export const WaitlistQuerySchema = PageQuerySchema.extend({ status: z.enum(["all", "confirmed", "pending", "unsubscribed"]).default("all") });
 
 export const MetricsQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(90).default(30) });
 

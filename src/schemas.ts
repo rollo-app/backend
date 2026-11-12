@@ -13,7 +13,10 @@ export const nullableNumber = z.number().nullable();
 // ---------- Common ----------
 
 export const ErrorSchema = z
-  .object({ error: z.string().openapi({ example: "Código inválido" }) })
+  .object({
+    error: z.string().openapi({ example: "Código inválido" }),
+    code: z.string().optional().openapi({ example: "REGISTRATIONS_CLOSED", description: "Machine-readable reason, only on the errors the app has to tell apart." }),
+  })
   .openapi("Error");
 
 export const RoleSchema = z.enum(["admin", "member"]).openapi("Role");

@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { renderLoginEmail } from "./login-email";
+import { renderWaitlistEmail } from "./waitlist-email";
 
 /**
  * Login codes "sent" without a Resend key (local dev and tests), by email.
@@ -215,4 +216,30 @@ export async function sendSupportNotice(env: Env, subject: string, text: string)
     return;
   }
   await deliverToSupport(env, subject, text);
+}
+
+export type WaitlistLinks = { confirmUrl: string; unsubscribeUrl: string };
+
+/** Waitlist confirmation emails "sent" without a Resend key (local dev and tests), in order. Test-visible: tests read the links from here. */
+export const devSentWaitlist: ({ email: string } & WaitlistLinks)[] = [];
+
+/** Sends the waitlist confirmation (confirm and unsubscribe links). Without `RESEND_API_KEY` it only logs it and keeps it in `devSentWaitlist`. Throws if Resend fails. */
+export async function sendWaitlistEmail(env: Env, email: string, links: WaitlistLinks): Promise<void> {
+  if (!env.RESEND_API_KEY) {
+    console.log(`[waitlist] confirmación para ${email}: ${links.confirmUrl} · baja: ${links.unsubscribeUrl}`);
+    devSentWaitlist.push({ email, ...links });
+    return;
+  }
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM ?? "Rollo <no-reply@rolloproject.com>",
+      to: [email],
+      reply_to: SUPPORT_EMAIL,
+      headers: { "List-Unsubscribe": `<${links.unsubscribeUrl}>` },
+      ...renderWaitlistEmail(links),
+    }),
+  });
+  if (!res.ok) throw new Error(`Resend responded ${res.status}`);
 }

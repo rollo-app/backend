@@ -13,6 +13,7 @@ import { DEGRADED_MESSAGE, isDegraded } from "../../lib/degraded";
 import { APPLE_ERROR, verifyAppleIdToken } from "../../lib/apple";
 import { GOOGLE_ERROR, verifyGoogleIdToken } from "../../lib/google";
 import { ipKey } from "../../lib/ip";
+import { areRegistrationsOpen, registrationsClosed } from "../../lib/registrations";
 import { LOGIN_CODE_TTL, generateLoginCode, normalizeLoginCode } from "../../lib/login-code";
 import { badRequest, conflict, rateLimited, unavailable } from "../../shared/errors";
 import type { Env, UserRow } from "../../types";
@@ -34,6 +35,20 @@ const LINK_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const LINK_ERROR = "El link venció o ya se usó. Pedí otro código.";
 export const USE_EMAIL_CODE = "Ya tenés una cuenta con este email. Entrá con el código que te mandamos por mail.";
 
+const isReviewEmail = (env: Env, email: string) => !!env.REVIEW_EMAIL && !!env.REVIEW_CODE && email === env.REVIEW_EMAIL.trim().toLowerCase();
+
+/**
+ * With registrations closed nobody gets a new account by any path; an email that already has one (complete or not) signs in as
+ * always. It runs only after the caller proved they own the email (right code or link, or a verified provider token), so the 403
+ * does not reveal whether an address has an account to someone who just typed it (`/auth/email/start` answers the same either way).
+ * The App Review account is exempt: closing the doors must not lock Apple out.
+ */
+async function assertMayHaveAccount(env: Env, email: string): Promise<void> {
+  if (await areRegistrationsOpen(env)) return;
+  if (isReviewEmail(env, email) || (await repo.userExists(env.DB, email))) return;
+  throw registrationsClosed();
+}
+
 /** "send_failed" means the email provider failed (the controller answers 502). */
 export type StartResult = "sent" | "send_failed";
 
@@ -50,7 +65,7 @@ export async function startLogin(
   if ((await repo.countCodes(env.DB, "email", email, now - HOUR)) >= EMAIL_PER_HOUR) throw tooMany();
   if (ip && (await repo.countCodes(env.DB, "ip", ip, now - HOUR)) >= IP_PER_HOUR) throw tooMany();
 
-  const isReview = !!env.REVIEW_EMAIL && !!env.REVIEW_CODE && email === env.REVIEW_EMAIL.trim().toLowerCase();
+  const isReview = isReviewEmail(env, email);
   const code = isReview ? env.REVIEW_CODE! : generateLoginCode();
   // Global daily caps, to keep room for support emails within Resend's free quota. Emails with no account yet get only part
   // of the budget, so spam of fake addresses cannot lock out existing users. The App Review account sends nothing.
@@ -119,7 +134,8 @@ export async function startLogin(
 
 export type SignedIn = { token: string; user: UserRow; isNew: boolean };
 
-export async function verifyCode(db: D1Database, email: string, typed: string): Promise<SignedIn> {
+export async function verifyCode(env: Env, email: string, typed: string): Promise<SignedIn> {
+  const db = env.DB;
   const now = Date.now();
   const code = normalizeLoginCode(typed);
   if (code === null) throw badRequest("Código incorrecto");
@@ -132,11 +148,14 @@ export async function verifyCode(db: D1Database, email: string, typed: string): 
     throw badRequest("Código incorrecto");
   }
 
+  // Before consuming: the code stays valid, and nothing is created.
+  await assertMayHaveAccount(env, email);
   if (!(await consume(db, row.id, now))) throw expired();
   return signIn(db, email, now);
 }
 
-export async function verifyLink(db: D1Database, input: { email: string; token: string; verifier?: string }): Promise<SignedIn> {
+export async function verifyLink(env: Env, input: { email: string; token: string; verifier?: string }): Promise<SignedIn> {
+  const db = env.DB;
   const { email, token, verifier } = input;
   const now = Date.now();
   const invalid = () => badRequest(LINK_ERROR);
@@ -149,6 +168,7 @@ export async function verifyLink(db: D1Database, input: { email: string; token: 
   const verifierOk =
     verifier !== undefined && LINK_VERIFIER.test(verifier) && timingSafeEqual(row.link_challenge, await linkChallengeOf(verifier));
   if (!tokenOk || !verifierOk) throw invalid();
+  await assertMayHaveAccount(env, email);
   if (!(await consume(db, row.id, now))) throw invalid();
   return signIn(db, email, now);
 }
@@ -224,7 +244,8 @@ async function signInWithProvider(
   // was made: it may have changed hands since. Linking it to the Rollo account with that email could hand someone else's account
   // over, so that owner signs in with the code.
   if (exists && !emailIsProviders) throw conflict(USE_EMAIL_CODE);
-  // Degraded mode blocks new accounts, as in `startLogin`; existing ones still get in.
+  // Closed registrations and degraded mode block new accounts; existing ones still get in. (The token proves the email, so no enumeration concern.)
+  if (!exists && !(await areRegistrationsOpen(env))) throw registrationsClosed();
   if (!exists && (await isDegraded(env))) throw unavailable(DEGRADED_MESSAGE);
   // The provider's name prefills "Completá tu perfil" (the user can change it there); an account that already has a name keeps it.
   const suggested = profileNameFrom(name);

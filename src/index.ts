@@ -12,6 +12,8 @@ import blocks from "./modules/blocks/blocks.router";
 import featured from "./modules/featured/featured.router";
 import { meFriendRequests, userFriendRequests } from "./modules/friend-requests/friend-requests.router";
 import friends, { friendLinks } from "./modules/friends/friends.router";
+import config from "./modules/config/config.router";
+import waitlist, { waitlistPages } from "./modules/waitlist/waitlist.router";
 import comments from "./modules/comments/comments.router";
 import likes from "./modules/likes/likes.router";
 import avatars from "./modules/avatars/avatars.router";
@@ -47,6 +49,9 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 
 app.route("/admin", admin);
 app.route("/auth", auth);
+app.route("/config", config);
+app.route("/waitlist", waitlist);
+app.route("/waitlist", waitlistPages);
 app.route("/me", meFriendRequests);
 app.route("/me", meMoments);
 app.route("/me", me);
@@ -97,7 +102,7 @@ app.put(`${DEV_UPLOAD_PREFIX}*`, async (c, next) => {
 app.notFound((c) => c.json({ error: "No encontrado" }, 404));
 
 app.onError((err, c) => {
-  if (err instanceof AppError) return c.json({ error: err.message }, STATUS_BY_KIND[err.kind]);
+  if (err instanceof AppError) return c.json(err.code ? { error: err.message, code: err.code } : { error: err.message }, STATUS_BY_KIND[err.kind]);
   if (err instanceof HTTPException) {
     // Keep the headers of a custom `res` (e.g. Retry-After on rate-limit 429s); the body stays our JSON shape.
     const retryAfter = err.res?.headers.get("Retry-After");
