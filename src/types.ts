@@ -5,6 +5,7 @@ export type Env = {
   /** Rate limiters (see `src/lib/rate-limit.ts`); optional so a missing binding fails open. */
   RL_GLOBAL?: RateLimitBinding;
   RL_IP?: RateLimitBinding;
+  RL_IP_FILES?: RateLimitBinding;
   RL_EXPENSIVE?: RateLimitBinding;
   RL_UPLOAD?: RateLimitBinding;
   RL_FILES?: RateLimitBinding;

@@ -6,7 +6,7 @@ import type { AppEnv, Env, RateLimitBinding } from "../types";
 
 export const RATE_LIMIT_MESSAGE = "Estás yendo muy rápido. Probá de nuevo en un minuto.";
 
-type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH";
+type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_IP_FILES" | "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH";
 const warned = new Set<string>();
 
 /** Consumes one hit of `key`. Fails open: without the binding (or if it throws) the request goes through. */
@@ -50,15 +50,16 @@ const SKIPPED = new Set(["/openapi.json", "/docs"]);
  * against `RL_GLOBAL` (120/min per session) cut the scroll short and then blocked the feed and everything else too.
  * With a Bearer token they skip `RL_IP` too: at an event many guests share one IP (venue Wi-Fi, carrier NAT), and browsing a
  * 2,000-photo rollo filled the 600/60 s per-IP budget, which then blocked every route for that IP. They are limited per
- * user by `RL_FILES` (after `requireUser`). Trade-off: invented tokens on these paths no longer hit a per-IP cap, they only
- * cost a session lookup that fails with 401; every other route keeps `RL_IP`. Without a token they keep `RL_GLOBAL` by IP.
+ * user by `RL_FILES` (after `requireUser`). Trade-off: a shared IP gets a separate, 5x larger budget (`RL_IP_FILES`, 3000/60 s)
+ * only for files, so files never cut the feed and the rest, and invented tokens on these paths are capped per IP again (each
+ * costs a session lookup that fails with 401). Every other route keeps `RL_IP`. Without a token they keep `RL_GLOBAL` by IP.
  */
 const FILE_DOWNLOAD = /^\/(?:trips\/[^/]+\/media\/[^/]+\/(?:thumb|original)|featured\/[^/]+\/[^/]+\/[^/]+)$/;
 
 /**
  * App-level limiter, before auth runs. It keys by a hash of the Bearer token (one key per session, so friends sharing
  * a Wi-Fi or mobile IP do not share a budget) or, without token, by IP. Tokens are not validated here, so with a token
- * the IP also gets a roomier `RL_IP` budget: inventing tokens does not dodge the limit (except on file downloads, see above).
+ * the IP also gets a roomier `RL_IP` budget: inventing tokens does not dodge the limit (file downloads get their own per-IP `RL_IP_FILES`, see above).
  */
 export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
   const path = new URL(c.req.url).pathname;
@@ -69,7 +70,9 @@ export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (token) {
     // Without a token (anonymous) downloads keep RL_GLOBAL by IP below: they get 401 anyway and nothing is gained by skipping.
-    if (!FILE_DOWNLOAD.test(path)) {
+    if (FILE_DOWNLOAD.test(path)) {
+      if (!(await allowed(c.env, "RL_IP_FILES", `ip:${ip}`))) throw tooFast();
+    } else {
       if (!(await allowed(c.env, "RL_GLOBAL", `t:${(await hashToken(token)).slice(0, 32)}`))) throw tooFast();
       if (!(await allowed(c.env, "RL_IP", `ip:${ip}`))) throw tooFast();
     }

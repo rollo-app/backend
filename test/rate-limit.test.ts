@@ -24,7 +24,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 describe("rate limit bindings", () => {
   it("are configured in the test environment", () => {
-    for (const name of ["RL_GLOBAL", "RL_IP", "RL_EXPENSIVE", "RL_UPLOAD", "RL_FILES", "RL_SEARCH"] as const) {
+    for (const name of ["RL_GLOBAL", "RL_IP", "RL_IP_FILES", "RL_EXPENSIVE", "RL_UPLOAD", "RL_FILES", "RL_SEARCH"] as const) {
       expect(typeof env[name]!.limit).toBe("function");
     }
   });
@@ -67,7 +67,7 @@ describe("global limit", () => {
 
   it("lets requests through when the bindings are missing", async () => {
     const a = await signUp();
-    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_EXPENSIVE: undefined, RL_UPLOAD: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
+    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_IP_FILES: undefined, RL_EXPENSIVE: undefined, RL_UPLOAD: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
     expect((await api("GET", "/me", { token: a.token, env: e })).status).toBe(200);
     expect((await api("POST", "/me/avatar", { token: a.token, body: { sizeBytes: 100 }, env: e })).status).toBe(200);
   });
@@ -188,6 +188,29 @@ describe("file downloads and the global limit", () => {
     const e = { RL_IP: fakeLimiter(0) };
     expect((await api("GET", `/trips/${t.tripId}/media`, { token: t.token, env: e })).status).toBe(429);
     expect((await api("GET", "/me/trips", { token: t.token, env: e })).status).toBe(429);
+  });
+
+  it("with a token they are capped per IP by RL_IP_FILES (429 with Retry-After): invented tokens do not hit D1 forever", async () => {
+    const t = await revealed();
+    const e = { RL_IP_FILES: fakeLimiter(0) };
+    for (const url of [
+      `/trips/${t.tripId}/media/${t.mediaId}/thumb`,
+      `/trips/${t.tripId}/media/${t.mediaId}/original`,
+      `/featured/${t.adminUserId}/${t.mediaId}/thumb`,
+    ]) {
+      const res = await api("GET", url, { token: t.token, env: e });
+      expect(res.status).toBe(429);
+      expect(res.headers.get("retry-after")).toBe("60");
+    }
+    const invented = await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/thumb`, { token: "fake-token", env: e });
+    expect(invented.status).toBe(429);
+  });
+
+  it("a denying RL_IP_FILES does not affect the feed or /me/trips", async () => {
+    const t = await revealed();
+    const e = { RL_IP_FILES: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/feed`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", "/me/trips", { token: t.token, env: e })).status).toBe(200);
   });
 
   it("are still limited per user by RL_FILES (429 with Retry-After)", async () => {
