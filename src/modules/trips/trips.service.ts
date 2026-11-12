@@ -69,6 +69,10 @@ export async function createTrip(
 
   await hooks.beforeInsert?.();
 
+  // Events: always a total photo limit (20 by default) and no daily moment.
+  const isEvent = body.type === "event";
+  const groups = isEvent ? (body.groups ?? []).map((name) => ({ id: crypto.randomUUID(), name })) : [];
+
   await db.batch([
     repo.insertTrip(db, {
       id: tripId,
@@ -80,13 +84,14 @@ export async function createTrip(
       reveal_at: body.revealAt,
       daily_photo_limit: body.dailyPhotoLimit,
       daily_video_limit: body.dailyVideoLimit,
-      photo_limit_mode: body.photoLimitMode,
-      total_photo_limit: body.photoLimitMode === "total" ? body.totalPhotoLimit! : null,
+      photo_limit_mode: isEvent ? "total" : body.photoLimitMode,
+      total_photo_limit: isEvent ? (body.totalPhotoLimit ?? 20) : body.photoLimitMode === "total" ? body.totalPhotoLimit! : null,
       created_at: now,
       // Starting now ("Empezar ahora"): the creator is the only member and just did it, so no "Arrancó" push.
       started_notified_at: body.startsAt <= now ? now : null,
       featuring_disabled: body.featuringDisabled ? 1 : 0,
-      moment_mode: body.momentMode,
+      moment_mode: isEvent ? "off" : body.momentMode,
+      type: body.type,
       moment_window_start: body.momentWindowStart,
       moment_window_end: body.momentWindowEnd,
     }, {
@@ -97,6 +102,7 @@ export async function createTrip(
       windowSince: now - CREATE_WINDOW_MS,
     }),
     repo.insertAdminMember(db, memberId, tripId, user.id, now),
+    ...repo.insertGroups(db, tripId, groups, now),
   ]);
 
   const trip = await repo.findTripById(db, tripId);
@@ -106,6 +112,12 @@ export async function createTrip(
     throw conflict("No pudimos crear el rollo ahora. Probá de nuevo.");
   }
   return { trip, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
+}
+
+/** The groups of an event as the API shows them (`[]` for a regular trip, without querying). */
+export async function listPublicGroups(db: D1Database, trip: Pick<TripRow, "id" | "type">): Promise<{ id: string; name: string }[]> {
+  if (trip.type !== "event") return [];
+  return (await repo.listGroups(db, trip.id)).map((g) => ({ id: g.id, name: g.name }));
 }
 
 /** The rollo's creator as the API shows it (null if unknown). */

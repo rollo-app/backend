@@ -54,6 +54,9 @@ export const TripSchema = z
       .object({ userId: z.string().uuid(), name: z.string() })
       .nullable()
       .openapi({ description: "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown" }),
+    type: z.enum(["trip", "event"]).openapi({ description: "event: guests join groups; trip: a regular rollo" }),
+    coverUrl: z.string().nullable().openapi({ description: "Public path of the event cover (the app prefixes the API base URL); null if none" }),
+    groups: z.array(z.object({ id: z.string().uuid(), name: z.string() })).openapi({ description: "Groups of an event, in order; [] for a regular trip" }),
   })
   .openapi("Trip");
 
@@ -161,7 +164,9 @@ export const TripCreatedSchema = z
 export const TripDetailSchema = z
   .object({
     trip: TripSchema,
-    me: MemberSchema,
+    me: MemberSchema.extend({
+      groupIds: z.array(z.string().uuid()).openapi({ description: "Ids of the event groups the member is in; [] for a regular trip and for organizers without groups" }),
+    }),
     members: z.array(MemberSchema),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),

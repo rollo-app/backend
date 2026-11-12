@@ -561,7 +561,7 @@ describe("member shape", () => {
     const { tripId, code, adminUserId } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const res = await api("GET", `/trips/${tripId}`, { token: fede.token });
-    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", isCreator: false, blockedByMe: false, allowFeaturing: true });
+    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", isCreator: false, blockedByMe: false, allowFeaturing: true, groupIds: [] });
     expect(res.body.members[0]).toMatchObject({ userId: adminUserId, name: "Juani", role: "admin" });
   });
 

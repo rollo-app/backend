@@ -33,12 +33,29 @@ export const CreateTripSchema = z
     momentWindowEnd: z.number().int().min(0).max(1440).default(1380).openapi({
       description: "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)",
     }),
+    type: z.enum(["trip", "event"]).default("trip").openapi({
+      description: "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment",
+    }),
+    groups: z.array(z.string().trim().min(1).max(40)).max(30).optional().openapi({
+      description: "Event only (required, 1 to 30 distinct names of 1 to 40 characters); rejected on a regular trip",
+    }),
+  })
+  .superRefine((d, ctx) => {
+    if (d.type === "trip") {
+      if (d.groups !== undefined) ctx.addIssue({ code: "custom", message: "Solo los eventos tienen grupos", path: ["groups"] });
+      return;
+    }
+    if (!d.groups || d.groups.length < 1) {
+      ctx.addIssue({ code: "custom", message: "Un evento necesita al menos un grupo", path: ["groups"] });
+    } else if (new Set(d.groups).size !== d.groups.length) {
+      ctx.addIssue({ code: "custom", message: "Los grupos no pueden repetirse", path: ["groups"] });
+    }
   })
   .refine((d) => d.momentWindowEnd - d.momentWindowStart >= 30, {
     message: "La franja del momento tiene que durar al menos 30 minutos",
     path: ["momentWindowEnd"],
   })
-  .refine((d) => d.photoLimitMode !== "total" || d.totalPhotoLimit !== undefined, {
+  .refine((d) => d.type === "event" || d.photoLimitMode !== "total" || d.totalPhotoLimit !== undefined, {
     message: "Elegí cuántas fotos por persona tiene el rollo",
     path: ["totalPhotoLimit"],
   })

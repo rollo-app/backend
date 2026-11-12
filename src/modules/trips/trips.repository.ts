@@ -11,7 +11,7 @@ export type ActiveMemberRow = {
 export type NewTrip = Pick<
   TripRow,
   "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit" | "created_at"
-  | "moment_mode" | "moment_window_start" | "moment_window_end"
+  | "moment_mode" | "moment_window_start" | "moment_window_end" | "type"
 > & { started_notified_at: number | null; featuring_disabled: number };
 
 export type TripEdit = Pick<
@@ -45,8 +45,8 @@ export function insertTrip(
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
                           daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at, featuring_disabled,
-                          moment_mode, moment_window_start, moment_window_end, created_by_user_id)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                          moment_mode, moment_window_start, moment_window_end, created_by_user_id, type)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        WHERE ? = 0 OR (
          (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?) < ?
          AND (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND created_at > ?) < ?
@@ -55,7 +55,7 @@ export function insertTrip(
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
       t.daily_photo_limit, t.daily_video_limit, t.photo_limit_mode, t.total_photo_limit, t.created_at, t.started_notified_at, t.featuring_disabled,
-      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId,
+      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId, t.type,
       creator.limited ? 1 : 0,
       creator.userId, t.created_at, creator.unrevealedMax,
       creator.userId, creator.windowSince, creator.windowMax,
@@ -69,6 +69,26 @@ export function insertAdminMember(db: D1Database, id: string, tripId: string, us
        SELECT ?, ?, ?, 'admin', ? WHERE EXISTS (SELECT 1 FROM trips WHERE id = ?)`,
     )
     .bind(id, tripId, userId, now, tripId);
+}
+
+/** Inserts the groups of an event, in the given order. Only when the trip exists (like the admin member). */
+export function insertGroups(db: D1Database, tripId: string, groups: { id: string; name: string }[], now: number): D1PreparedStatement[] {
+  return groups.map((g, position) =>
+    db
+      .prepare(
+        `INSERT INTO event_groups (id, trip_id, name, position, created_at)
+         SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM trips WHERE id = ?)`,
+      )
+      .bind(g.id, tripId, g.name, position, now, tripId),
+  );
+}
+
+export async function listGroups(db: D1Database, tripId: string): Promise<{ id: string; name: string; position: number }[]> {
+  const { results } = await db
+    .prepare("SELECT id, name, position FROM event_groups WHERE trip_id = ? ORDER BY position")
+    .bind(tripId)
+    .all<{ id: string; name: string; position: number }>();
+  return results;
 }
 
 export function findMember(db: D1Database, tripId: string, userId: string): Promise<MemberRow | null> {

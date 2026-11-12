@@ -33,7 +33,10 @@ export const trips = sqliteTable("trips", {
   keepOriginals: integer("keep_originals").notNull().default(0),
   originalsNoticeAt: integer("originals_notice_at"),
   originalsPurgedAt: integer("originals_purged_at"),
-});
+  type: text("type", { enum: ["trip", "event"] }).notNull().default("trip"),
+  coverKey: text("cover_key"),
+  pendingCoverKey: text("pending_cover_key"),
+}, (t) => [check("trips_type_check", sql`${t.type} IN ('trip', 'event')`)]);
 
 export const users = sqliteTable(
   "users",
@@ -551,3 +554,34 @@ export type AppSetting = typeof appSettings.$inferSelect;
 export type WaitlistRow = typeof waitlist.$inferSelect;
 export type EmailCounter = typeof emailCounters.$inferSelect;
 export type NewEmailCounter = typeof emailCounters.$inferInsert;
+
+export const eventGroups = sqliteTable(
+  "event_groups",
+  {
+    id: text("id").primaryKey(),
+    tripId: text("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    position: integer("position").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [unique().on(t.tripId, t.name)],
+);
+
+export const memberGroups = sqliteTable(
+  "member_groups",
+  {
+    memberId: text("member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+    groupId: text("group_id").notNull().references(() => eventGroups.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.groupId] }), index("idx_member_groups_group").on(t.groupId)],
+);
+
+export const mediaGroups = sqliteTable(
+  "media_groups",
+  {
+    mediaId: text("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+    groupId: text("group_id").notNull().references(() => eventGroups.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.mediaId, t.groupId] }), index("idx_media_groups_group").on(t.groupId)],
+);

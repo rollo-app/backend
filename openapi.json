@@ -557,6 +557,20 @@
             ],
             "description": "Daily moment: off, a photo, or a photo plus a selfie"
           },
+          "type": {
+            "type": "string",
+            "enum": [
+              "trip",
+              "event"
+            ]
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public path of the event cover; null if none"
+          },
           "coverThumbhash": {
             "type": [
               "string",
@@ -578,6 +592,8 @@
           "archived",
           "totalUploaded",
           "momentMode",
+          "type",
+          "coverUrl",
           "coverThumbhash"
         ]
       },
@@ -1380,6 +1396,41 @@
               "name"
             ],
             "description": "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "trip",
+              "event"
+            ],
+            "description": "event: guests join groups; trip: a regular rollo"
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public path of the event cover (the app prefixes the API base URL); null if none"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            },
+            "description": "Groups of an event, in order; [] for a regular trip"
           }
         },
         "required": [
@@ -1401,7 +1452,10 @@
           "momentWindowEnd",
           "maxMembers",
           "originals",
-          "createdBy"
+          "createdBy",
+          "type",
+          "coverUrl",
+          "groups"
         ]
       },
       "Member": {
@@ -1548,6 +1602,25 @@
             "maximum": 1440,
             "default": 1380,
             "description": "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "trip",
+              "event"
+            ],
+            "default": "trip",
+            "description": "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 30,
+            "description": "Event only (required, 1 to 30 distinct names of 1 to 40 characters); rejected on a regular trip"
           }
         },
         "required": [
@@ -1579,7 +1652,27 @@
             "$ref": "#/components/schemas/Trip"
           },
           "me": {
-            "$ref": "#/components/schemas/Member"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Member"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "groupIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Ids of the event groups the member is in; [] for a regular trip and for organizers without groups"
+                  }
+                },
+                "required": [
+                  "groupIds"
+                ]
+              }
+            ]
           },
           "members": {
             "type": "array",

@@ -84,6 +84,12 @@ export type TripRow = {
   originals_notice_at: number | null;
   /** When the cron found no purgeable original left. */
   originals_purged_at: number | null;
+  /** 'trip' (regular rollo) or 'event' (guests join groups). */
+  type: "trip" | "event";
+  /** Published cover image key (events), null if none. */
+  cover_key: string | null;
+  /** Cover being uploaded, not yet confirmed. */
+  pending_cover_key: string | null;
 };
 
 /** Global backoffice role (distinct from the per-rollo `Role`). */
