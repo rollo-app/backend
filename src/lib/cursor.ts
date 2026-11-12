@@ -1,6 +1,6 @@
 import { badRequest } from "../shared/errors";
 
-/** Opaque keyset cursor `(at, id)` for lists ordered newest first by a timestamp, ties broken by id. */
+/** Opaque keyset cursor `(at, id)` for lists ordered by a timestamp (newest first or oldest first), ties broken by id. */
 export type TimeCursor = { at: number; id: string };
 
 export function encodeCursor(c: TimeCursor): string {

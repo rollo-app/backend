@@ -29,10 +29,14 @@
     { "name": "RL_GLOBAL", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
     // Per IP for requests with a token (backstop against invented tokens).
     { "name": "RL_IP", "namespace_id": "1002", "simple": { "limit": 600, "period": 60 } },
-    // Per user: media registration/completion, avatar upload, likes, adding members.
+    // Per IP for authenticated file downloads (5x RL_IP: they skip RL_GLOBAL and RL_IP so galleries and shared event Wi-Fi are not cut off).
+    { "name": "RL_IP_FILES", "namespace_id": "1007", "simple": { "limit": 3000, "period": 60 } },
+    // Per user: media completion, avatar upload, likes, adding members.
     { "name": "RL_EXPENSIVE", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } },
-    // Per user: file downloads (a gallery loads many thumbnails).
-    { "name": "RL_FILES", "namespace_id": "1004", "simple": { "limit": 300, "period": 60 } },
+    // Per user: registering and completing media (the offline queue registers a burst when the phone gets back online).
+    { "name": "RL_UPLOAD", "namespace_id": "1006", "simple": { "limit": 60, "period": 60 } },
+    // Per user: file downloads (a gallery loads hundreds of thumbnails; they skip RL_GLOBAL, so this is their budget).
+    { "name": "RL_FILES", "namespace_id": "1004", "simple": { "limit": 600, "period": 60 } },
     // Per user: user search.
     { "name": "RL_SEARCH", "namespace_id": "1005", "simple": { "limit": 60, "period": 60 } }
   ],

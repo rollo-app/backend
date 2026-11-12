@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, lt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { featured, friendships, likes, media, members, userSettings, users, type Media, type NewMedia } from "../../db/schema";
 // A repository importing another module's SQL fragment is OK for now: the visible-comments rule lives with comments.
@@ -130,7 +130,17 @@ export async function findLiveSelfies(db: D1Database, mainId: string): Promise<M
   return orm(db).select().from(media).where(and(eq(media.pairedMediaId, mainId), isNull(media.deletedAt))).all();
 }
 
-export async function listFeed(db: D1Database, tripId: string, viewerId: string): Promise<FeedRow[]> {
+export type FeedCursor = { takenAt: number; id: string };
+
+/** Feed rows ordered by `takenAt` (ties by id), oldest first (`asc`) or newest first (`desc`). With `page`: at most `limit` rows strictly after (`asc`) or before (`desc`) `after`; without it, every row. */
+export async function listFeed(
+  db: D1Database,
+  tripId: string,
+  viewerId: string,
+  page: { limit: number; after: FeedCursor | null } | null,
+  order: "asc" | "desc" = "asc",
+): Promise<FeedRow[]> {
+  const [dir, beyond] = order === "desc" ? [desc, lt] : [asc, gt];
   const viewerLike = alias(likes, "viewer_like");
   const countedLike = alias(likes, "counted_like");
   const countedMedia = alias(media, "counted_media");
@@ -205,9 +215,13 @@ export async function listFeed(db: D1Database, tripId: string, viewerId: string)
         notHiddenFor(viewerId, media.id, members.userId),
         // Archived: only its author still sees it.
         or(isNull(media.archivedAt), eq(members.userId, viewerId)),
+        page?.after
+          ? or(beyond(media.takenAt, page.after.takenAt), and(eq(media.takenAt, page.after.takenAt), beyond(media.id, page.after.id)))
+          : undefined,
       ),
     )
-    .orderBy(asc(media.takenAt));
+    .orderBy(dir(media.takenAt), dir(media.id))
+    .limit(page ? page.limit : -1);
 }
 
 /** Keys of an uploaded, not deleted file of the trip; an archived one only for its author (`viewerId`). */
