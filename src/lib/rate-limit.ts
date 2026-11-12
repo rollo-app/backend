@@ -6,7 +6,7 @@ import type { AppEnv, Env, RateLimitBinding } from "../types";
 
 export const RATE_LIMIT_MESSAGE = "Estás yendo muy rápido. Probá de nuevo en un minuto.";
 
-type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_EXPENSIVE" | "RL_FILES" | "RL_SEARCH";
+type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH";
 const warned = new Set<string>();
 
 /** Consumes one hit of `key`. Fails open: without the binding (or if it throws) the request goes through. */
@@ -27,10 +27,15 @@ async function allowed(env: Env, name: LimiterName, key: string): Promise<boolea
   }
 }
 
-const tooFast = () => new HTTPException(429, { message: RATE_LIMIT_MESSAGE });
+/**
+ * Speed-limit 429. Carries `Retry-After` (the windows are 60 s) so the app knows this one is worth retrying; the quota 429s
+ * (`rateLimited` in shared/errors.ts) deliberately do not. onError copies the header (see index.ts).
+ */
+const tooFast = () =>
+  new HTTPException(429, { message: RATE_LIMIT_MESSAGE, res: new Response(null, { status: 429, headers: { "Retry-After": "60" } }) });
 
 /** Per-route limiter keyed by user id: use after `requireUser`. */
-export const rateLimit = (name: "RL_EXPENSIVE" | "RL_FILES" | "RL_SEARCH") =>
+export const rateLimit = (name: "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH") =>
   createMiddleware<AppEnv>(async (c, next) => {
     if (!(await allowed(c.env, name, `u:${c.get("user").id}`))) throw tooFast();
     await next();

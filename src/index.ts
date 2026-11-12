@@ -98,7 +98,11 @@ app.notFound((c) => c.json({ error: "No encontrado" }, 404));
 
 app.onError((err, c) => {
   if (err instanceof AppError) return c.json({ error: err.message }, STATUS_BY_KIND[err.kind]);
-  if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
+  if (err instanceof HTTPException) {
+    // Keep the headers of a custom `res` (e.g. Retry-After on rate-limit 429s); the body stays our JSON shape.
+    const retryAfter = err.res?.headers.get("Retry-After");
+    return c.json({ error: err.message }, err.status, retryAfter ? { "Retry-After": retryAfter } : undefined);
+  }
   console.error(err);
   return c.json({ error: "Error interno" }, 500);
 });

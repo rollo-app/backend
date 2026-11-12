@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { devSentBlocks, devSentCodes, devSentNotices, devSentReports } from "../src/lib/email";
 import { sendModerationSummary } from "../src/modules/moderation/moderation.service";
 import { LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
-import { api, newTrip, requestCode, signUp, uploadMedia, DAY } from "./helpers";
+import { api, newTrip, photoBody, requestCode, signUp, uploadMedia, DAY } from "./helpers";
 
 /** In-memory stand-in for a Workers Rate Limiting binding, with a fixed limit and no window. */
 function fakeLimiter(limit: number) {
@@ -23,7 +23,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 describe("rate limit bindings", () => {
   it("are configured in the test environment", () => {
-    for (const name of ["RL_GLOBAL", "RL_IP", "RL_EXPENSIVE", "RL_FILES", "RL_SEARCH"] as const) {
+    for (const name of ["RL_GLOBAL", "RL_IP", "RL_EXPENSIVE", "RL_UPLOAD", "RL_FILES", "RL_SEARCH"] as const) {
       expect(typeof env[name]!.limit).toBe("function");
     }
   });
@@ -39,6 +39,7 @@ describe("global limit", () => {
     const blocked = await api("GET", "/me", { token: a.token, env: e });
     expect(blocked.status).toBe(429);
     expect(blocked.body).toEqual({ error: TOO_FAST });
+    expect(blocked.headers.get("retry-after")).toBe("60");
     expect((await api("GET", "/me", { token: b.token, env: e })).status).toBe(200);
   });
 
@@ -65,7 +66,7 @@ describe("global limit", () => {
 
   it("lets requests through when the bindings are missing", async () => {
     const a = await signUp();
-    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_EXPENSIVE: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
+    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_EXPENSIVE: undefined, RL_UPLOAD: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
     expect((await api("GET", "/me", { token: a.token, env: e })).status).toBe(200);
     expect((await api("POST", "/me/avatar", { token: a.token, body: { sizeBytes: 100 }, env: e })).status).toBe(200);
   });
@@ -87,15 +88,37 @@ describe("expensive endpoints", () => {
     expect((await api("GET", "/me", { token: a.token, env: e })).status).toBe(200);
   });
 
-  it("cover registering media, completing, likes and adding members", async () => {
+  it("cover completing, avatar, likes and adding members", async () => {
     const trip = await newTrip();
     const e = { RL_EXPENSIVE: fakeLimiter(0) };
     const token = trip.adminToken;
-    expect((await api("POST", `/trips/${trip.tripId}/media`, { token, body: {}, env: e })).status).toBe(429);
     expect((await api("POST", `/media/${crypto.randomUUID()}/complete`, { token, env: e })).status).toBe(429);
     expect((await api("POST", "/me/avatar/complete", { token, env: e })).status).toBe(429);
     expect((await api("PUT", `/media/${crypto.randomUUID()}/like`, { token, env: e })).status).toBe(429);
     expect((await api("POST", `/trips/${trip.tripId}/members`, { token, body: { friendIds: [] }, env: e })).status).toBe(429);
+  });
+});
+
+describe("media registration", () => {
+  it("is limited by RL_UPLOAD (429 with Retry-After) and not by RL_EXPENSIVE", async () => {
+    const trip = await newTrip();
+    const token = trip.adminToken;
+    const url = `/trips/${trip.tripId}/media`;
+    const blocked = await api("POST", url, { token, body: {}, env: { RL_UPLOAD: fakeLimiter(0) } });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: TOO_FAST });
+    expect(blocked.headers.get("retry-after")).toBe("60");
+    // A denying RL_EXPENSIVE does not block it: the invalid body gets past the limiter and fails validation (400).
+    expect((await api("POST", url, { token, body: {}, env: { RL_EXPENSIVE: fakeLimiter(0) } })).status).toBe(400);
+  });
+
+  it("the daily photo quota 429 has no Retry-After (the app must not retry it)", async () => {
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 1 });
+    await uploadMedia(tripId, adminToken);
+    const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: "Ya usaste tus 1 fotos de hoy" });
+    expect(res.headers.get("retry-after")).toBeNull();
   });
 });
 

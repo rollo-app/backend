@@ -6,6 +6,7 @@ export type Env = {
   RL_GLOBAL?: RateLimitBinding;
   RL_IP?: RateLimitBinding;
   RL_EXPENSIVE?: RateLimitBinding;
+  RL_UPLOAD?: RateLimitBinding;
   RL_FILES?: RateLimitBinding;
   RL_SEARCH?: RateLimitBinding;
   DB: D1Database;

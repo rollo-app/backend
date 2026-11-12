@@ -25,9 +25,10 @@ export const registerRoute = createRoute({
   description:
     "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). " +
     "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. " +
-    "503 when the storage limit is reached (new registrations only, never retries).",
+    "503 when the storage limit is reached (new registrations only, never retries). " +
+    "429 comes in two kinds: too fast (carries `Retry-After`, retry later) or photo quota used up (no `Retry-After`, do not retry).",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireTripMember] as const,
+  middleware: [requireUser, rateLimit("RL_UPLOAD"), requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: RegisterMediaSchema } }, required: true },
