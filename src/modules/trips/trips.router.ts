@@ -37,7 +37,7 @@ export const joinTripRoute = createRoute({
   summary: "Join a trip",
   description:
     "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), " +
-    "200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409.",
+    "200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409. A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: JoinTripSchema } }, required: true } },
@@ -108,7 +108,7 @@ export const addMembersRoute = createRoute({
   summary: "Add your friends to the trip",
   description:
     "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they " +
-    "had left and come back), `already_member`, or `unavailable` (not your friend, removed by the admin, or unknown). " +
+    "had left and come back), `already_member`, `unavailable` (not your friend, removed by the admin, or unknown) or `full` (no room left: the rollo has a cap on active members and friends are processed in request order). " +
     "The rollo's admin can add back someone who was removed (they become active again with their old photos); " +
     "for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
   security: bearerAuth,

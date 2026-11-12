@@ -14,7 +14,8 @@ import * as repo from "./trips.repository";
 type AddResult =
   | { status: "added"; member: Pick<MemberRow, "id" | "user_id" | "role"> }
   | { status: "already_member"; member: MemberRow }
-  | { status: "removed" };
+  | { status: "removed" }
+  | { status: "full" };
 
 /** What to do to make someone a member, given what the trip already has on them. */
 type MembershipDecision =
@@ -38,7 +39,9 @@ export function decideMembership(existing: MemberRow | null, reactivateRemoved: 
 
 /**
  * Turns a decision into its write (unexecuted, to run alone or in a batch) and the result for the caller.
- * Does not check the reveal.
+ * Does not check the reveal. The writes that take a spot (insert and both reactivations) are conditional on the
+ * rollo having room, so `result` is what happens if the write goes through: the caller must check the write's
+ * `meta.changes` and turn it into `full` when it is 0.
  */
 function applyDecision(
   db: D1Database,
@@ -51,7 +54,7 @@ function applyDecision(
   switch (decision.action) {
     case "insert": {
       const member = { id: crypto.randomUUID(), user_id: userId, role: "member" as Role };
-      return { result: { status: "added", member }, write: repo.insertMember(db, member.id, tripId, userId, now, addedBy) };
+      return { result: { status: "added", member }, write: repo.insertMemberIfRoom(db, member.id, tripId, userId, now, addedBy) };
     }
     case "reactivate_left":
       return { result: { status: "added", member: decision.existing }, write: repo.reactivateLeftMember(db, decision.existing.id, addedBy) };
@@ -75,7 +78,7 @@ async function addMember(
 ): Promise<AddResult> {
   const existing = await repo.findMember(db, tripId, userId);
   const { result, write } = applyDecision(db, decideMembership(existing, reactivateRemoved), tripId, userId, addedBy, now);
-  if (write) await write.run();
+  if (write && !(await write.run()).meta.changes) return { status: "full" };
   return result;
 }
 
@@ -100,13 +103,15 @@ export async function joinTrip(
   if (isRevealed(trip, now)) throw conflict("Este rollo ya se reveló");
 
   const added = await addMember(db, trip.id, user.id, null, now);
+  // The joiner is not a member yet: the message must not reveal how many people the rollo holds.
+  if (added.status === "full") throw conflict("Este rollo está lleno. Pedile a quien lo creó que haga lugar.");
   if (added.status !== "added") throw forbidden("El admin te sacó de este rollo");
   return { created: true, trip, member: added.member };
 }
 
 // ---------- Add friends ----------
 
-export type AddMembersResult = { userId: string; status: "added" | "already_member" | "unavailable" };
+export type AddMembersResult = { userId: string; status: "added" | "already_member" | "unavailable" | "full" };
 
 /** Adds `friendIds` (a result per friend) and returns the "added to a rollo" push for those who were added. */
 export async function addFriendsToTrip(
@@ -129,16 +134,27 @@ export async function addFriendsToTrip(
     repo.findMembersByUsers(env.DB, trip.id, others),
   ]);
 
+  // Writes that take a spot are conditional on room (see `applyDecision`); `slots[i]` is the friend each write belongs to.
   const writes: D1PreparedStatement[] = [];
-  const results: AddMembersResult[] = userIds.map((userId) => {
+  const slots: number[] = [];
+  const results: AddMembersResult[] = userIds.map((userId, i) => {
     if (userId === me.id) return { userId, status: "already_member" };
     if (!friends.has(userId) || !complete.has(userId)) return { userId, status: "unavailable" };
     const { result, write } = applyDecision(env.DB, decideMembership(memberships.get(userId) ?? null, myRole === "admin"), trip.id, userId, me.id, now);
-    if (write) writes.push(write);
-    return { userId, status: result.status === "removed" ? "unavailable" : result.status };
+    if (write) {
+      writes.push(write);
+      slots.push(i);
+    }
+    return { userId, status: result.status === "removed" || result.status === "full" ? "unavailable" : result.status };
   });
-  // One atomic batch (D1 has no interactive transactions).
-  if (writes.length) await env.DB.batch(writes);
+  // One atomic batch (D1 has no interactive transactions). Statements run in order, so each conditional write sees the
+  // spots taken by the ones before it: the first friends that fit are added, the rest come back with changes = 0 (full).
+  if (writes.length) {
+    const outcomes = await env.DB.batch(writes);
+    outcomes.forEach((o, n) => {
+      if (!o.meta.changes) results[slots[n]!]!.status = "full";
+    });
+  }
   const addedIds = results.filter((r) => r.status === "added").map((r) => r.userId);
   const notify: AfterResponse = addedIds.length
     ? () => sendPush(env, addedIds, "addedToTrip", { body: `${actorName(me)} te sumó a ${trip.name}`, url: `/roll?trip=${trip.id}` }, { actorId: me.id })

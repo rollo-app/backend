@@ -94,14 +94,41 @@ export function insertMember(db: D1Database, id: string, tripId: string, userId:
     .bind(id, tripId, userId, now, addedBy);
 }
 
-/** Brings back someone the admin removed (clears `left_at` too). */
-export function reactivateRemovedMember(db: D1Database, memberId: string, addedBy: string | null): D1PreparedStatement {
-  return db.prepare("UPDATE members SET removed_at = NULL, left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, memberId);
+/** "The trip still has room": active members (neither left nor removed) are fewer than `trips.max_members`. `tripIdSql` is the trip id expression. */
+const HAS_ROOM_SQL = (tripIdSql: string) =>
+  `(SELECT COUNT(*) FROM members a WHERE a.trip_id = ${tripIdSql} AND a.left_at IS NULL AND a.removed_at IS NULL) < (SELECT max_members FROM trips WHERE id = ${tripIdSql})`;
+
+/**
+ * Like `insertMember`, but only writes while the trip has room. The check is part of the statement, so two concurrent
+ * joins cannot both take the last spot; the caller reads `meta.changes` (0 = full).
+ */
+export function insertMemberIfRoom(db: D1Database, id: string, tripId: string, userId: string, now: number, addedBy: string | null): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO members (id, trip_id, user_id, role, created_at, added_by_user_id)
+       SELECT ?, ?, ?, 'member', ?, ? WHERE ${HAS_ROOM_SQL("?")}`,
+    )
+    .bind(id, tripId, userId, now, addedBy, tripId, tripId);
 }
 
-/** Brings back someone who left. */
+/** Brings back someone the admin removed (clears `left_at` too) while the trip has room (`meta.changes` 0 = full). Coming back takes a spot. */
+export function reactivateRemovedMember(db: D1Database, memberId: string, addedBy: string | null): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE members SET removed_at = NULL, left_at = NULL, added_by_user_id = ?
+       WHERE id = ? AND ${HAS_ROOM_SQL("members.trip_id")}`,
+    )
+    .bind(addedBy, memberId);
+}
+
+/** Brings back someone who left while the trip has room (`meta.changes` 0 = full). Coming back takes a spot. */
 export function reactivateLeftMember(db: D1Database, memberId: string, addedBy: string | null): D1PreparedStatement {
-  return db.prepare("UPDATE members SET left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, memberId);
+  return db
+    .prepare(
+      `UPDATE members SET left_at = NULL, added_by_user_id = ?
+       WHERE id = ? AND ${HAS_ROOM_SQL("members.trip_id")}`,
+    )
+    .bind(addedBy, memberId);
 }
 
 export function listActiveMembers(db: D1Database, tripId: string): Promise<{ results: ActiveMemberRow[] }> {
