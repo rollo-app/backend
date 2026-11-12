@@ -132,7 +132,11 @@ describe("PATCH /admin/trips/{tripId}", () => {
     expect((await joinCode(t.code, late.token)).status).toBe(409);
     const res = await patch(t.tripId, su.token, { maxMembers: 30 });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: t.tripId, maxMembers: 30, activeMembers: 15 });
+    expect(res.body).toMatchObject({ id: t.tripId, maxMembers: 30, activeMembers: 15, stage: "active", mediaCount: 0 });
+    expect(res.body.members).toHaveLength(15);
+    expect(res.body.members[0]).toMatchObject({ userId: t.adminUserId, isCreator: true });
+    const got = await api("GET", `/admin/trips/${t.tripId}`, { token: su.token });
+    expect(res.body).toEqual(got.body);
     expect((await joinCode(t.code, late.token)).status).toBe(201);
     expect((await api("GET", `/trips/${t.tripId}`, { token: t.adminToken })).body.trip.maxMembers).toBe(30);
   });

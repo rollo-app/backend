@@ -79,8 +79,49 @@ export async function editUser(db: D1Database, id: string, patch: AdminEditUser,
   return getUser(db, id, now);
 }
 
+export type TripStage = "upcoming" | "active" | "ended" | "revealed";
+
+/** Same stages the app derives: revealed wins, then by the rollo's dates. */
+export function tripStage(t: Pick<repo.AdminTripRow, "startsAt" | "endsAt" | "revealAt" | "revealedAt">, now: number): TripStage {
+  if (t.revealedAt !== null || now >= t.revealAt) return "revealed";
+  if (now < t.startsAt) return "upcoming";
+  if (now > t.endsAt) return "ended";
+  return "active";
+}
+
+function presentTrip({ revealedAt, creatorId, creatorName, creatorUsername, ...t }: repo.AdminTripRow, now: number) {
+  const stage = tripStage({ ...t, revealedAt }, now);
+  return {
+    ...t,
+    revealed: stage === "revealed",
+    stage,
+    creator: creatorId ? { id: creatorId, name: creatorName, username: creatorUsername } : null,
+  };
+}
+
+export async function listTrips(db: D1Database, query: PageQuery, now: number) {
+  const q = query.q ? repo.tripSearch(query.q) : undefined;
+  const page = await paginate<repo.AdminTripRow>(
+    {
+      rows: ({ orderBy, limit, offset }) => repo.listTrips(db, { search: q, orderBy, limit, offset }),
+      count: () => repo.countTrips(db, { search: q }),
+      sortable: repo.tripSortable,
+      defaultSort: "createdAt",
+    },
+    query,
+  );
+  return { ...page, items: page.items.map((t) => presentTrip(t, now)) };
+}
+
+export async function getTrip(db: D1Database, tripId: string, now: number) {
+  const trip = await repo.findAdminTrip(db, tripId);
+  if (!trip) throw notFound();
+  const members = await repo.listTripMembers(db, tripId);
+  return { ...presentTrip(trip, now), members };
+}
+
 /** Changes a rollo's member cap (a paid rollo/event gets more room). Never below the people already in it. */
-export async function editTrip(db: D1Database, tripId: string, patch: AdminEditTrip) {
+export async function editTrip(db: D1Database, tripId: string, patch: AdminEditTrip, now: number) {
   const before = await repo.findTripCapacity(db, tripId);
   if (!before) throw notFound();
   const tooLow = (active: number) =>
@@ -91,5 +132,5 @@ export async function editTrip(db: D1Database, tripId: string, patch: AdminEditT
   if (!after) throw notFound();
   // Zero changes with a valid value: someone joined between the read and the write.
   if (!res.meta.changes) throw tooLow(after.active);
-  return { id: tripId, maxMembers: after.max, activeMembers: after.active };
+  return getTrip(db, tripId, now);
 }
