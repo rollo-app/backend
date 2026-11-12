@@ -1,6 +1,6 @@
 # Moderación: qué hacer cuando llega una denuncia
 
-Cuando alguien denuncia una foto o una persona, te llega un mail a `REPORTS_EMAIL` (por defecto `soporte@rolloproject.com`)
+Cuando alguien denuncia una foto o una persona, te llega un mail a `REPORTS_EMAIL` (por defecto `support@rolloproject.com`)
 con el motivo, quién denunció, a quién, la foto (link vigente 7 días) y los comandos para actuar. También te llega un mail cuando alguien bloquea a otra persona (Apple lo pide).
 Cada persona dispara como máximo 10 mails por día (denuncias + bloqueos): lo que pase de ahí se guarda igual y se ve en `GET /admin/reports`, pero sin mail.
 **Apple pide actuar en menos de 24 horas**: mirá la foto y, si corresponde, sacala o borrá la cuenta.

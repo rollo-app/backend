@@ -6,7 +6,7 @@ import { renderLoginEmail } from "./login-email";
  * Test-visible: tests read the code from here instead of an inbox.
  */
 /** Public support mailbox (Email Routing → Juani's inbox). */
-export const SUPPORT_EMAIL = "soporte@rolloproject.com";
+export const SUPPORT_EMAIL = "support@rolloproject.com";
 
 export const devSentCodes = new Map<string, string>();
 
