@@ -138,10 +138,10 @@ Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 | PATCH | `/trips/:tripId` | admin | Nombre, fin, revelado, límites |
 | POST | `/trips/:tripId/reveal` | admin | Revela el rollo ya |
 | DELETE | `/trips/:tripId/members/:memberId` | admin | Saca a alguien (sus fotos quedan) |
-| POST | `/trips/:tripId/media` | miembro | Registra foto/video → 2 URLs para subir |
+| POST | `/trips/:tripId/media` | miembro | Registra foto/video → 2 URLs para subir (3 con `displaySizeBytes`: original, thumb y display) |
 | POST | `/media/:mediaId/complete` | dueño | Confirma que subió los archivos |
 | GET | `/trips/:tripId/feed` | miembro | Antes del revelado: solo metadata. Después: con archivos |
-| GET | `/trips/:tripId/media/:mediaId/thumb\|original` | miembro | Descarga (solo revelado) |
+| GET | `/trips/:tripId/media/:mediaId/thumb\|display\|original` | miembro | Descarga (solo revelado) |
 | DELETE | `/media/:mediaId` | admin | Borra cualquier foto del rollo antes del revelado |
 
 ### Flujo de subida desde la app

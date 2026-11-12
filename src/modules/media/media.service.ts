@@ -2,6 +2,7 @@ import { conflict, badRequest, forbidden, notFound, rateLimited } from "../../sh
 import { assertNotDegraded } from "../../lib/degraded";
 import { assertStorageAvailable } from "../../lib/storage";
 import { mediaKeys, presignPut } from "../../lib/r2";
+import { resolveVariantKey, type MediaVariant } from "../../lib/media-variant";
 import { isRevealed, localDate } from "../../lib/util";
 import { MOMENT_WINDOW_MS } from "../../lib/moments";
 import { decodeCursor, encodeCursor } from "../../lib/cursor";
@@ -9,7 +10,7 @@ import { PAST_TOLERANCE_MS } from "../../schemas";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import type { Env, MemberRow, TripRow, UserRow } from "../../types";
-import { DEFAULT_FEED_PAGE, MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
+import { DEFAULT_FEED_PAGE, MAX_DISPLAY_SIZE, MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
 import { deleteFeaturedOfMedia } from "../featured/featured.repository";
 import { deleteLikesOfMedia } from "../likes/likes.repository";
 import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
@@ -19,7 +20,7 @@ import * as repo from "./media.repository";
 
 const UPLOAD_URL_TTL = 15 * 60;
 
-type UploadResponse = { id: string; status: "pending"; upload: { original: string; thumb: string }; expiresIn: number };
+type UploadResponse = { id: string; status: "pending"; upload: { original: string; thumb: string; display?: string }; expiresIn: number };
 
 export type RegisterResult =
   | { created: true; body: UploadResponse }
@@ -32,12 +33,15 @@ async function uploadResponse(
   originalKey: string,
   thumbKey: string,
   sizes: { original: number | null; thumb: number | null },
+  display: { key: string; size: number } | null = null,
 ) {
-  const [original, thumb] = await Promise.all([
+  const [original, thumb, displayUrl] = await Promise.all([
     presignPut(env, originalKey, origin, sizes.original),
     presignPut(env, thumbKey, origin, sizes.thumb),
+    display ? presignPut(env, display.key, origin, display.size) : null,
   ]);
-  return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
+  // `display` only goes out when the phone declared one: older builds get the response they always got.
+  return { id, status: "pending" as const, upload: { original, thumb, ...(displayUrl && { display: displayUrl }) }, expiresIn: UPLOAD_URL_TTL };
 }
 
 /** Registers a photo or video and returns signed upload URLs. Idempotent by `input.id`; `created` tells a new row from a retry. */
@@ -61,10 +65,15 @@ export async function registerMedia(
     if (existing.status === "uploaded") return { created: false, body: { id: existing.id, status: "uploaded" as const } };
     return {
       created: false,
-      body: await uploadResponse(env, origin, existing.id, existing.originalKey, existing.thumbKey, {
-        original: existing.sizeBytes,
-        thumb: existing.thumbSizeBytes,
-      }),
+      body: await uploadResponse(
+        env,
+        origin,
+        existing.id,
+        existing.originalKey,
+        existing.thumbKey,
+        { original: existing.sizeBytes, thumb: existing.thumbSizeBytes },
+        existing.displayKey && existing.displaySizeBytes !== null ? { key: existing.displayKey, size: existing.displaySizeBytes } : null,
+      ),
     };
   }
 
@@ -80,7 +89,7 @@ export async function registerMedia(
 
   const moment = await resolveMoment(env.DB, trip, member, input);
 
-  await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes);
+  await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes + (input.displaySizeBytes ?? 0));
 
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.
@@ -122,6 +131,10 @@ export async function registerMedia(
       thumbSizeBytes: input.thumbSizeBytes,
       originalKey: keys.original,
       thumbKey: keys.thumb,
+      // Declared at registration (like the other sizes) so the cleanup crons and deletes know about the file;
+      // only photos have one, and the retention cron treats a row as having a display once it is uploaded.
+      displayKey: input.displaySizeBytes ? keys.display : null,
+      displaySizeBytes: input.displaySizeBytes ?? null,
       createdAt: now,
       momentDay: moment?.day ?? null,
       pairedMediaId: moment?.pairedMediaId ?? null,
@@ -151,7 +164,15 @@ export async function registerMedia(
 
   return {
     created: true,
-    body: await uploadResponse(env, origin, input.id, keys.original, keys.thumb, { original: input.sizeBytes, thumb: input.thumbSizeBytes }),
+    body: await uploadResponse(
+      env,
+      origin,
+      input.id,
+      keys.original,
+      keys.thumb,
+      { original: input.sizeBytes, thumb: input.thumbSizeBytes },
+      input.displaySizeBytes ? { key: keys.display, size: input.displaySizeBytes } : null,
+    ),
   };
 }
 
@@ -168,17 +189,23 @@ export async function completeUpload(
   const done = { id: row.id, status: "uploaded" as const };
   if (row.status === "uploaded") return { body: done, notify: null };
 
-  const [original, thumb] = await Promise.all([env.MEDIA.head(row.originalKey), env.MEDIA.head(row.thumbKey)]);
-  if (!original || !thumb) {
+  const [original, thumb, display] = await Promise.all([
+    env.MEDIA.head(row.originalKey),
+    env.MEDIA.head(row.thumbKey),
+    row.displayKey ? env.MEDIA.head(row.displayKey) : null,
+  ]);
+  // A declared display is as required as the other two files.
+  if (!original || !thumb || (row.displayKey && !display)) {
     throw badRequest("Faltan archivos en el storage; volvé a subirlos");
   }
   const mismatch =
     original.size !== row.sizeBytes ||
     (row.thumbSizeBytes !== null && thumb.size !== row.thumbSizeBytes) ||
     original.size > MAX_SIZE[row.type] ||
-    thumb.size > MAX_THUMB_SIZE;
+    thumb.size > MAX_THUMB_SIZE ||
+    (display !== null && (display.size !== row.displaySizeBytes || display.size > MAX_DISPLAY_SIZE));
   if (mismatch) {
-    await env.MEDIA.delete([row.originalKey, row.thumbKey]);
+    await env.MEDIA.delete([row.originalKey, row.thumbKey, ...(row.displayKey ? [row.displayKey] : [])]);
     throw badRequest("El archivo no coincide con el que registraste; volvé a subirlo");
   }
 
@@ -227,21 +254,22 @@ export async function getFeed(
 }
 
 /**
- * R2 key of the requested variant. Only after the reveal, except for the two images of a daily moment, which any
- * active member (the route already requires it) can fetch as soon as they are uploaded.
+ * R2 key of the requested variant (and the one to try if its object is missing, see `resolveVariantKey`). Only after
+ * the reveal, except for the two images of a daily moment, which any active member (the route already requires it)
+ * can fetch as soon as they are uploaded.
  */
 export async function getDownloadKey(
   db: D1Database,
   trip: TripRow,
   viewerId: string,
   mediaId: string,
-  variant: "thumb" | "original",
-): Promise<string> {
+  variant: MediaVariant,
+): Promise<{ key: string; fallbackKey: string | null }> {
   const revealed = isRevealed(trip);
   const row = await repo.findDownloadKeys(db, mediaId, trip.id, viewerId);
   if (!revealed && !row?.isMoment) throw forbidden("Todavía no se reveló el rollo");
   if (!row) throw notFound();
-  return variant === "thumb" ? row.thumbKey : row.originalKey;
+  return resolveVariantKey(row, variant);
 }
 
 /**
@@ -254,7 +282,7 @@ export async function deleteTripMedia(env: Env, mediaId: string, opts: { purge?:
   if (!row) return false;
   // A moment's selfie goes with its main photo.
   const rows = [row, ...(await repo.findLiveSelfies(env.DB, row.id))];
-  await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey]));
+  await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey, ...(r.displayKey ? [r.displayKey] : [])]));
   const now = Date.now();
   await env.DB.batch(
     rows.flatMap((r) => [

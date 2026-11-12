@@ -196,6 +196,11 @@ export function setTripMaxMembers(db: D1Database, tripId: string, maxMembers: nu
     .bind(maxMembers, tripId);
 }
 
+/** Statement: a superadmin keeps (or stops keeping) a rollo's originals. Nothing already purged comes back. */
+export function setTripKeepOriginals(db: D1Database, tripId: string, keep: boolean): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET keep_originals = ? WHERE id = ?").bind(keep ? 1 : 0, tripId);
+}
+
 // Rollos. Same raw, qualified identifiers as above (correlated subqueries against `trips`).
 const tripActiveMembers = sql<number>`(SELECT COUNT(*) FROM members m WHERE m.trip_id = trips.id AND m.removed_at IS NULL AND m.left_at IS NULL)`;
 const tripMediaCount = sql<number>`(SELECT COUNT(*) FROM media md WHERE md.trip_id = trips.id AND md.status = 'uploaded' AND md.deleted_at IS NULL)`;
@@ -210,6 +215,8 @@ const tripColumns = {
   revealAt: trips.revealAt,
   revealedAt: trips.revealedAt,
   maxMembers: trips.maxMembers,
+  keepOriginals: trips.keepOriginals,
+  originalsPurgedAt: trips.originalsPurgedAt,
   creatorId: users.id,
   creatorName: users.name,
   creatorUsername: users.username,
@@ -227,6 +234,8 @@ export type AdminTripRow = {
   revealAt: number;
   revealedAt: number | null;
   maxMembers: number;
+  keepOriginals: number;
+  originalsPurgedAt: number | null;
   creatorId: string | null;
   creatorName: string | null;
   creatorUsername: string | null;

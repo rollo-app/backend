@@ -22,7 +22,7 @@ describe("GET /admin/trips", () => {
     expect(asc.body.items.map((t: any) => t.id)).toEqual([b.tripId]);
     const row = r.body.items[1];
     expect(Object.keys(row).sort()).toEqual(
-      ["activeMembers", "createdAt", "creator", "endsAt", "id", "joinCode", "maxMembers", "mediaCount", "name", "revealAt", "revealed", "stage", "startsAt"].sort(),
+      ["activeMembers", "createdAt", "creator", "endsAt", "id", "joinCode", "keepOriginals", "maxMembers", "mediaCount", "name", "originalsExpireAt", "originalsPurgedAt", "revealAt", "revealed", "stage", "startsAt"].sort(),
     );
     expect(row).toMatchObject({ id: a.tripId, name: "Viaje al sur", joinCode: a.code, createdAt: 1000, revealed: false, stage: "active", activeMembers: 1, maxMembers: 15, mediaCount: 0 });
     expect(row.creator).toEqual({ id: a.adminUserId, name: "Juani", username: expect.any(String) });

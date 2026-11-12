@@ -33,6 +33,12 @@ export const complete: RouteHandler<typeof completeRoute, AppEnv> = async (c) =>
 };
 
 /** Feed item for the API. Before the reveal only metadata goes out; the rest is added after it. */
+/** Download paths of a photo; `display` only when it has one. */
+function filePaths(tripId: string, id: string, hasDisplay: boolean) {
+  const base = `/trips/${tripId}/media/${id}`;
+  return { thumb: `${base}/thumb`, original: `${base}/original`, ...(hasDisplay && { display: `${base}/display` }) };
+}
+
 function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPrivate: boolean, viewerId: string) {
   return {
     id: r.id,
@@ -56,10 +62,8 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
     ...(!revealed && r.momentDay !== null && {
       width: r.width,
       height: r.height,
-      files: {
-        thumb: `/trips/${tripId}/media/${r.id}/thumb`,
-        original: `/trips/${tripId}/media/${r.id}/original`,
-      },
+      files: filePaths(tripId, r.id, r.hasDisplay),
+      originalAvailable: !r.originalPurged,
     }),
     ...(r.momentDay !== null && {
       momentDay: r.momentDay,
@@ -73,19 +77,15 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
               width: r.selfieWidth,
               height: r.selfieHeight,
               thumbhash: r.selfieThumbhash,
-              files: {
-                thumb: `/trips/${tripId}/media/${r.selfieId}/thumb`,
-                original: `/trips/${tripId}/media/${r.selfieId}/original`,
-              },
+              files: filePaths(tripId, r.selfieId, r.selfieHasDisplay === true),
+              originalAvailable: r.selfieOriginalPurged !== true,
             },
     }),
     ...(revealed && {
       width: r.width,
       height: r.height,
-      files: {
-        thumb: `/trips/${tripId}/media/${r.id}/thumb`,
-        original: `/trips/${tripId}/media/${r.id}/original`,
-      },
+      files: filePaths(tripId, r.id, r.hasDisplay),
+      originalAvailable: !r.originalPurged,
       featuredByMe: r.featuredByMe,
       featureBlocked: r.featureBlockedAt !== null,
       // The two images of a daily moment never go to a profile, nor an archived photo (it has to be unarchived first).
@@ -115,8 +115,8 @@ export const feed: RouteHandler<typeof feedRoute, AppEnv> = async (c) => {
 
 export const download: RouteHandler<typeof downloadRoute, AppEnv> = async (c) => {
   const { mediaId, variant } = c.req.valid("param");
-  const key = await service.getDownloadKey(c.env.DB, c.get("trip"), c.get("user").id, mediaId, variant);
-  return serveMediaFile(c.env.MEDIA, key);
+  const { key, fallbackKey } = await service.getDownloadKey(c.env.DB, c.get("trip"), c.get("user").id, mediaId, variant);
+  return serveMediaFile(c.env.MEDIA, key, fallbackKey);
 };
 
 export const remove: RouteHandler<typeof deleteRoute, AppEnv> = async (c) => {

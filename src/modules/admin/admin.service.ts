@@ -1,6 +1,7 @@
 import { deleteAccount } from "../account/account.service";
 import { DEGRADED_KEY, resetDegradedCache } from "../../lib/degraded";
 import { badRequest, notFound } from "../../shared/errors";
+import { originalsExpireAt } from "../../lib/util";
 import type { Env, UserRow } from "../../types";
 import { deleteTripMedia } from "../media/media.service";
 import { type Page, type PageQuery, paginate } from "../../lib/paging";
@@ -89,10 +90,12 @@ export function tripStage(t: Pick<repo.AdminTripRow, "startsAt" | "endsAt" | "re
   return "active";
 }
 
-function presentTrip({ revealedAt, creatorId, creatorName, creatorUsername, ...t }: repo.AdminTripRow, now: number) {
+function presentTrip({ revealedAt, keepOriginals, creatorId, creatorName, creatorUsername, ...t }: repo.AdminTripRow, now: number) {
   const stage = tripStage({ ...t, revealedAt }, now);
   return {
     ...t,
+    keepOriginals: keepOriginals !== 0,
+    originalsExpireAt: originalsExpireAt({ keep_originals: keepOriginals, revealed_at: revealedAt, reveal_at: t.revealAt }),
     revealed: stage === "revealed",
     stage,
     creator: creatorId ? { id: creatorId, name: creatorName, username: creatorUsername } : null,
@@ -120,17 +123,25 @@ export async function getTrip(db: D1Database, tripId: string, now: number) {
   return { ...presentTrip(trip, now), members };
 }
 
-/** Changes a rollo's member cap (a paid rollo/event gets more room). Never below the people already in it. */
+/**
+ * Changes a rollo's member cap (a paid rollo/event gets more room; never below the people already in it) and/or
+ * whether it keeps its originals (the paid pass will set the same flag later). The cap goes first, so an invalid one
+ * rejects the request before anything is written. Turning `keepOriginals` on after the cron already purged some
+ * originals restores nothing: it only stops further purges.
+ */
 export async function editTrip(db: D1Database, tripId: string, patch: AdminEditTrip, now: number) {
   const before = await repo.findTripCapacity(db, tripId);
   if (!before) throw notFound();
-  const tooLow = (active: number) =>
-    badRequest(`El cupo no puede ser menor a la cantidad de participantes activos (${active}).`);
-  if (patch.maxMembers < before.active) throw tooLow(before.active);
-  const res = await repo.setTripMaxMembers(db, tripId, patch.maxMembers).run();
-  const after = await repo.findTripCapacity(db, tripId);
-  if (!after) throw notFound();
-  // Zero changes with a valid value: someone joined between the read and the write.
-  if (!res.meta.changes) throw tooLow(after.active);
+  if (patch.maxMembers !== undefined) {
+    const tooLow = (active: number) =>
+      badRequest(`El cupo no puede ser menor a la cantidad de participantes activos (${active}).`);
+    if (patch.maxMembers < before.active) throw tooLow(before.active);
+    const res = await repo.setTripMaxMembers(db, tripId, patch.maxMembers).run();
+    const after = await repo.findTripCapacity(db, tripId);
+    if (!after) throw notFound();
+    // Zero changes with a valid value: someone joined between the read and the write.
+    if (!res.meta.changes) throw tooLow(after.active);
+  }
+  if (patch.keepOriginals !== undefined) await repo.setTripKeepOriginals(db, tripId, patch.keepOriginals).run();
   return getTrip(db, tripId, now);
 }

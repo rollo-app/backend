@@ -53,8 +53,8 @@ export const list: RouteHandler<typeof listRoute, AppEnv> = async (c) => {
 
 export const file: RouteHandler<typeof fileRoute, AppEnv> = async (c) => {
   const { userId, mediaId, variant } = c.req.valid("param");
-  const key = await service.getFeaturedFileKey(c.env.DB, c.get("user").id, userId, mediaId, variant);
-  return serveStrippedJpeg(c.env.MEDIA, key);
+  const { key, fallbackKey } = await service.getFeaturedFileKey(c.env.DB, c.get("user").id, userId, mediaId, variant);
+  return serveStrippedJpeg(c.env.MEDIA, key, fallbackKey);
 };
 
 export const featuredBy: RouteHandler<typeof featuredByRoute, AppEnv> = async (c) => {

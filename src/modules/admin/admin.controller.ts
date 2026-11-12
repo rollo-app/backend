@@ -108,7 +108,9 @@ export async function editTrip(c: Context<AppEnv>) {
   if (!parsed.success) {
     const issue = parsed.error.issues.find((i) => i.code === "unrecognized_keys") ?? parsed.error.issues[0];
     if (issue?.code === "unrecognized_keys") throw badRequest(`Campo no editable: ${issue.keys[0]}`);
+    if (issue?.path[0] === "keepOriginals") throw badRequest("keepOriginals: tiene que ser true o false");
     throw badRequest("maxMembers: tiene que ser un entero entre 1 y 1000");
   }
+  if (Object.values(parsed.data).every((v) => v === undefined)) throw badRequest("Mandá al menos un campo para editar");
   return c.json(await service.editTrip(c.env.DB, c.req.param("tripId")!, parsed.data, Date.now()));
 }
