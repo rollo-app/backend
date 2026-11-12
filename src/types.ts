@@ -20,7 +20,7 @@ export type Env = {
   RESEND_API_KEY?: string;
   /** Sender of the login emails, e.g. "Rollo <no-reply@rolloproject.com>". */
   EMAIL_FROM?: string;
-  /** Where report emails go. Defaults to soporte@rolloproject.com. */
+  /** Where report emails go. Defaults to support@rolloproject.com. */
   REPORTS_EMAIL?: string;
   /** Bearer token for the `/admin/*` routes (delete media or accounts). Without it those routes are disabled. */
   ADMIN_TOKEN?: string;

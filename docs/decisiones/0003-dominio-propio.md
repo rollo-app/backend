@@ -29,7 +29,7 @@ relay de "Ocultar mi email" de Apple conviene un dominio de Rollo.
 |---|---|---|
 | Sitio | `rolloproject.com` | `rollo.juanifraga.com`; `somosrollo.com` redirige |
 | API | `api.rolloproject.com` | `rollo-api.juanifraga.com`; `api.somosrollo.com` queda como alias |
-| Mails | `no-reply@rolloproject.com` (envía), `soporte@rolloproject.com` (recibe) | `rollo@` / `soporte@juanifraga.com` |
+| Mails | `no-reply@rolloproject.com` (envía), `support@rolloproject.com` (recibe) | `rollo@` / `soporte@juanifraga.com` |
 
 **Nada se apaga:** los builds instalados tienen fijos la API vieja y el dominio de Universal Links viejo, y los mails y
 links de amistad ya mandados apuntan al sitio viejo. Los dominios sirven lo mismo (la API, el mismo Worker; el sitio, el
@@ -43,8 +43,8 @@ Worker `rollo-site` de Cloudflare. El DNS de los dominios sigue en Cloudflare, c
 1. **Infraestructura en paralelo (sin cambiar a nadie):** el Worker de la API atiende también `api.rolloproject.com`;
    el sitio se publica en Vercel con `rolloproject.com` (canónico), `somosrollo.com` redirige, y `rollo.juanifraga.com`
    pasa a Vercel; después se apaga el Worker `rollo-site`.
-2. **Mail:** verificar `rolloproject.com` en Resend (DKIM, SPF, DMARC), Email Routing de Cloudflare para `soporte@` →
-   Gmail (los mails salen de `no-reply@`, que no recibe; el mail del código responde a `soporte@`). Registrar el
+2. **Mail:** verificar `rolloproject.com` en Resend (DKIM, SPF, DMARC), Email Routing de Cloudflare para `support@` →
+   Gmail (los mails salen de `no-reply@`, que no recibe; el mail del código responde a `support@`). Registrar el
    remitente en el portal de Apple (relay de "Ocultar mi email").
 3. **App (próximo build, 1.4.0):** `API_URL`, `SITE_URL` y los links (`/entrar`, `/friends`) al dominio nuevo, y
    `associatedDomains` con el dominio nuevo **y** `rollo.juanifraga.com`. El backend pasa `LOGIN_LINK_URL` y el link de

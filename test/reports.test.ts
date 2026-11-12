@@ -92,7 +92,7 @@ describe("report emails", () => {
     globalThis.fetch = realFetch;
   });
 
-  it("by default the report email goes from no-reply@ to soporte@rolloproject.com", async () => {
+  it("by default the report email goes from no-reply@ to support@rolloproject.com", async () => {
     const { a, mediaId } = await setup();
     const bodies: any[] = [];
     globalThis.fetch = (async (input: any, init?: any) => {
@@ -105,7 +105,7 @@ describe("report emails", () => {
     }) as typeof fetch;
     const res = await api("POST", "/reports", { token: a.token, body: { mediaId, reason: "offensive" }, env: { RESEND_API_KEY: "x" } });
     expect(res.status).toBe(204);
-    expect(bodies[0]).toMatchObject({ from: "Rollo <no-reply@rolloproject.com>", to: ["soporte@rolloproject.com"] });
+    expect(bodies[0]).toMatchObject({ from: "Rollo <no-reply@rolloproject.com>", to: ["support@rolloproject.com"] });
   });
 
   it("a failing email still records the report", async () => {
