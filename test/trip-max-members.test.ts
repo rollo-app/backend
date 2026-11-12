@@ -4,7 +4,7 @@ import migrationSql from "../migrations/0036_trip_max_members.sql?raw";
 import { flushPendingPushes } from "../src/lib/push";
 import { addMembersDirect, api, befriend, joinAs, makeSuperadmin, mockExpo, newTrip, registerToken, signUp } from "./helpers";
 
-const FULL_MESSAGE = "Este rollo está lleno (15 de 15). Pedile a quien lo creó que haga lugar.";
+const FULL_MESSAGE = "Este rollo está lleno. Pedile a quien lo creó que haga lugar.";
 const joinCode = (code: string, token: string) => api("POST", "/trips/join", { token, body: { code } });
 const addFriends = (tripId: string, token: string, friendIds: string[]) =>
   api("POST", `/trips/${tripId}/members`, { token, body: { friendIds } });
@@ -17,7 +17,7 @@ async function tripWith(others: number) {
 }
 
 describe("join by code with a member cap", () => {
-  it("the 16th person gets 409 with the numbers; the cap is 15 by default", async () => {
+  it("the 16th person gets 409 without revealing the cap; the cap is 15 by default", async () => {
     const t = await tripWith(13);
     await joinAs(t.code, "Quince");
     const late = await signUp(undefined, "Dieciseis");

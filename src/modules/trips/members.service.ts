@@ -103,11 +103,8 @@ export async function joinTrip(
   if (isRevealed(trip, now)) throw conflict("Este rollo ya se reveló");
 
   const added = await addMember(db, trip.id, user.id, null, now);
-  if (added.status === "full") {
-    const cap = await repo.memberCapacity(db, trip.id);
-    const max = cap?.max ?? trip.max_members;
-    throw conflict(`Este rollo está lleno (${Math.max(cap?.active ?? max, max)} de ${max}). Pedile a quien lo creó que haga lugar.`);
-  }
+  // The joiner is not a member yet: the message must not reveal how many people the rollo holds.
+  if (added.status === "full") throw conflict("Este rollo está lleno. Pedile a quien lo creó que haga lugar.");
   if (added.status !== "added") throw forbidden("El admin te sacó de este rollo");
   return { created: true, trip, member: added.member };
 }

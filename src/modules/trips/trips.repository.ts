@@ -131,17 +131,6 @@ export function reactivateLeftMember(db: D1Database, memberId: string, addedBy: 
     .bind(addedBy, memberId);
 }
 
-/** Active members of the trip and its cap, for the "full" message. */
-export function memberCapacity(db: D1Database, tripId: string): Promise<{ active: number; max: number } | null> {
-  return db
-    .prepare(
-      `SELECT (SELECT COUNT(*) FROM members WHERE trip_id = t.id AND left_at IS NULL AND removed_at IS NULL) AS active, t.max_members AS max
-       FROM trips t WHERE t.id = ?`,
-    )
-    .bind(tripId)
-    .first<{ active: number; max: number }>();
-}
-
 export function listActiveMembers(db: D1Database, tripId: string): Promise<{ results: ActiveMemberRow[] }> {
   return db
     .prepare(
