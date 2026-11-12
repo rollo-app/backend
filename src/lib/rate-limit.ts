@@ -45,6 +45,14 @@ export const rateLimit = (name: "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_
 const SKIPPED = new Set(["/openapi.json", "/docs"]);
 
 /**
+ * File downloads: `GET /trips/{tripId}/media/{mediaId}/{thumb|original}` and `GET /featured/{userId}/{mediaId}/{variant}`.
+ * They have their own per-user limiter (`RL_FILES`) and a gallery loads hundreds of thumbnails at once, so counting them
+ * against `RL_GLOBAL` (120/min per session) cut the scroll short and then blocked the feed and everything else too.
+ * They still pay `RL_IP` (invented tokens cannot flood by IP) and `RL_FILES` (after `requireUser`).
+ */
+const FILE_DOWNLOAD = /^\/(?:trips\/[^/]+\/media\/[^/]+\/(?:thumb|original)|featured\/[^/]+\/[^/]+\/[^/]+)$/;
+
+/**
  * App-level limiter, before auth runs. It keys by a hash of the Bearer token (one key per session, so friends sharing
  * a Wi-Fi or mobile IP do not share a budget) or, without token, by IP. Tokens are not validated here, so with a token
  * the IP also gets a roomier `RL_IP` budget: inventing tokens does not dodge the limit.
@@ -57,7 +65,8 @@ export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
   const header = c.req.header("Authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (token) {
-    if (!(await allowed(c.env, "RL_GLOBAL", `t:${(await hashToken(token)).slice(0, 32)}`))) throw tooFast();
+    // Without a token (anonymous) downloads keep RL_GLOBAL by IP below: they get 401 anyway and nothing is gained by skipping.
+    if (!FILE_DOWNLOAD.test(path) && !(await allowed(c.env, "RL_GLOBAL", `t:${(await hashToken(token)).slice(0, 32)}`))) throw tooFast();
     if (!(await allowed(c.env, "RL_IP", `ip:${ip}`))) throw tooFast();
   } else if (!(await allowed(c.env, "RL_GLOBAL", `ip:${ip}`))) {
     throw tooFast();
