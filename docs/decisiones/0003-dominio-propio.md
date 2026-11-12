@@ -47,7 +47,7 @@ Worker `rollo-site` de Cloudflare. El DNS de los dominios sigue en Cloudflare, c
 2. **Mail:** verificar `rolloproject.com` en Resend (DKIM, SPF, DMARC), Email Routing de Cloudflare para `support@` →
    Gmail (los mails salen de `no-reply@`, que no recibe; el mail del código responde a `support@`). Registrar el
    remitente en el portal de Apple (relay de "Ocultar mi email").
-3. **App (próximo build, 1.4.0):** `API_URL`, `SITE_URL` y los links (`/entrar`, `/friends`) al dominio nuevo, y
+3. **App (próximo build, 1.4.0):** `API_URL`, `SITE_URL` y los links (`/login`, antes `/entrar`, y `/friends`) al dominio nuevo, y
    `associatedDomains` con el dominio nuevo **y** `rollo.juanifraga.com`. El backend pasa `LOGIN_LINK_URL` y el link de
    amistad al dominio nuevo (los builds viejos igual los abren: esas páginas mandan a `rollo://`).
 4. **A mano:** URLs de App Store Connect (soporte, privacidad, marketing), pantalla de consentimiento de Google

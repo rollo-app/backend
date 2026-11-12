@@ -13,7 +13,7 @@ export const devSentCodes = new Map<string, string>();
 /** Magic-link URLs "sent" without a Resend key (local dev and tests), by email. */
 export const devSentLinks = new Map<string, string>();
 
-export const DEFAULT_LOGIN_LINK_URL = "https://rolloproject.com/entrar";
+export const DEFAULT_LOGIN_LINK_URL = "https://rolloproject.com/login";
 
 /**
  * The magic-link URL. Token and email go in the fragment, which browsers never send to a server,
