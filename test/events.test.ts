@@ -234,6 +234,19 @@ describe("event members", () => {
     expect(res.body).toEqual({ groupIds: [] });
   });
 
+  it("changing groups after the reveal is refused", async () => {
+    const ev = await newEvent();
+    const guest = await signUp(undefined, "Invitado");
+    await api("POST", "/trips/join", { token: guest.token, body: { code: ev.code, groupIds: [ev.a] } });
+    await env.DB.prepare("UPDATE trips SET reveal_at = ? WHERE id = ?").bind(Date.now() - DAY, ev.tripId).run();
+    for (const token of [guest.token, ev.org.token]) {
+      const res = await api("PUT", `/trips/${ev.tripId}/members/me/groups`, { token, body: { groupIds: [ev.b] } });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("Este evento ya se reveló.");
+    }
+    expect(await myGroups(ev.tripId, guest.token)).toEqual([ev.a]);
+  });
+
   it("setting groups on a regular trip is refused", async () => {
     const { tripId, adminToken } = await newTrip();
     const res = await api("PUT", `/trips/${tripId}/members/me/groups`, { token: adminToken, body: { groupIds: [] } });

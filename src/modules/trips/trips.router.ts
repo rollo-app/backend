@@ -40,7 +40,7 @@ export const joinTripRoute = createRoute({
   description:
     "With the invite code. An event is joined choosing groups (`groupIds`, all from that event, else 400): without them 409 with `code` EVENT_NEEDS_UPDATE, " +
     "checked before anything else, even for an active member. The member and their groups are written together. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), " +
-    "200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409 ('Este evento ya se reveló.' for an event).  A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
+    "200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409 ('Este evento ya se reveló.' for an event). A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: JoinTripSchema } }, required: true } },
@@ -130,7 +130,7 @@ export const setMyGroupsRoute = createRoute({
   tags,
   summary: "Set your groups in an event",
   description:
-    "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip.",
+    "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.').",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams, body: { content: { "application/json": { schema: SetMyGroupsSchema } }, required: true } },

@@ -221,6 +221,7 @@ export async function updateMyMembership(
 /** Replaces my groups in an event. Guests need at least one; organizers (admins) may have none. */
 export async function setMyGroups(db: D1Database, trip: TripRow, member: MemberRow, groupIds: string[]): Promise<string[]> {
   if (trip.type !== "event") throw conflict("Solo los eventos tienen grupos.");
+  if (isRevealed(trip)) throw conflict("Este evento ya se reveló.");
   if (groupIds.length === 0 && member.role !== "admin") throw badRequest("Elegí al menos un grupo");
   const chosen = await validGroupIds(db, trip.id, groupIds);
   await db.batch(repo.setMemberGroups(db, member.id, chosen));
