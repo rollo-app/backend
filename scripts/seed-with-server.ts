@@ -6,6 +6,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
  * bindings, routes and cron: src/lib/rate-limit.ts lets everything through when a binding is missing), runs the seed
  * against it and stops it. Production config and `npm run deploy` are untouched.
  *
+ * `SEED_SCRIPT=scripts/seed-large.ts` runs another seed against the same throwaway server (`npm run seed:large`).
  * With `SEED_API_URL` set the seed runs against that server as is (its limits apply; the seed retries on 429).
  * `SEED_PERSIST_TO=<dir>` isolates the local state, like `wrangler dev --persist-to`.
  */
@@ -35,7 +36,7 @@ async function waitReady(url: string): Promise<void> {
 
 function runSeed(api: string): Promise<number> {
   return new Promise((resolve) => {
-    const args = ["scripts/seed.ts", ...process.argv.slice(2)];
+    const args = [process.env.SEED_SCRIPT ?? "scripts/seed.ts", ...process.argv.slice(2)];
     const child = spawn("./node_modules/.bin/tsx", args, { stdio: "inherit", env: { ...process.env, SEED_API_URL: api } });
     child.on("exit", (code) => resolve(code ?? 1));
   });

@@ -276,6 +276,7 @@ npm run dev:lan       # para que el iPhone lo vea por Wi-Fi (ver abajo)
 npm run dev -- --test-scheduled   # + correr el cron a mano: curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"
 npm run seed          # (levanta solo un server local sin rate limits, ~2 min) 10 rollos de prueba (en curso, revelado, por empezar...) con usuarios <nombre>@rollo.test (ver abajo); imprime rollos con código y etapa, cuentas y qué probar con cada una, y un link de amistad
 npm run seed -- --reset   # borra rollos y usuarios de prueba de D1 local (con amistades, links y descripciones) y los recrea (cambian los códigos)
+npm run seed:large    # (~varios min) 2 rollos grandes para el feed paginado: "Fiesta grande" (revelado, 100 invitados + Juani, 2000 fotos) y "Fiesta en curso" (300 fotos, sin revelar); idempotente, `-- --reset` borra solo esos dos y los invitados
 npm run email:preview   # escribe login-email-preview.html (git-ignored) con el mail del código, para abrirlo en el navegador
 ```
 
@@ -302,6 +303,8 @@ Tomi como desconocido). Cuentas:
   se imprime el código y `rollo://friends/<CODE>`; el link público es `https://rollo.juanifraga.com/friends#<CODE>` y `rollo://friends/<CODE>` también vale) y el seed la des-amiga de Juani para poder canjearlo otra vez.
 - `nuevo@rollo.test`: sin rollos ni amigos (estados vacíos; el seed le borra los amigos en cada corrida). `rocio@rollo.test`: tiene
   nombre pero no `@usuario` (la app la manda a "Completá tu perfil"). Sin foto: Lu, Mateo, Nuevo y Rocío.
+
+**Seed grande** (`scripts/seed-large.ts`, `scripts/seed/large.ts`, tests de lo puro en `test/seed-large.test.ts`): `npm run seed:large` usa el mismo server sin rate limits y crea "Fiesta grande" (revelada, Juani creadora + "Invitado 1".."Invitado 100", 2000 fotos reales) y "Fiesta en curso" (300 fotos, para Mapa → Feed); el tope por persona se sube en D1 porque la API admite hasta 200. Si el rollo existe lo saltea; `--reset` borra solo esos rollos y los invitados (`invitado.N@rollo.test`).
 
 **Subidas en local:** con `DEV_LOCAL_UPLOADS=1` en `.dev.vars` (está en `.dev.vars.example`), las URLs
 de subida apuntan al propio worker (`PUT /dev/upload/<key>`, firmado con HMAC, fuera del contrato) y
