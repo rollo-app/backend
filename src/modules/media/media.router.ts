@@ -5,6 +5,7 @@ import { rateLimit } from "../../lib/rate-limit";
 import { MediaParams, TripParams } from "../../schemas";
 import * as controller from "./media.controller";
 import {
+  FeedQuery,
   FeedResponseSchema,
   MediaFileParams,
   MediaRegisteredSchema,
@@ -65,11 +66,13 @@ export const feedRoute = createRoute({
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
     "After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, " +
     "and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`; before the reveal only a daily moment's photo has `commentCount`). " +
-    "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
+    "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out. " +
+    "Oldest first (`takenAt`, ties by id), paginated with a keyset cursor: send `limit` and then each page's `nextCursor` as `cursor`. " +
+    "Without cursor or limit returns the whole feed, for older app builds; new clients should always send limit.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
-  request: { params: TripParams },
-  responses: { 200: json(FeedResponseSchema, "Feed ordered by the time the shot was taken"), ...errors(401, 403, 428) },
+  request: { params: TripParams, query: FeedQuery },
+  responses: { 200: json(FeedResponseSchema, "A page of the feed ordered by the time the shot was taken"), ...errors(400, 401, 403, 428) },
 });
 
 // ---------- Download ----------

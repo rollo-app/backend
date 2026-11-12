@@ -69,6 +69,31 @@ describe("large rollo (100 members, 2,000 photos)", () => {
       expect(typeof item.commentCount).toBe("number");
     }
   }, 120_000);
+
+  it("walks the whole revealed feed with the default page size (limit=30 first, then only the cursor): 67 pages, 2,000 unique ids in order", async () => {
+    const fx = await setup();
+    expect((await api("POST", `/trips/${fx.tripId}/reveal`, { token: fx.adminToken })).status).toBeLessThan(300);
+    const token = fx.members[0]!.token;
+    const compat = await api("GET", `/trips/${fx.tripId}/feed`, { token });
+    const expected = compat.body.items.map((i: { id: string }) => i.id);
+    expect(compat.body.nextCursor).toBeNull();
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const path: string = `/trips/${fx.tripId}/feed${cursor ? `?cursor=${encodeURIComponent(cursor)}` : "?limit=30"}`;
+      const res = pages === 0 ? await measured("feed page 1 of 30 (revealed)", path, token) : await api("GET", path, { token });
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(cursor ? Math.min(30, PHOTOS - seen.length) : 30);
+      seen.push(...res.body.items.map((i: { id: string }) => i.id));
+      cursor = res.body.nextCursor;
+      pages++;
+    } while (cursor);
+    expect(pages).toBe(Math.ceil(PHOTOS / 30));
+    expect(new Set(seen).size).toBe(PHOTOS);
+    expect(seen).toEqual(expected);
+  }, 120_000);
 });
 
 describe("momentPosted in a large rollo", () => {

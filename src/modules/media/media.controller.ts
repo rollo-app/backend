@@ -107,9 +107,10 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
 
 export const feed: RouteHandler<typeof feedRoute, AppEnv> = async (c) => {
   const trip = c.get("trip");
-  const { revealed, rows } = await service.getFeed(c.env.DB, trip, c.get("user").id);
+  const { cursor, limit } = c.req.valid("query");
+  const { revealed, rows, nextCursor } = await service.getFeed(c.env.DB, trip, c.get("user").id, { cursor, limit });
   const items = rows.map((r) => presentFeedItem(r, trip.id, revealed, trip.featuring_disabled !== 0, c.get("user").id));
-  return c.json({ revealed, revealAt: trip.reveal_at, items }, 200);
+  return c.json({ revealed, revealAt: trip.reveal_at, items, nextCursor }, 200);
 };
 
 export const download: RouteHandler<typeof downloadRoute, AppEnv> = async (c) => {

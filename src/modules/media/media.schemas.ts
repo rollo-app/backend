@@ -156,11 +156,29 @@ export const FeedItemSchema = z
   })
   .openapi("FeedItem");
 
+export const DEFAULT_FEED_PAGE = 30;
+export const MAX_FEED_PAGE = 100;
+
+export const FeedQuery = z.object({
+  cursor: z.string().optional().openapi({ param: { name: "cursor", in: "query" }, description: "`nextCursor` of the previous page" }),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_FEED_PAGE)
+    .optional()
+    .openapi({
+      param: { name: "limit", in: "query" },
+      description: `Page size (1-${MAX_FEED_PAGE}; default ${DEFAULT_FEED_PAGE} when only \`cursor\` is sent)`,
+    }),
+});
+
 export const FeedResponseSchema = z
   .object({
     revealed: z.boolean(),
     revealAt: z.number().int(),
     items: z.array(FeedItemSchema),
+    nextCursor: z.string().nullable().openapi({ description: "Pass it as `cursor` to get the next page; null when there are no more items (always null without cursor or limit)" }),
   })
   .openapi("Feed");
 

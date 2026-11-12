@@ -4,11 +4,12 @@ import { assertStorageAvailable } from "../../lib/storage";
 import { mediaKeys, presignPut } from "../../lib/r2";
 import { isRevealed, localDate } from "../../lib/util";
 import { MOMENT_WINDOW_MS } from "../../lib/moments";
+import { decodeCursor, encodeCursor } from "../../lib/cursor";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import type { Env, MemberRow, TripRow, UserRow } from "../../types";
-import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
+import { DEFAULT_FEED_PAGE, MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
 import { deleteFeaturedOfMedia } from "../featured/featured.repository";
 import { deleteLikesOfMedia } from "../likes/likes.repository";
 import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
@@ -205,9 +206,23 @@ export async function completeUpload(
 }
 
 /** Feed rows of the trip for the viewer; `revealed` decides how much of each row the controller exposes. */
-export async function getFeed(db: D1Database, trip: TripRow, viewerId: string): Promise<{ revealed: boolean; rows: repo.FeedRow[] }> {
+export async function getFeed(
+  db: D1Database,
+  trip: TripRow,
+  viewerId: string,
+  opts: { cursor?: string; limit?: number } = {},
+): Promise<{ revealed: boolean; rows: repo.FeedRow[]; nextCursor: string | null }> {
   const revealed = isRevealed(trip);
-  return { revealed, rows: await repo.listFeed(db, trip.id, viewerId) };
+  // Older app builds send neither param and expect the whole feed.
+  if (opts.cursor === undefined && opts.limit === undefined) {
+    return { revealed, rows: await repo.listFeed(db, trip.id, viewerId, null), nextCursor: null };
+  }
+  const limit = opts.limit ?? DEFAULT_FEED_PAGE;
+  const after = opts.cursor !== undefined ? decodeCursor(opts.cursor) : null;
+  const fetched = await repo.listFeed(db, trip.id, viewerId, { limit: limit + 1, after: after && { takenAt: after.at, id: after.id } });
+  const rows = fetched.slice(0, limit);
+  const last = rows[rows.length - 1];
+  return { revealed, rows, nextCursor: fetched.length > limit && last ? encodeCursor({ at: last.takenAt, id: last.id }) : null };
 }
 
 /**
