@@ -113,6 +113,8 @@ async function buildRollo(name: string, photos: number, kind: "revealed" | "ongo
     tokens.juani,
   );
   const tripId: string = created.trip.id;
+  // A new rollo is capped at 15 members; these are party-sized, so lift the cap in local D1 before the guests join.
+  d1(`UPDATE trips SET max_members = 1000 WHERE id = ${q(tripId)}`);
   // Guests join first: joining is rejected once the rollo is revealed.
   console.log(`  joining ${GUEST_COUNT} guests...`);
   await pool(tokens.guests.map((t) => () => api("POST", "/trips/join", { code: created.trip.joinCode }, t)), 8);
