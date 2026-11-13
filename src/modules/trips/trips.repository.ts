@@ -12,7 +12,7 @@ export type ActiveMemberRow = {
 export type NewTrip = Pick<
   TripRow,
   "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit" | "created_at"
-  | "moment_mode" | "moment_window_start" | "moment_window_end" | "type"
+  | "moment_mode" | "moment_window_start" | "moment_window_end" | "type" | "max_members"
 > & { started_notified_at: number | null; featuring_disabled: number };
 
 export type TripEdit = Pick<
@@ -46,8 +46,8 @@ export function insertTrip(
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
                           daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at, featuring_disabled,
-                          moment_mode, moment_window_start, moment_window_end, created_by_user_id, type)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                          moment_mode, moment_window_start, moment_window_end, created_by_user_id, type, max_members)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        WHERE ? = 0 OR (
          (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?) < ?
          AND (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND created_at > ?) < ?
@@ -56,7 +56,7 @@ export function insertTrip(
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
       t.daily_photo_limit, t.daily_video_limit, t.photo_limit_mode, t.total_photo_limit, t.created_at, t.started_notified_at, t.featuring_disabled,
-      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId, t.type,
+      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId, t.type, t.max_members,
       creator.limited ? 1 : 0,
       creator.userId, t.created_at, creator.unrevealedMax,
       creator.userId, creator.windowSince, creator.windowMax,

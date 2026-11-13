@@ -42,7 +42,7 @@ export const TripSchema = z
     momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     momentWindowStart: z.number().int().openapi({ description: "Moment window start, minutes from midnight in the rollo's time zone" }),
     momentWindowEnd: z.number().int().openapi({ description: "Moment window end, minutes from midnight in the rollo's time zone" }),
-    maxMembers: z.number().int().openapi({ description: "Maximum number of active participants (15 for free rollos); joining or adding past it is refused" }),
+    maxMembers: z.number().int().openapi({ description: "Maximum number of active participants (15 for a new rollo, 200 for a new event); joining or adding past it is refused" }),
     originals: z
       .object({
         keep: z.boolean().openapi({ description: "The rollo keeps its full-quality originals forever (rollos that existed before the policy, and later the paid pass)" }),

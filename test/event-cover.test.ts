@@ -25,7 +25,7 @@ async function eventFixture() {
 const keys = (tripId: string) =>
   env.DB.prepare("SELECT cover_key c, pending_cover_key p FROM trips WHERE id = ?").bind(tripId).first<{ c: string | null; p: string | null }>();
 
-async function setCover(token: string, tripId: string, bytes = jpeg()) {
+async function setCover(token: string, tripId: string, bytes: Uint8Array = jpeg()) {
   const req = await api("POST", `/trips/${tripId}/cover`, { token, body: { sizeBytes: bytes.length } });
   expect(req.status).toBe(200);
   await env.MEDIA.put((await keys(tripId))!.p!, bytes);

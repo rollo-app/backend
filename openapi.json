@@ -1392,7 +1392,7 @@
           },
           "maxMembers": {
             "type": "integer",
-            "description": "Maximum number of active participants (15 for free rollos); joining or adding past it is refused"
+            "description": "Maximum number of active participants (15 for a new rollo, 200 for a new event); joining or adding past it is refused"
           },
           "originals": {
             "type": "object",

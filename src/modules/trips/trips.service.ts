@@ -19,6 +19,9 @@ import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
 export const MAX_UNREVEALED_CREATED = 2;
 export const MAX_CREATED_IN_WINDOW = 4;
 export const CREATE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+/** Active members a new rollo takes (the superadmin panel can change it per rollo). Events are bigger: they will be the paid tier. */
+export const TRIP_MAX_MEMBERS = 15;
+export const EVENT_MAX_MEMBERS = 200;
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 /** "3 de noviembre" in the given time zone. */
@@ -69,7 +72,7 @@ export async function createTrip(
 
   await hooks.beforeInsert?.();
 
-  // Events: always a total photo limit (20 by default) and no daily moment.
+  // Events: always a total photo limit (20 by default), no daily moment and room for a wedding-sized crowd.
   const isEvent = body.type === "event";
   const groups = isEvent ? (body.groups ?? []).map((name) => ({ id: crypto.randomUUID(), name })) : [];
 
@@ -92,6 +95,7 @@ export async function createTrip(
       featuring_disabled: body.featuringDisabled ? 1 : 0,
       moment_mode: isEvent ? "off" : body.momentMode,
       type: body.type,
+      max_members: isEvent ? EVENT_MAX_MEMBERS : TRIP_MAX_MEMBERS,
       moment_window_start: body.momentWindowStart,
       moment_window_end: body.momentWindowEnd,
     }, {

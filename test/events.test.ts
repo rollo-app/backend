@@ -29,6 +29,15 @@ describe("POST /trips (event)", () => {
     expect(res.body.trip.coverUrl).toBeNull();
   });
 
+  it("an event takes up to 200 people; a regular rollo keeps 15", async () => {
+    const { token } = await signUp(undefined, "Org");
+    const event = await api("POST", "/trips", { token, body: eventBody() });
+    expect(event.body.trip.maxMembers).toBe(200);
+    const regular = await newTrip();
+    const detail = await api("GET", `/trips/${regular.tripId}`, { token: regular.adminToken });
+    expect(detail.body.trip.maxMembers).toBe(15);
+  });
+
   it("rejects an event without groups", async () => {
     const { token } = await signUp(undefined, "Org");
     expect((await api("POST", "/trips", { token, body: eventBody({ groups: [] }) })).status).toBe(400);
