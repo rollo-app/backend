@@ -118,11 +118,11 @@ app.onError((err, c) => {
   return c.json({ error: "Error interno" }, 500);
 });
 
-/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the purge of abandoned incomplete accounts, the sweep of orphan avatar and event cover files, the purge of the files of deleted rollos, the "originals expire in 5 days" push and the queueing of expired originals (30 days after the reveal), the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the purge of abandoned incomplete accounts, the sweep of orphan avatar files, the hourly sweep of orphan event cover files, the purge of the files of deleted rollos, the "originals expire in 5 days" push and the queueing of expired originals (30 days after the reveal), the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), runOriginalsNotices(env, now), runOriginalsPurge(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), purgeIncompleteAccounts(env, now), sweepOrphanAvatars(env, now), sweepOrphanCovers(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), runOriginalsNotices(env, now), runOriginalsPurge(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), purgeIncompleteAccounts(env, now), sweepOrphanAvatars(env, now), (new Date(now).getUTCMinutes() < 5 ? sweepOrphanCovers(env, now) : Promise.resolve()), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

@@ -84,8 +84,40 @@ describe("sweepOrphanCovers", () => {
     const orphan = key(tripId);
     await put(orphan);
     const ctx = createExecutionContext();
-    await (app as any).scheduled(createScheduledController({ scheduledTime: new Date(Date.now() + 2 * HOUR) }), env, ctx);
+    await (app as any).scheduled(createScheduledController({ scheduledTime: new Date(Math.ceil((Date.now() + 2 * HOUR) / HOUR) * HOUR) }), env, ctx);
     await waitOnExecutionContext(ctx);
     expect(await exists(orphan)).toBe(false);
+  });
+
+  it("the cover sweep runs at most once per hour", async () => {
+    const tripId = await newEvent();
+    const orphan = key(tripId);
+    await put(orphan);
+    const base = Math.ceil((Date.now() + 2 * HOUR) / HOUR) * HOUR; // minute 0 of an hour in the future
+    const tick = async (t: number) => {
+      const ctx = createExecutionContext();
+      await (app as any).scheduled(createScheduledController({ scheduledTime: new Date(t) }), env, ctx);
+      await waitOnExecutionContext(ctx);
+    };
+    await tick(base + 30 * 60 * 1000); // minute 30: skipped
+    expect(await exists(orphan)).toBe(true);
+    await tick(base + 55 * 60 * 1000); // minute 55: skipped
+    expect(await exists(orphan)).toBe(true);
+    await tick(base + 60 * 60 * 1000); // minute 0: runs
+    expect(await exists(orphan)).toBe(false);
+  });
+
+  it("the cover sweep skips events revealed more than 7 days ago", async () => {
+    const old = await newEvent();
+    const recent = await newEvent();
+    const [oldOrphan, recentOrphan] = [key(old), key(recent)];
+    await put(oldOrphan);
+    await put(recentOrphan);
+    const now = Date.now() + 2 * HOUR;
+    await env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(now - 8 * 24 * HOUR, old).run();
+    await env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(now - 6 * 24 * HOUR, recent).run();
+    await sweepOrphanCovers(env, now);
+    expect(await exists(oldOrphan)).toBe(true);
+    expect(await exists(recentOrphan)).toBe(false);
   });
 });

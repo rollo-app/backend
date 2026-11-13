@@ -4,7 +4,7 @@ import { api, createTrip, newTrip, signUp } from "./helpers";
 import { BASELINE_JPEG, indexOfBytes, photoWithMetadata } from "./jpeg-fixture";
 
 // A well-formed JPEG: the cover is stripped of metadata on complete, which rejects anything else.
-const jpeg = (_label = "cover") => BASELINE_JPEG;
+const jpeg = () => BASELINE_JPEG;
 
 async function eventFixture() {
   const org = await signUp(undefined, "Org");
@@ -58,9 +58,9 @@ describe("event cover", () => {
 
   it("replacing the cover deletes the old one from R2 and only the current file is served", async () => {
     const ev = await eventFixture();
-    const first = await setCover(ev.org.token, ev.tripId, jpeg("one"));
+    const first = await setCover(ev.org.token, ev.tripId, jpeg());
     const oldKey = (await keys(ev.tripId))!.c!;
-    const second = await setCover(ev.org.token, ev.tripId, jpeg("two"));
+    const second = await setCover(ev.org.token, ev.tripId, jpeg());
     expect(second.body.coverUrl).not.toBe(first.body.coverUrl);
     expect(await env.MEDIA.get(oldKey)).toBeNull();
     expect((await api("GET", first.body.coverUrl)).status).toBe(404);
