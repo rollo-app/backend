@@ -2133,6 +2133,16 @@
             "description": "Trip-local date (YYYY-MM-DD) of the daily moment this photo answers. The member must have a moment for that day (409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
             "example": "2027-01-12"
           },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "maxItems": 30,
+            "description": "Events only (ignored in a regular rollo): the groups that will see the photo. Ids the guest is not in (or that no longer exist) are dropped; if none is left the photo goes to all the guest's groups (to all the groups, for an organizer). Retrying the same `id` never changes them."
+          },
           "pairedMediaId": {
             "type": [
               "string",

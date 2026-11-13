@@ -53,6 +53,15 @@ export const RegisterMediaSchema = z
           "(409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
         example: "2027-01-12",
       }),
+    groupIds: z
+      .array(z.string().min(1).max(64))
+      .max(30)
+      .optional()
+      .openapi({
+        description:
+          "Events only (ignored in a regular rollo): the groups that will see the photo. Ids the guest is not in (or that no longer exist) are dropped; " +
+          "if none is left the photo goes to all the guest's groups (to all the groups, for an organizer). Retrying the same `id` never changes them.",
+      }),
     pairedMediaId: z.string().uuid().nullish().openapi({
       description:
         "Marks this photo as the selfie of a moment: the id of the member's own moment photo in the same rollo (400 otherwise). " +

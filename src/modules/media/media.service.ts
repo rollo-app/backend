@@ -17,6 +17,7 @@ import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
 import { rejectSelfie, resolveMoment } from "../moments/moments.service";
 import { recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
+import * as tripsRepo from "../trips/trips.repository";
 
 const UPLOAD_URL_TTL = 15 * 60;
 
@@ -42,6 +43,23 @@ async function uploadResponse(
   ]);
   // `display` only goes out when the phone declared one: older builds get the response they always got.
   return { id, status: "pending" as const, upload: { original, thumb, ...(displayUrl && { display: displayUrl }) }, expiresIn: UPLOAD_URL_TTL };
+}
+
+/**
+ * The groups a new photo goes to. An organizer keeps the requested ids that are groups of the event, a guest the ones
+ * they are in. Ids that no longer apply (the guest left the group, it was deleted) are dropped so a queued photo never
+ * fails; if none is left, a guest's photo goes to all their groups and an organizer's to all the groups.
+ */
+export function resolveMediaGroups(args: {
+  requested: string[];
+  memberGroupIds: string[];
+  allGroupIds: string[];
+  isAdmin: boolean;
+}): string[] {
+  const allowed = new Set(args.isAdmin ? args.allGroupIds : args.memberGroupIds);
+  const chosen = [...new Set(args.requested.filter((id) => allowed.has(id)))];
+  if (chosen.length > 0) return chosen;
+  return [...(args.isAdmin ? args.allGroupIds : args.memberGroupIds)];
 }
 
 /** Registers a photo or video and returns signed upload URLs. Idempotent by `input.id`; `created` tells a new row from a retry. */
@@ -111,6 +129,22 @@ export async function registerMedia(
     throw rateLimited(`Ya usaste tus ${trip.daily_photo_limit} fotos de hoy`);
   }
 
+  // Events only. The groups are fixed now (an organizer's "all groups" is the list at this moment, so a group
+  // created later doesn't see the photo) and written in the same batch as the media row.
+  const groupRows =
+    trip.type === "event"
+      ? repo.insertMediaGroups(
+          env.DB,
+          input.id,
+          resolveMediaGroups({
+            requested: input.groupIds ?? [],
+            memberGroupIds: await tripsRepo.listMemberGroupIds(env.DB, member.id),
+            allGroupIds: (await tripsRepo.listGroups(env.DB, trip.id)).map((g) => g.id),
+            isAdmin: member.role === "admin",
+          }),
+        )
+      : [];
+
   const keys = mediaKeys(trip.id, input.id, input.type);
   const insert = repo.insertMedia(env.DB, {
       id: input.id,
@@ -140,7 +174,7 @@ export async function registerMedia(
       pairedMediaId: moment?.pairedMediaId ?? null,
     });
   if (!moment) {
-    await insert.run();
+    await env.DB.batch([insert, ...groupRows]);
   } else {
     // The slot claim runs first and fails closed: if it didn't take (a concurrent request got there), the row
     // just inserted would be a photo outside every quota with no moment, so it is removed and the request is a 409.
@@ -155,7 +189,7 @@ export async function registerMedia(
           input.takenAt,
           input.takenAt >= moment.notifyAt && input.takenAt <= moment.notifyAt + MOMENT_WINDOW_MS,
         );
-    const [claimed] = await env.DB.batch([claim, insert]);
+    const [claimed] = await env.DB.batch([claim, insert, ...groupRows]);
     if (claimed!.meta.changes === 0) {
       await env.DB.prepare("DELETE FROM media WHERE id = ?").bind(input.id).run();
       throw conflict(moment.pairedMediaId ? "Este momento ya tiene selfie" : "Este momento ya tiene foto");

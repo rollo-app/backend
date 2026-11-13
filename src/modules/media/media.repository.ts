@@ -103,6 +103,17 @@ export function insertMedia(db: D1Database, m: NewMedia): D1PreparedStatement {
   return toStatement(db, orm(db).insert(media).values(m));
 }
 
+/** Rows linking the media to the groups that see it. Same batch as `insertMedia`: a failed insert leaves none, and groups deleted in the meantime are skipped. */
+export function insertMediaGroups(db: D1Database, mediaId: string, groupIds: string[]): D1PreparedStatement[] {
+  return groupIds.map((groupId) =>
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO media_groups (media_id, group_id) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM event_groups WHERE id = ?)",
+      )
+      .bind(mediaId, groupId, groupId),
+  );
+}
+
 /** Only flips a row that is not uploaded yet, so `meta.changes` tells who completed it first (one winner per media). */
 export function markUploaded(db: D1Database, id: string, now: number, size: number): D1PreparedStatement {
   return toStatement(

@@ -170,6 +170,11 @@ Decisiones de producto que el backend tiene que respetar:
   La compresión y el thumbnail los hace el celular, no el Worker.
 - **Offline first:** el celular genera el UUID de cada foto y la hora al disparar. Registrar es
   idempotente por ese id, así los reintentos de la cola no duplican ni gastan cupo.
+- **Fotos de eventos a grupos.** `POST /trips/{id}/media` acepta `groupIds` (0 a 30; se ignora en un `trip`). `resolveMediaGroups`
+  (`media.service.ts`) se queda con los grupos pedidos donde el invitado está (el organizador, con cualquiera del evento); si no
+  queda ninguno, usa todos los del invitado (el organizador, todos los del evento), así una foto de la cola offline con un grupo
+  viejo no falla. Las filas de `media_groups` van en el mismo batch que el insert y un reintento del mismo `id` no las toca.
+  **"Todos los grupos" de un organizador es la lista de ese momento:** un grupo creado después no ve esa foto (aceptado, fijado en `test/event-media.test.ts`).
 
 La app vive en [rollo-app/mobile](https://github.com/rollo-app/mobile).
 
