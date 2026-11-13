@@ -48,7 +48,9 @@ export function originalsExpireAt(trip: Pick<TripRow, "keep_originals" | "reveal
 }
 
 /** Public shape of a trip (what the app sees). */
-export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId: string; name: string } | null = null) {
+export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId: string; name: string } | null = null,
+  groups: { id: string; name: string }[] = [],
+) {
   return {
     id: trip.id,
     name: trip.name,
@@ -69,7 +71,15 @@ export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId:
     maxMembers: trip.max_members,
     originals: { keep: trip.keep_originals !== 0, expiresAt: originalsExpireAt(trip), purged: trip.originals_purged_at !== null },
     createdBy,
+    type: trip.type,
+    coverUrl: coverUrl(trip),
+    groups,
   };
+}
+
+/** Public path of an event's cover (the app prefixes the API base URL), or null if it has none. */
+export function coverUrl(trip: Pick<TripRow, "id" | "cover_key">): string | null {
+  return trip.cover_key ? `/covers/${trip.id}/${trip.cover_key.split("/").pop()}` : null;
 }
 
 /** Public path of a user's avatar (the app prefixes the API base URL), or null if they have none. */
@@ -86,7 +96,7 @@ export function toBadge(value: string | null | undefined): "founder" | "first_ed
 
 /** Public shape of a user. */
 export function publicUser(
-  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility">,
+  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility" | "can_create_events">,
 ) {
   return {
     id: user.id,
@@ -97,6 +107,7 @@ export function publicUser(
     bio: user.bio,
     badge: toBadge(user.badge),
     profileVisibility: user.profile_visibility,
+    canCreateEvents: user.can_create_events !== 0,
   };
 }
 

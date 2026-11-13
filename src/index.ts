@@ -13,17 +13,20 @@ import blocks from "./modules/blocks/blocks.router";
 import featured from "./modules/featured/featured.router";
 import { meFriendRequests, userFriendRequests } from "./modules/friend-requests/friend-requests.router";
 import friends, { friendLinks } from "./modules/friends/friends.router";
+import events from "./modules/events/events.router";
 import config from "./modules/config/config.router";
 import waitlist, { waitlistPages } from "./modules/waitlist/waitlist.router";
 import comments from "./modules/comments/comments.router";
 import likes from "./modules/likes/likes.router";
 import avatars from "./modules/avatars/avatars.router";
+import covers from "./modules/covers/covers.router";
 import me from "./modules/me/me.router";
 import media from "./modules/media/media.router";
 import { STATUS_BY_KIND, AppError } from "./shared/errors";
 import { pollUsage } from "./lib/cf-usage";
 import { checkStorage } from "./lib/storage";
 import { sweepOrphanAvatars } from "./lib/avatar-sweep";
+import { sweepOrphanCovers } from "./lib/cover-sweep";
 import { purgeOldEmailCounters } from "./lib/email-caps";
 import { sendModerationSummary } from "./modules/moderation/moderation.service";
 import { purgeDeletedFiles } from "./lib/r2-purge";
@@ -51,12 +54,14 @@ app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
 app.route("/admin", admin);
 app.route("/auth", auth);
 app.route("/config", config);
+app.route("/events", events);
 app.route("/waitlist", waitlist);
 app.route("/waitlist", waitlistPages);
 app.route("/me", meFriendRequests);
 app.route("/me", meMoments);
 app.route("/me", me);
 app.route("/avatars", avatars);
+app.route("/covers", covers);
 app.route("/usernames", usernames);
 app.route("/users", userFriendRequests);
 app.route("/users", users);
@@ -113,11 +118,11 @@ app.onError((err, c) => {
   return c.json({ error: "Error interno" }, 500);
 });
 
-/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the purge of abandoned incomplete accounts, the sweep of orphan avatar files, the purge of the files of deleted rollos, the "originals expire in 5 days" push and the queueing of expired originals (30 days after the reveal), the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the purge of abandoned incomplete accounts, the sweep of orphan avatar files, the hourly sweep of orphan event cover files, the purge of the files of deleted rollos, the "originals expire in 5 days" push and the queueing of expired originals (30 days after the reveal), the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), runOriginalsNotices(env, now), runOriginalsPurge(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), purgeIncompleteAccounts(env, now), sweepOrphanAvatars(env, now), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), runOriginalsNotices(env, now), runOriginalsPurge(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), purgeIncompleteAccounts(env, now), sweepOrphanAvatars(env, now), (new Date(now).getUTCMinutes() < 5 ? sweepOrphanCovers(env, now) : Promise.resolve()), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

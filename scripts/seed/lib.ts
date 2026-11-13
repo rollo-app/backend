@@ -99,7 +99,7 @@ export function ensureUser(name: string): Promise<string> {
         d1(`INSERT INTO users (id, email, name, name_search, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${nameSearch}, ${username}, ${now})`);
       }
       const badge = SEED_BADGES[name];
-      d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"}, unlimited_rollos = ${LIMITED_ROLLOS.has(name) ? 0 : 1} WHERE id = ${sqlStr(userId)}`);
+      d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"}, unlimited_rollos = ${LIMITED_ROLLOS.has(name) ? 0 : 1}, can_create_events = ${name === "Juani" ? 1 : 0} WHERE id = ${sqlStr(userId)}`);
       const token = randomBytes(32).toString("base64url");
       const hash = createHash("sha256").update(token).digest("hex");
       d1(
@@ -203,6 +203,8 @@ export type Shot = {
   lng: number | null;
   accuracyM: number | null;
   caption: string | null;
+  /** Event only: indexes into the scenario's `event.groups` the photo is sent to (default: all the poster's groups). */
+  groups?: number[];
 };
 
 export type Spot = { lat: number; lng: number } | null;
@@ -289,7 +291,7 @@ async function put(url: string, data: Buffer, contentType: string) {
  * VIDEOS: there is no ffmpeg, so the "original" is a placeholder (the jpeg bytes) uploaded as video/mp4;
  * the thumb and thumbhash come from a picsum image. They exercise the flow, they don't play.
  */
-export async function uploadShot(tripId: string, token: string, shot: Shot, imgIdx: number) {
+export async function uploadShot(tripId: string, token: string, shot: Shot, imgIdx: number, groupIds?: string[]) {
   const img = await getImage(imgIdx);
   const id = crypto.randomUUID();
   const isVideo = shot.type === "video";
@@ -309,6 +311,7 @@ export async function uploadShot(tripId: string, token: string, shot: Shot, imgI
       sizeBytes: img.original.length,
       thumbSizeBytes: img.thumb.length,
       thumbhash: img.thumbhash,
+      ...(groupIds && { groupIds }),
       ...(isVideo && { durationS: Math.round(rand(3, 14.5) * 10) / 10 }),
     },
     token,

@@ -42,7 +42,7 @@ export const TripSchema = z
     momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     momentWindowStart: z.number().int().openapi({ description: "Moment window start, minutes from midnight in the rollo's time zone" }),
     momentWindowEnd: z.number().int().openapi({ description: "Moment window end, minutes from midnight in the rollo's time zone" }),
-    maxMembers: z.number().int().openapi({ description: "Maximum number of active participants (15 for free rollos); joining or adding past it is refused" }),
+    maxMembers: z.number().int().openapi({ description: "Maximum number of active participants (15 for a new rollo, 200 for a new event); joining or adding past it is refused" }),
     originals: z
       .object({
         keep: z.boolean().openapi({ description: "The rollo keeps its full-quality originals forever (rollos that existed before the policy, and later the paid pass)" }),
@@ -54,6 +54,9 @@ export const TripSchema = z
       .object({ userId: z.string().uuid(), name: z.string() })
       .nullable()
       .openapi({ description: "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown" }),
+    type: z.enum(["trip", "event"]).openapi({ description: "event: guests join groups; trip: a regular rollo" }),
+    coverUrl: z.string().nullable().openapi({ description: "Public path of the event cover (the app prefixes the API base URL); null if none" }),
+    groups: z.array(z.object({ id: z.string().uuid(), name: z.string() })).openapi({ description: "Groups of an event, in order; [] for a regular trip" }),
   })
   .openapi("Trip");
 
@@ -80,6 +83,9 @@ export const UserSchema = z
     bio: z.string().nullable().openapi({ example: "Viajando por el sur", description: "Profile description (up to 3 lines); null if none" }),
     badge: UserBadgeSchema,
     profileVisibility: ProfileVisibilitySchema,
+    canCreateEvents: z.boolean().openapi({
+      description: "Whether this account can create events (POST /trips with type \"event\"); enabled by hand for now. Without it that call is a 403",
+    }),
   })
   .openapi("User");
 
@@ -161,7 +167,9 @@ export const TripCreatedSchema = z
 export const TripDetailSchema = z
   .object({
     trip: TripSchema,
-    me: MemberSchema,
+    me: MemberSchema.extend({
+      groupIds: z.array(z.string().uuid()).openapi({ description: "Ids of the event groups the member is in; [] for a regular trip and for organizers without groups" }),
+    }),
     members: z.array(MemberSchema),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),

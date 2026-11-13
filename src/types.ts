@@ -6,6 +6,8 @@ export type Env = {
   RL_GLOBAL?: RateLimitBinding;
   RL_IP?: RateLimitBinding;
   RL_IP_FILES?: RateLimitBinding;
+  RL_IP_PUBLIC?: RateLimitBinding;
+  RL_IP_MISS?: RateLimitBinding;
   RL_EXPENSIVE?: RateLimitBinding;
   RL_UPLOAD?: RateLimitBinding;
   RL_FILES?: RateLimitBinding;
@@ -84,6 +86,12 @@ export type TripRow = {
   originals_notice_at: number | null;
   /** When the cron found no purgeable original left. */
   originals_purged_at: number | null;
+  /** 'trip' (regular rollo) or 'event' (guests join groups). */
+  type: "trip" | "event";
+  /** Published cover image key (events), null if none. */
+  cover_key: string | null;
+  /** Cover being uploaded, not yet confirmed. */
+  pending_cover_key: string | null;
 };
 
 /** Global backoffice role (distinct from the per-rollo `Role`). */
@@ -99,6 +107,7 @@ export type UserRow = {
   bio: string | null;
   badge: string | null;
   unlimited_rollos: number;
+  can_create_events: number;
   profile_visibility: ProfileVisibility;
   app_role: AppRole;
   created_at: number;

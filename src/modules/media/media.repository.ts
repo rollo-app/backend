@@ -5,6 +5,7 @@ import { featured, friendships, likes, media, members, userSettings, users, type
 import { commentCountSql } from "../comments/comments.repository";
 import { notHiddenFor, notReportedBy } from "../reports/reports.repository";
 import { orm, toStatement } from "../../shared/db";
+import { mediaVisibleTo } from "../../lib/event-visibility";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
 // whether to `.run()` it or group it with others in `db.batch([...])` (see `toStatement`).
@@ -48,6 +49,8 @@ export type FeedRow = {
   originalPurged: boolean;
   selfieHasDisplay: boolean | null;
   selfieOriginalPurged: boolean | null;
+  /** Groups the photo was sent to; always empty in a regular trip. */
+  groupIds: string[];
 };
 
 export type AuthoredMedia = { id: string; tripId: string; authorUserId: string };
@@ -98,6 +101,17 @@ export async function countMemberMedia(db: D1Database, memberId: string, type: M
 
 export function insertMedia(db: D1Database, m: NewMedia): D1PreparedStatement {
   return toStatement(db, orm(db).insert(media).values(m));
+}
+
+/** Rows linking the media to the groups that see it. Same batch as `insertMedia`: a failed insert leaves none, and groups deleted in the meantime are skipped. */
+export function insertMediaGroups(db: D1Database, mediaId: string, groupIds: string[]): D1PreparedStatement[] {
+  return groupIds.map((groupId) =>
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO media_groups (media_id, group_id) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM event_groups WHERE id = ?)",
+      )
+      .bind(mediaId, groupId, groupId),
+  );
 }
 
 /** Only flips a row that is not uploaded yet, so `meta.changes` tells who completed it first (one winner per media). */
@@ -196,6 +210,9 @@ export async function listFeed(
       hasDisplay: sql<boolean>`${media.displayKey} IS NOT NULL`.mapWith(Boolean),
       originalPurged: sql<boolean>`${media.originalPurgedAt} IS NOT NULL`.mapWith(Boolean),
       selfieHasDisplay: sql<boolean | null>`CASE WHEN ${selfie.id} IS NULL THEN NULL ELSE ${selfie.displayKey} IS NOT NULL END`.mapWith((v) => (v === null ? null : Boolean(v))),
+      groupIds: sql<string[]>`CASE WHEN (SELECT t.type FROM trips t WHERE t.id = ${media.tripId}) = 'event'
+        THEN (SELECT json_group_array(g.group_id) FROM (SELECT mg.group_id FROM media_groups mg WHERE mg.media_id = ${media.id} ORDER BY mg.group_id) g)
+        ELSE '[]' END`.mapWith((v) => JSON.parse(v as string) as string[]),
       selfieOriginalPurged: sql<boolean | null>`CASE WHEN ${selfie.id} IS NULL THEN NULL ELSE ${selfie.originalPurgedAt} IS NOT NULL END`.mapWith((v) => (v === null ? null : Boolean(v))),
     })
     .from(media)
@@ -223,6 +240,8 @@ export async function listFeed(
         isNull(media.deletedAt),
         isNull(media.pairedMediaId),
         notHiddenFor(viewerId, media.id, members.userId),
+        // An event guest only sees the photos of their groups.
+        mediaVisibleTo(viewerId, media.id, media.tripId),
         // Archived: only its author still sees it.
         or(isNull(media.archivedAt), eq(members.userId, viewerId)),
         page?.after
@@ -258,6 +277,7 @@ export async function findDownloadKeys(
         eq(media.tripId, tripId),
         eq(media.status, "uploaded"),
         isNull(media.deletedAt),
+        mediaVisibleTo(viewerId, media.id, media.tripId),
         or(isNull(media.archivedAt), eq(members.userId, viewerId)),
       ),
     )

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { tripStage } from "../src/modules/admin/admin.service";
-import { DAY, addMembersDirect, api, join, joinAs, makeSuperadmin, newTrip, signUp, uploadMedia } from "./helpers";
+import { DAY, addMembersDirect, api, createTrip, join, joinAs, makeSuperadmin, newTrip, signUp, uploadMedia, grantEvents } from "./helpers";
 
 const list = (token: string, qs = "") => api("GET", `/admin/trips${qs ? `?${qs}` : ""}`, { token });
 const names = (r: { body: any }) => r.body.items.map((t: any) => t.name);
@@ -22,7 +22,7 @@ describe("GET /admin/trips", () => {
     expect(asc.body.items.map((t: any) => t.id)).toEqual([b.tripId]);
     const row = r.body.items[1];
     expect(Object.keys(row).sort()).toEqual(
-      ["activeMembers", "createdAt", "creator", "endsAt", "id", "joinCode", "keepOriginals", "maxMembers", "mediaCount", "name", "originalsExpireAt", "originalsPurgedAt", "revealAt", "revealed", "stage", "startsAt"].sort(),
+      ["activeMembers", "createdAt", "creator", "endsAt", "id", "joinCode", "keepOriginals", "maxMembers", "mediaCount", "name", "originalsExpireAt", "originalsPurgedAt", "revealAt", "revealed", "stage", "startsAt", "type"].sort(),
     );
     expect(row).toMatchObject({ id: a.tripId, name: "Viaje al sur", joinCode: a.code, createdAt: 1000, revealed: false, stage: "active", activeMembers: 1, maxMembers: 15, mediaCount: 0 });
     expect(row.creator).toEqual({ id: a.adminUserId, name: "Juani", username: expect.any(String) });
@@ -133,6 +133,47 @@ describe("GET /admin/trips", () => {
 });
 
 describe("GET /admin/trips/:tripId", () => {
+  it("admin trip detail lists event groups with counts", async () => {
+    const su = await makeSuperadmin();
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { tripId, code } = await createTrip(org.token, {
+      type: "event",
+      groups: ["Familia", "Amigos"],
+      photoLimitMode: "total",
+      totalPhotoLimit: 20,
+      dailyPhotoLimit: undefined,
+      dailyVideoLimit: undefined,
+    });
+    const detail = await api("GET", `/trips/${tripId}`, { token: org.token });
+    const [fam, ami] = (detail.body.trip.groups as { id: string }[]).map((g) => g.id) as [string, string];
+    const ana = await signUp(undefined, "Ana");
+    const beto = await signUp(undefined, "Beto");
+    const joinedAna = await api("POST", "/trips/join", { token: ana.token, body: { code, groupIds: [fam, ami] } });
+    const joinedBeto = await api("POST", "/trips/join", { token: beto.token, body: { code, groupIds: [fam] } });
+    await env.DB.prepare("UPDATE members SET left_at = 1 WHERE id = ?").bind(joinedBeto.body.member.id).run();
+    const kept = await uploadMedia(tripId, ana.token);
+    const pending = await uploadMedia(tripId, ana.token);
+    const deleted = await uploadMedia(tripId, ana.token);
+    await env.DB.prepare("UPDATE media SET status = 'pending' WHERE id = ?").bind(pending).run();
+    await env.DB.prepare("UPDATE media SET deleted_at = 1 WHERE id = ?").bind(deleted).run();
+    // Ana's uploads default to all her groups; narrow the kept one to Familia only.
+    await env.DB.prepare("DELETE FROM media_groups WHERE media_id = ? AND group_id = ?").bind(kept, ami).run();
+    expect(joinedAna.status).toBe(201);
+
+    const r = await api("GET", `/admin/trips/${tripId}`, { token: su.token });
+    expect(r.status).toBe(200);
+    expect(r.body.type).toBe("event");
+    expect(r.body.groups).toEqual([
+      { id: fam, name: "Familia", memberCount: 1, mediaCount: 1 },
+      { id: ami, name: "Amigos", memberCount: 1, mediaCount: 0 },
+    ]);
+
+    const plain = await newTrip();
+    const p = await api("GET", `/admin/trips/${plain.tripId}`, { token: su.token });
+    expect(p.body).toMatchObject({ type: "trip", groups: [] });
+  });
+
   it("returns the row fields plus active members: creator, admins, then by join time", async () => {
     const su = await makeSuperadmin();
     const t = await newTrip();

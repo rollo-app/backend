@@ -1,4 +1,5 @@
 import { deleteAccount } from "../account/account.service";
+import { hasJpegMagic } from "../../lib/jpeg";
 import { presignPut } from "../../lib/r2";
 import type { NotificationSettings } from "../../lib/settings";
 import { getNotificationSettings, getPrivacySettings, type PrivacySettings, updateNotificationSettings, updatePrivacySettings } from "../settings/settings.service";
@@ -13,12 +14,6 @@ import { AVATAR_MAX_BYTES } from "./me.schemas";
 import * as repo from "./me.repository";
 
 const AVATAR_URL_TTL = 15 * 60;
-const JPEG_MAGIC = [0xff, 0xd8, 0xff];
-
-/** The stored content type is client-controlled, so the magic bytes are the source of truth. */
-function hasJpegMagic(bytes: Uint8Array): boolean {
-  return bytes.length >= JPEG_MAGIC.length && JPEG_MAGIC.every((b, i) => bytes[i] === b);
-}
 
 export type ProfilePatch = {
   name?: string;

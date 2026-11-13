@@ -114,7 +114,7 @@ describe("limits are attributed to the creator and are atomic", () => {
     await createTrip(a.token);
     const user = (await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(a.userId).first<UserRow>())!;
     const now = Date.now();
-    const input = { ...body(), startsAt: now + 3600_000, momentMode: "off", momentWindowStart: 540, momentWindowEnd: 1380, photoLimitMode: "daily" } as any;
+    const input = { ...body(), startsAt: now + 3600_000, momentMode: "off", momentWindowStart: 540, momentWindowEnd: 1380, photoLimitMode: "daily", type: "trip" } as any;
     // The check passes (1 unrevealed), then a second request lands before our insert.
     await expect(
       createTripService(env.DB, user, input, { beforeInsert: async () => void (await createTrip(a.token)) }),

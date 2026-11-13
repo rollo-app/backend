@@ -25,6 +25,6 @@ export const STATUS_BY_KIND: Record<AppErrorKind, 400 | 403 | 404 | 409 | 429 | 
 export const badRequest = (message: string) => new AppError("bad_request", message);
 export const forbidden = (message: string, code?: string) => new AppError("forbidden", message, code);
 export const notFound = (message = "No encontrado") => new AppError("not_found", message);
-export const conflict = (message: string) => new AppError("conflict", message);
+export const conflict = (message: string, code?: string) => new AppError("conflict", message, code);
 export const rateLimited = (message: string) => new AppError("rate_limited", message);
 export const unavailable = (message: string) => new AppError("unavailable", message);

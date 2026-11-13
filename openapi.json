@@ -131,6 +131,10 @@
           },
           "profileVisibility": {
             "$ref": "#/components/schemas/ProfileVisibility"
+          },
+          "canCreateEvents": {
+            "type": "boolean",
+            "description": "Whether this account can create events (POST /trips with type \"event\"); enabled by hand for now. Without it that call is a 403"
           }
         },
         "required": [
@@ -141,7 +145,8 @@
           "avatarUrl",
           "bio",
           "badge",
-          "profileVisibility"
+          "profileVisibility",
+          "canCreateEvents"
         ]
       },
       "ProfileVisibility": {
@@ -243,6 +248,49 @@
         },
         "required": [
           "registrationsOpen"
+        ]
+      },
+      "EventPreview": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path of the cover (prefix the API base URL), null if none"
+          },
+          "revealed": {
+            "type": "boolean"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "coverUrl",
+          "revealed",
+          "groups"
         ]
       },
       "WaitlistJoinRequest": {
@@ -557,6 +605,20 @@
             ],
             "description": "Daily moment: off, a photo, or a photo plus a selfie"
           },
+          "type": {
+            "type": "string",
+            "enum": [
+              "trip",
+              "event"
+            ]
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public path of the event cover; null if none"
+          },
           "coverThumbhash": {
             "type": [
               "string",
@@ -578,6 +640,8 @@
           "archived",
           "totalUploaded",
           "momentMode",
+          "type",
+          "coverUrl",
           "coverThumbhash"
         ]
       },
@@ -1333,7 +1397,7 @@
           },
           "maxMembers": {
             "type": "integer",
-            "description": "Maximum number of active participants (15 for free rollos); joining or adding past it is refused"
+            "description": "Maximum number of active participants (15 for a new rollo, 200 for a new event); joining or adding past it is refused"
           },
           "originals": {
             "type": "object",
@@ -1380,6 +1444,41 @@
               "name"
             ],
             "description": "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "trip",
+              "event"
+            ],
+            "description": "event: guests join groups; trip: a regular rollo"
+          },
+          "coverUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public path of the event cover (the app prefixes the API base URL); null if none"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            },
+            "description": "Groups of an event, in order; [] for a regular trip"
           }
         },
         "required": [
@@ -1401,7 +1500,10 @@
           "momentWindowEnd",
           "maxMembers",
           "originals",
-          "createdBy"
+          "createdBy",
+          "type",
+          "coverUrl",
+          "groups"
         ]
       },
       "Member": {
@@ -1548,6 +1650,25 @@
             "maximum": 1440,
             "default": 1380,
             "description": "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "trip",
+              "event"
+            ],
+            "default": "trip",
+            "description": "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 30,
+            "description": "Event only (required, 1 to 30 distinct names of 1 to 40 characters); rejected on a regular trip"
           }
         },
         "required": [
@@ -1566,6 +1687,16 @@
             "minLength": 6,
             "maxLength": 6,
             "example": "HUB5FT"
+          },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 30,
+            "description": "Event groups to join (required for an event: without them 409 EVENT_NEEDS_UPDATE; ignored for a regular trip). An active member who sends more groups adds them to the ones they had"
           }
         },
         "required": [
@@ -1579,7 +1710,27 @@
             "$ref": "#/components/schemas/Trip"
           },
           "me": {
-            "$ref": "#/components/schemas/Member"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Member"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "groupIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Ids of the event groups the member is in; [] for a regular trip and for organizers without groups"
+                  }
+                },
+                "required": [
+                  "groupIds"
+                ]
+              }
+            ]
           },
           "members": {
             "type": "array",
@@ -1787,6 +1938,111 @@
           }
         }
       },
+      "MyGroups": {
+        "type": "object",
+        "properties": {
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "groupIds"
+        ]
+      },
+      "SetMyGroupsRequest": {
+        "type": "object",
+        "properties": {
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 30
+          }
+        },
+        "required": [
+          "groupIds"
+        ]
+      },
+      "EventGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "GroupName": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "example": "Familia"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CoverUpload": {
+        "type": "object",
+        "properties": {
+          "upload": {
+            "type": "string",
+            "format": "uri",
+            "description": "PUT of the JPEG cover"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "Seconds the URL stays valid"
+          }
+        },
+        "required": [
+          "upload",
+          "expiresIn"
+        ]
+      },
+      "CoverUploadRequest": {
+        "type": "object",
+        "properties": {
+          "sizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2097152,
+            "description": "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length"
+          }
+        },
+        "required": [
+          "sizeBytes"
+        ]
+      },
+      "Cover": {
+        "type": "object",
+        "properties": {
+          "coverUrl": {
+            "type": "string",
+            "description": "Path of the cover (prefix the API base URL)",
+            "example": "/covers/abc/3f1c2a.jpg"
+          }
+        },
+        "required": [
+          "coverUrl"
+        ]
+      },
       "MediaRegistered": {
         "type": "object",
         "properties": {
@@ -1956,6 +2212,16 @@
             "description": "Trip-local date (YYYY-MM-DD) of the daily moment this photo answers. The member must have a moment for that day (409 otherwise, or if it already has a photo). Moment photos don't use the photo quota. Photos only.",
             "example": "2027-01-12"
           },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "maxItems": 30,
+            "description": "Events only (ignored in a regular rollo): the groups that will see the photo. Ids the guest is not in (or that no longer exist) are dropped; if none is left the photo goes to all the guest's groups (to all the groups, for an organizer). Retrying the same `id` never changes them."
+          },
           "pairedMediaId": {
             "type": [
               "string",
@@ -2057,6 +2323,14 @@
               "number",
               "null"
             ]
+          },
+          "groupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Event groups the photo was sent to. Always empty in a regular trip."
           },
           "author": {
             "type": "object",
@@ -2244,6 +2518,7 @@
           "caption",
           "thumbhash",
           "durationS",
+          "groupIds",
           "author"
         ]
       },
@@ -3104,6 +3379,58 @@
         }
       }
     },
+    "/events/{code}": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Preview an event by its invite code",
+        "description": "No token. The name, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. 404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "HUB5FT"
+            },
+            "required": true,
+            "name": "code",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/waitlist": {
       "post": {
         "tags": [
@@ -3900,6 +4227,57 @@
         "responses": {
           "200": {
             "description": "Avatar",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/covers/{tripId}/{file}": {
+      "get": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Download an event's cover",
+        "description": "Public (no token) so it can be used directly as an image URL, also by the event preview and the website. Only the event's current cover is served; file names are random, so older or guessed ones return 404.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "3f1c2a.jpg"
+            },
+            "required": true,
+            "name": "file",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cover",
             "content": {
               "image/jpeg": {
                 "schema": {
@@ -4968,7 +5346,7 @@
           "Trips"
         ],
         "summary": "Create a trip",
-        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show.",
+        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show. Events (`type: \"event\"`) are enabled per account (`users.can_create_events`, see `canCreateEvents` in GET /me): 403 without it, checked first; and 409 if you already created an event that is not revealed yet, for everyone including `unlimited_rollos` users.",
         "security": [
           {
             "bearerAuth": []
@@ -5015,6 +5393,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflict with the current state",
             "content": {
@@ -5044,7 +5432,7 @@
           "Trips"
         ],
         "summary": "Join a trip",
-        "description": "With the invite code. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), 200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409. A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
+        "description": "With the invite code. An event is joined choosing groups (`groupIds`, all from that event, else 400): without them 409 with `code` EVENT_NEEDS_UPDATE, checked before anything else, even for an active member. The member and their groups are written together. The profile must have a name and a username. Idempotent: 201 when newly joined (or back after leaving), 200 when already an active member. Someone removed by the admin gets 403. Revealed rollos 409 ('Este evento ya se reveló.' for an event). A rollo that reached its member cap (`maxMembers`) also gets 409 with the numbers in the message (an active member still gets 200).",
         "security": [
           {
             "bearerAuth": []
@@ -5281,7 +5669,7 @@
           "Trips"
         ],
         "summary": "Edit the trip (admin)",
-        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything.",
+        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
         "security": [
           {
             "bearerAuth": []
@@ -5443,7 +5831,7 @@
           "Trips"
         ],
         "summary": "Add your friends to the trip",
-        "description": "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they had left and come back), `already_member`, `unavailable` (not your friend, removed by the admin, or unknown) or `full` (no room left: the rollo has a cap on active members and friends are processed in request order). The rollo's admin can add back someone who was removed (they become active again with their old photos); for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
+        "description": "Any member adds their own friends directly. The answer is per friend (never all-or-nothing): `added` (also when they had left and come back), `already_member`, `unavailable` (not your friend, removed by the admin, or unknown) or `full` (no room left: the rollo has a cap on active members and friends are processed in request order). An event refuses it (409): guests enter with the code. The rollo's admin can add back someone who was removed (they become active again with their old photos); for a regular member a removed person stays `unavailable`. A revealed rollo gets 409 for the whole request.",
         "security": [
           {
             "bearerAuth": []
@@ -5706,6 +6094,609 @@
         }
       }
     },
+    "/trips/{tripId}/members/me/groups": {
+      "put": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Set your groups in an event",
+        "description": "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.').",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMyGroupsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Your groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyGroups"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/groups": {
+      "post": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Create a group in an event (admin)",
+        "description": "The name is trimmed (1 to 40 characters) and unique in the event (409). At most 30 groups (409). 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupName"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Group created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/groups/{groupId}": {
+      "patch": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Rename a group of an event (admin)",
+        "description": "Same name rules as creating one (409 if taken). 404 if the group is not in this event. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupName"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Group renamed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Delete a group of an event (admin)",
+        "description": "409 ('Este grupo tiene gente o fotos.') while anyone is in the group or any photo was sent to it; 409 ('Un evento necesita al menos un grupo.') for the last group. 404 if the group is not in this event. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "groupId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Group deleted"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/cover": {
+      "post": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Get a URL to upload the event cover (admin)",
+        "description": "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /trips/{tripId}/cover/complete. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). 503 when the storage limit is reached. A previous upload that was never completed is discarded.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upload URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage limit reached; new uploads are paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/cover/complete": {
+      "post": {
+        "tags": [
+          "Trips"
+        ],
+        "summary": "Confirm the event cover upload (admin)",
+        "description": "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it the event's cover and deletes the previous one. Otherwise the upload is discarded and the response is a 400. 409 once the event is revealed (the pending upload is discarded). The cover is served publicly at `coverUrl` (GET /covers/{tripId}/{file}).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new cover",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cover"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/trips/{tripId}/members/{memberId}": {
       "delete": {
         "tags": [
@@ -5881,7 +6872,7 @@
           "Trips"
         ],
         "summary": "Take the admin role away (creator)",
-        "description": "Only the creator. The creator's own admin role can't be removed (400).",
+        "description": "Only the creator. The creator's own admin role can't be removed (400). In an event, 409 if the organizer is in no group (they would become a guest without one).",
         "security": [
           {
             "bearerAuth": []
@@ -5948,6 +6939,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
             "content": {
               "application/json": {
                 "schema": {

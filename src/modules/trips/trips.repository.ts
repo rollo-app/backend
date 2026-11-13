@@ -1,3 +1,4 @@
+import { mediaVisibleToSql, MEDIA_VISIBLE_BINDS } from "../../lib/event-visibility";
 import { inChunks } from "../../lib/util";
 import type { MemberRow, Role, TripRow } from "../../types";
 
@@ -11,7 +12,7 @@ export type ActiveMemberRow = {
 export type NewTrip = Pick<
   TripRow,
   "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit" | "created_at"
-  | "moment_mode" | "moment_window_start" | "moment_window_end"
+  | "moment_mode" | "moment_window_start" | "moment_window_end" | "type" | "max_members"
 > & { started_notified_at: number | null; featuring_disabled: number };
 
 export type TripEdit = Pick<
@@ -32,6 +33,9 @@ export function findTripByJoinCode(db: D1Database, joinCode: string): Promise<Tr
   return db.prepare("SELECT * FROM trips WHERE join_code = ?").bind(joinCode).first<TripRow>();
 }
 
+/** Events `?1` created that are not revealed yet (params: user id, now). One fragment for the early check and the guarded INSERT. */
+const UNREVEALED_EVENTS_CREATED = `SELECT COUNT(*) FROM trips WHERE type = 'event' AND created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?`;
+
 /**
  * Inserts the trip only while the creator is under the limits on rollos they created (skipped with
  * `limited = false`). The check is part of the INSERT, so two concurrent creates cannot both pass.
@@ -39,26 +43,29 @@ export function findTripByJoinCode(db: D1Database, joinCode: string): Promise<Tr
 export function insertTrip(
   db: D1Database,
   t: NewTrip,
-  creator: { userId: string; limited: boolean; unrevealedMax: number; windowMax: number; windowSince: number },
+  creator: { userId: string; limited: boolean; oneEventAtATime: boolean; unrevealedMax: number; windowMax: number; windowSince: number },
 ): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
                           daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at, featuring_disabled,
-                          moment_mode, moment_window_start, moment_window_end, created_by_user_id)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE ? = 0 OR (
+                          moment_mode, moment_window_start, moment_window_end, created_by_user_id, type, max_members)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE (? = 0 OR (
          (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?) < ?
          AND (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND created_at > ?) < ?
-       )`,
+       ))
+       AND (? = 0 OR (${UNREVEALED_EVENTS_CREATED}) = 0)`,
     )
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
       t.daily_photo_limit, t.daily_video_limit, t.photo_limit_mode, t.total_photo_limit, t.created_at, t.started_notified_at, t.featuring_disabled,
-      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId,
+      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId, t.type, t.max_members,
       creator.limited ? 1 : 0,
       creator.userId, t.created_at, creator.unrevealedMax,
       creator.userId, creator.windowSince, creator.windowMax,
+      creator.oneEventAtATime ? 1 : 0,
+      creator.userId, t.created_at,
     );
 }
 
@@ -69,6 +76,93 @@ export function insertAdminMember(db: D1Database, id: string, tripId: string, us
        SELECT ?, ?, ?, 'admin', ? WHERE EXISTS (SELECT 1 FROM trips WHERE id = ?)`,
     )
     .bind(id, tripId, userId, now, tripId);
+}
+
+/** Inserts the groups of an event, in the given order. Only when the trip exists (like the admin member). */
+export function insertGroups(db: D1Database, tripId: string, groups: { id: string; name: string }[], now: number): D1PreparedStatement[] {
+  return groups.map((g, position) =>
+    db
+      .prepare(
+        `INSERT INTO event_groups (id, trip_id, name, position, created_at)
+         SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM trips WHERE id = ?)`,
+      )
+      .bind(g.id, tripId, g.name, position, now, tripId),
+  );
+}
+
+/** Adds a group at the end of the event's list. */
+export function insertGroup(db: D1Database, tripId: string, id: string, name: string, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO event_groups (id, trip_id, name, position, created_at)
+       SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ? FROM event_groups WHERE trip_id = ?`,
+    )
+    .bind(id, tripId, name, now, tripId);
+}
+
+export async function renameGroup(db: D1Database, tripId: string, groupId: string, name: string): Promise<boolean> {
+  const res = await db.prepare("UPDATE event_groups SET name = ? WHERE id = ? AND trip_id = ?").bind(name, groupId, tripId).run();
+  return res.meta.changes > 0;
+}
+
+/** Deletes the group only while nobody is in it and no photo is sent to it (the FKs cascade, so the check lives in the statement). */
+export async function deleteEmptyGroup(db: D1Database, tripId: string, groupId: string): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `DELETE FROM event_groups WHERE id = ? AND trip_id = ?
+         AND NOT EXISTS (SELECT 1 FROM member_groups WHERE group_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM media_groups WHERE group_id = ?)
+         AND (SELECT COUNT(*) FROM event_groups WHERE trip_id = ?) > 1`,
+    )
+    .bind(groupId, tripId, groupId, groupId, tripId)
+    .run();
+  return res.meta.changes > 0;
+}
+
+// ---------- Event cover ----------
+
+export function setPendingCoverKey(db: D1Database, tripId: string, key: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET pending_cover_key = ? WHERE id = ?").bind(key, tripId);
+}
+
+export function clearPendingCoverKey(db: D1Database, tripId: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET pending_cover_key = NULL WHERE id = ?").bind(tripId);
+}
+
+export function promoteCover(db: D1Database, tripId: string, key: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET cover_key = ?, pending_cover_key = NULL WHERE id = ?").bind(key, tripId);
+}
+
+export async function listGroups(db: D1Database, tripId: string): Promise<{ id: string; name: string; position: number }[]> {
+  const { results } = await db
+    .prepare("SELECT id, name, position FROM event_groups WHERE trip_id = ? ORDER BY position")
+    .bind(tripId)
+    .all<{ id: string; name: string; position: number }>();
+  return results;
+}
+
+const ACTIVE_MEMBER_SQL = "EXISTS (SELECT 1 FROM members WHERE id = ? AND left_at IS NULL AND removed_at IS NULL)";
+
+/** Adds the member to the groups, keeping the ones they already have. Writes only while they are an active member, so a skipped join leaves nothing behind. */
+export function addMemberGroups(db: D1Database, memberId: string, groupIds: string[], now: number): D1PreparedStatement[] {
+  return groupIds.map((groupId) =>
+    db
+      .prepare(`INSERT OR IGNORE INTO member_groups (member_id, group_id, created_at) SELECT ?, ?, ? WHERE ${ACTIVE_MEMBER_SQL}`)
+      .bind(memberId, groupId, now, memberId),
+  );
+}
+
+/** Replaces the member's groups with `groupIds` (deletes, then inserts). */
+export function setMemberGroups(db: D1Database, memberId: string, groupIds: string[], now = Date.now()): D1PreparedStatement[] {
+  return [db.prepare("DELETE FROM member_groups WHERE member_id = ?").bind(memberId), ...addMemberGroups(db, memberId, groupIds, now)];
+}
+
+export async function listMemberGroupIds(db: D1Database, memberId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare("SELECT mg.group_id FROM member_groups mg JOIN event_groups g ON g.id = mg.group_id WHERE mg.member_id = ? ORDER BY g.position")
+    .bind(memberId)
+    .all<{ group_id: string }>();
+  return results.map((r) => r.group_id);
 }
 
 export function findMember(db: D1Database, tripId: string, userId: string): Promise<MemberRow | null> {
@@ -131,14 +225,27 @@ export function reactivateLeftMember(db: D1Database, memberId: string, addedBy: 
     .bind(addedBy, memberId);
 }
 
-export function listActiveMembers(db: D1Database, tripId: string): Promise<{ results: ActiveMemberRow[] }> {
+/**
+ * Active members the viewer sees. In a regular trip, all of them. In an event, the organizers (admins), the viewer themself and
+ * the guests who share at least one group with the viewer; an organizer sees everyone.
+ */
+export function listActiveMembers(db: D1Database, tripId: string, viewerUserId: string): Promise<{ results: ActiveMemberRow[] }> {
   return db
     .prepare(
       `SELECT m.id, m.user_id, m.role, u.name, u.username, u.avatar_key
        FROM members m JOIN users u ON u.id = m.user_id
-       WHERE m.trip_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL ORDER BY m.created_at`,
+       WHERE m.trip_id = ?1 AND m.removed_at IS NULL AND m.left_at IS NULL
+         AND ((SELECT t.type FROM trips t WHERE t.id = ?1) = 'trip'
+              OR m.role = 'admin' OR m.user_id = ?2
+              OR EXISTS (SELECT 1 FROM members va WHERE va.trip_id = ?1 AND va.user_id = ?2 AND va.role = 'admin'
+                         AND va.removed_at IS NULL AND va.left_at IS NULL)
+              OR EXISTS (SELECT 1 FROM member_groups g JOIN member_groups vg ON vg.group_id = g.group_id
+                         JOIN members vm ON vm.id = vg.member_id
+                         WHERE g.member_id = m.id AND vm.trip_id = ?1 AND vm.user_id = ?2
+                           AND vm.removed_at IS NULL AND vm.left_at IS NULL))
+       ORDER BY m.created_at`,
     )
-    .bind(tripId)
+    .bind(tripId, viewerUserId)
     .all<ActiveMemberRow>();
 }
 
@@ -161,14 +268,14 @@ export function countMediaByTypeTotal(db: D1Database, memberId: string): Promise
     .all<{ type: string; n: number }>();
 }
 
-/** Uploaded, not deleted items of the rollo; archived ones only count for their author (`viewerMemberId`), who still sees them. */
-export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberId: string): Promise<{ n: number } | null> {
+/** Uploaded, not deleted items of the rollo the viewer sees; archived ones only count for their author (`viewerMemberId`), who still sees them. */
+export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberId: string, viewerUserId: string): Promise<{ n: number } | null> {
   return db
     .prepare(
       `SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL
-       AND (archived_at IS NULL OR member_id = ?)`,
+       AND (archived_at IS NULL OR member_id = ?) AND ${mediaVisibleToSql("?", "media.id", "media.trip_id")}`,
     )
-    .bind(tripId, viewerMemberId)
+    .bind(tripId, viewerMemberId, ...Array<string>(MEDIA_VISIBLE_BINDS).fill(viewerUserId))
     .first<{ n: number }>();
 }
 
@@ -206,6 +313,12 @@ export function setMemberArchived(db: D1Database, memberId: string, at: number |
 
 export function setMemberAllowFeaturing(db: D1Database, memberId: string, allow: boolean): D1PreparedStatement {
   return db.prepare("UPDATE members SET allow_featuring = ? WHERE id = ?").bind(allow ? 1 : 0, memberId);
+}
+
+/** Whether `userId` created an event that is not revealed yet. */
+export async function hasUnrevealedEventCreated(db: D1Database, userId: string, now: number): Promise<boolean> {
+  const row = await db.prepare(`SELECT (${UNREVEALED_EVENTS_CREATED}) AS n`).bind(userId, now).first<{ n: number }>();
+  return (row?.n ?? 0) > 0;
 }
 
 /** Rollos `userId` created (admin) that are not revealed yet: in progress, upcoming or ended. */
@@ -297,7 +410,9 @@ export function deleteTripStatements(db: D1Database, tripId: string, now: number
         `INSERT OR IGNORE INTO r2_purge (key, created_at)
          SELECT original_key, ?1 FROM media WHERE trip_id = ?2
          UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2
-         UNION SELECT display_key, ?1 FROM media WHERE trip_id = ?2 AND display_key IS NOT NULL`,
+         UNION SELECT display_key, ?1 FROM media WHERE trip_id = ?2 AND display_key IS NOT NULL
+         UNION SELECT cover_key, ?1 FROM trips WHERE id = ?2 AND cover_key IS NOT NULL
+         UNION SELECT pending_cover_key, ?1 FROM trips WHERE id = ?2 AND pending_cover_key IS NOT NULL`,
       )
       .bind(now, tripId),
     db.prepare("INSERT OR IGNORE INTO deleted_trips (trip_id, deleted_at) VALUES (?, ?)").bind(tripId, now),

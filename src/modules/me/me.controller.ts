@@ -1,5 +1,5 @@
 import type { RouteHandler } from "@hono/zod-openapi";
-import { isRevealed, publicUser } from "../../lib/util";
+import { coverUrl, isRevealed, publicUser } from "../../lib/util";
 import type { AppEnv } from "../../types";
 import type {
   avatarCompleteRoute,
@@ -55,6 +55,8 @@ export const myTrips: RouteHandler<typeof myTripsRoute, AppEnv> = async (c) => {
         archived: t.my_archived_at !== null,
         totalUploaded: t.total_uploaded,
         momentMode: t.moment_mode,
+        type: t.type,
+        coverUrl: coverUrl(t),
         coverThumbhash: t.cover_thumbhash,
       })),
     },

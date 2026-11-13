@@ -30,6 +30,9 @@ const baseTrip: TripRow = {
   keep_originals: 0,
   originals_notice_at: null,
   originals_purged_at: null,
+  type: "trip",
+  cover_key: null,
+  pending_cover_key: null,
 };
 
 describe("localDate", () => {
@@ -103,6 +106,9 @@ describe("publicTrip", () => {
       maxMembers: 15,
       originals: { keep: false, expiresAt: 3_000 + 30 * 24 * 60 * 60 * 1000, purged: false },
       createdBy: null,
+      type: "trip",
+      coverUrl: null,
+      groups: [],
     });
   });
 });

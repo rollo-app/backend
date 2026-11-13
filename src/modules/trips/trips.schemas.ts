@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { isValidTimeZone } from "../../lib/util";
 import { epochMs, pathParam, PAST_TOLERANCE_MS } from "../../schemas";
 
+export const COVER_MAX_BYTES = 2 * 1024 * 1024;
 export const MAX_DAILY_PHOTOS = 30;
 export const MAX_TOTAL_PHOTOS = 200;
 export const MAX_TRIP_DURATION_MS = 31 * 86_400_000;
@@ -33,12 +34,29 @@ export const CreateTripSchema = z
     momentWindowEnd: z.number().int().min(0).max(1440).default(1380).openapi({
       description: "End of the daily moment window, in minutes from midnight; at least 30 after the start (default 1380 = 23:00)",
     }),
+    type: z.enum(["trip", "event"]).default("trip").openapi({
+      description: "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment",
+    }),
+    groups: z.array(z.string().trim().min(1).max(40)).max(30).optional().openapi({
+      description: "Event only (required, 1 to 30 distinct names of 1 to 40 characters); rejected on a regular trip",
+    }),
+  })
+  .superRefine((d, ctx) => {
+    if (d.type === "trip") {
+      if (d.groups !== undefined) ctx.addIssue({ code: "custom", message: "Solo los eventos tienen grupos", path: ["groups"] });
+      return;
+    }
+    if (!d.groups || d.groups.length < 1) {
+      ctx.addIssue({ code: "custom", message: "Un evento necesita al menos un grupo", path: ["groups"] });
+    } else if (new Set(d.groups).size !== d.groups.length) {
+      ctx.addIssue({ code: "custom", message: "Los grupos no pueden repetirse", path: ["groups"] });
+    }
   })
   .refine((d) => d.momentWindowEnd - d.momentWindowStart >= 30, {
     message: "La franja del momento tiene que durar al menos 30 minutos",
     path: ["momentWindowEnd"],
   })
-  .refine((d) => d.photoLimitMode !== "total" || d.totalPhotoLimit !== undefined, {
+  .refine((d) => d.type === "event" || d.photoLimitMode !== "total" || d.totalPhotoLimit !== undefined, {
     message: "Elegí cuántas fotos por persona tiene el rollo",
     path: ["totalPhotoLimit"],
   })
@@ -51,8 +69,17 @@ export const CreateTripSchema = z
 export const JoinTripSchema = z
   .object({
     code: z.string().trim().toUpperCase().length(6).openapi({ example: "HUB5FT" }),
+    groupIds: z.array(z.string().uuid()).min(1).max(30).optional().openapi({
+      description: "Event groups to join (required for an event: without them 409 EVENT_NEEDS_UPDATE; ignored for a regular trip). An active member who sends more groups adds them to the ones they had",
+    }),
   })
   .openapi("JoinTripRequest");
+
+export const SetMyGroupsSchema = z
+  .object({ groupIds: z.array(z.string().uuid()).max(30) })
+  .openapi("SetMyGroupsRequest");
+
+export const MyGroupsSchema = z.object({ groupIds: z.array(z.string().uuid()) }).openapi("MyGroups");
 
 export const UpdateTripSchema = z
   .object({
@@ -113,3 +140,40 @@ export const TripMemberParams = z.object({ tripId: pathParam("tripId"), memberId
 
 export type CreateTripInput = z.infer<typeof CreateTripSchema>;
 export type UpdateTripInput = z.infer<typeof UpdateTripSchema>;
+
+// ---------- Event groups and cover ----------
+
+export const MAX_EVENT_GROUPS = 30;
+
+export const GroupNameSchema = z
+  .object({ name: z.string().trim().min(1).max(40).openapi({ example: "Familia" }) })
+  .openapi("GroupName");
+
+export const GroupSchema = z.object({ id: z.string(), name: z.string() }).openapi("EventGroup");
+
+export const GroupParams = z.object({
+  tripId: pathParam("tripId"),
+  groupId: pathParam("groupId"),
+});
+
+export const CoverUploadRequestSchema = z
+  .object({
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(COVER_MAX_BYTES, "La portada tiene que ser un JPEG de hasta 2 MB")
+      .openapi({ description: "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length" }),
+  })
+  .openapi("CoverUploadRequest");
+
+export const CoverUploadSchema = z
+  .object({
+    upload: z.string().url().openapi({ description: "PUT of the JPEG cover" }),
+    expiresIn: z.number().int().openapi({ description: "Seconds the URL stays valid" }),
+  })
+  .openapi("CoverUpload");
+
+export const CoverSchema = z
+  .object({ coverUrl: z.string().openapi({ description: "Path of the cover (prefix the API base URL)", example: "/covers/abc/3f1c2a.jpg" }) })
+  .openapi("Cover");

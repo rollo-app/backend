@@ -11,7 +11,7 @@ import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedOfTrip } from "../featured/featured.repository";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
-import { MAX_TRIP_DURATION_MS, TRIP_TOO_LONG } from "./trips.schemas";
+import { MAX_EVENT_GROUPS, MAX_TRIP_DURATION_MS, TRIP_TOO_LONG } from "./trips.schemas";
 import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
 
 // ---------- Create ----------
@@ -19,6 +19,9 @@ import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
 export const MAX_UNREVEALED_CREATED = 2;
 export const MAX_CREATED_IN_WINDOW = 4;
 export const CREATE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+/** Active members a new rollo takes (the superadmin panel can change it per rollo). Events are bigger: they will be the paid tier. */
+export const TRIP_MAX_MEMBERS = 15;
+export const EVENT_MAX_MEMBERS = 200;
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 /** "3 de noviembre" in the given time zone. */
@@ -43,6 +46,13 @@ async function enforceCreateLimits(db: D1Database, userId: string, timeZone: str
   }
 }
 
+/** Events are for enabled accounts and one unrevealed at a time (for everyone, even `unlimited_rollos`). */
+async function enforceEventRules(db: D1Database, userId: string, now: number) {
+  if (await repo.hasUnrevealedEventCreated(db, userId, now)) {
+    throw conflict("Ya tenés un evento sin revelar. Vas a poder crear otro cuando se revele.");
+  }
+}
+
 /** Creates the trip with `user` as admin. `null` when no free join code could be generated. */
 export async function createTrip(
   db: D1Database,
@@ -53,7 +63,12 @@ export async function createTrip(
   await assertNotDegraded({ DB: db });
   const now = Date.now();
   const limited = !user.unlimited_rollos;
+  const isEvent = body.type === "event";
+  if (isEvent && !user.can_create_events) {
+    throw forbidden("Por ahora crear eventos está habilitado solo para algunas cuentas. Escribinos a support@rolloproject.com.");
+  }
   // Early check for a clear error; the INSERT below re-checks atomically.
+  if (isEvent) await enforceEventRules(db, user.id, now);
   if (limited) await enforceCreateLimits(db, user.id, body.timezone, now);
 
   // Unique code (collisions are very unlikely, but we retry just in case).
@@ -69,6 +84,9 @@ export async function createTrip(
 
   await hooks.beforeInsert?.();
 
+  // Events: always a total photo limit (20 by default), no daily moment and room for a wedding-sized crowd.
+  const groups = isEvent ? (body.groups ?? []).map((name) => ({ id: crypto.randomUUID(), name })) : [];
+
   await db.batch([
     repo.insertTrip(db, {
       id: tripId,
@@ -80,32 +98,54 @@ export async function createTrip(
       reveal_at: body.revealAt,
       daily_photo_limit: body.dailyPhotoLimit,
       daily_video_limit: body.dailyVideoLimit,
-      photo_limit_mode: body.photoLimitMode,
-      total_photo_limit: body.photoLimitMode === "total" ? body.totalPhotoLimit! : null,
+      photo_limit_mode: isEvent ? "total" : body.photoLimitMode,
+      total_photo_limit: isEvent ? (body.totalPhotoLimit ?? 20) : body.photoLimitMode === "total" ? body.totalPhotoLimit! : null,
       created_at: now,
       // Starting now ("Empezar ahora"): the creator is the only member and just did it, so no "Arrancó" push.
       started_notified_at: body.startsAt <= now ? now : null,
       featuring_disabled: body.featuringDisabled ? 1 : 0,
-      moment_mode: body.momentMode,
+      moment_mode: isEvent ? "off" : body.momentMode,
+      type: body.type,
+      max_members: isEvent ? EVENT_MAX_MEMBERS : TRIP_MAX_MEMBERS,
       moment_window_start: body.momentWindowStart,
       moment_window_end: body.momentWindowEnd,
     }, {
       userId: user.id,
       limited,
+      oneEventAtATime: isEvent,
       unrevealedMax: MAX_UNREVEALED_CREATED,
       windowMax: MAX_CREATED_IN_WINDOW,
       windowSince: now - CREATE_WINDOW_MS,
     }),
     repo.insertAdminMember(db, memberId, tripId, user.id, now),
+    ...repo.insertGroups(db, tripId, groups, now),
   ]);
 
   const trip = await repo.findTripById(db, tripId);
   if (!trip) {
     // The guarded INSERT wrote nothing: a concurrent create used the last slot. Say which limit hit.
-    await enforceCreateLimits(db, user.id, body.timezone, Date.now());
+    const later = Date.now();
+    if (isEvent) await enforceEventRules(db, user.id, later);
+    if (limited) await enforceCreateLimits(db, user.id, body.timezone, later);
     throw conflict("No pudimos crear el rollo ahora. Probá de nuevo.");
   }
   return { trip, member: { id: memberId, user_id: user.id, role: "admin" as Role } };
+}
+
+/** The groups of an event as the API shows them (`[]` for a regular trip, without querying). */
+export async function listPublicGroups(db: D1Database, trip: Pick<TripRow, "id" | "type">): Promise<{ id: string; name: string }[]> {
+  if (trip.type !== "event") return [];
+  return (await repo.listGroups(db, trip.id)).map((g) => ({ id: g.id, name: g.name }));
+}
+
+/** `publicTrip` with its groups: the shape every trip response uses. */
+export async function publicTripWithGroups(db: D1Database, trip: TripRow, createdBy: Parameters<typeof publicTrip>[2]) {
+  return publicTrip(trip, Date.now(), createdBy, await listPublicGroups(db, trip));
+}
+
+/** The ids of the event groups `member` is in (`[]` for a regular trip, without querying). */
+export async function listMyGroupIds(db: D1Database, trip: Pick<TripRow, "type">, member: Pick<MemberRow, "id">): Promise<string[]> {
+  return trip.type === "event" ? repo.listMemberGroupIds(db, member.id) : [];
 }
 
 /** The rollo's creator as the API shows it (null if unknown). */
@@ -131,9 +171,9 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
   const today = localDate(now, trip.timezone);
 
   const [members, usage, totals, blocked] = await Promise.all([
-    repo.listActiveMembers(db, trip.id),
+    repo.listActiveMembers(db, trip.id, userId),
     trip.photo_limit_mode === "total" ? repo.countMediaByTypeTotal(db, me.id) : repo.countMediaByType(db, me.id, today),
-    repo.countUploadedMedia(db, trip.id, me.id),
+    repo.countUploadedMedia(db, trip.id, me.id, userId),
     blockedIdsFor(db, userId),
   ]);
 
@@ -180,6 +220,10 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
     moment_window_end: b.momentWindowEnd ?? trip.moment_window_end,
     moment_from_day: trip.moment_from_day,
   };
+  // An event's quota is the whole rollo's and it has no daily moment (they are forced at creation).
+  if (trip.type === "event" && (next.moment_mode !== "off" || next.photo_limit_mode !== "total")) {
+    throw conflict("En un evento el cupo es de todo el rollo y no hay momento del día.");
+  }
   // Moment mode or window changed in a running rollo: it applies from tomorrow; today's moment stays as it was.
   const momentChanged =
     next.moment_mode !== trip.moment_mode || next.moment_window_start !== trip.moment_window_start || next.moment_window_end !== trip.moment_window_end;
@@ -256,4 +300,48 @@ export async function revealTrip(env: Env, trip: TripRow, actorId: string): Prom
 /** Deletes the rollo for everyone: rows go in one batch, its R2 files are queued for the cron purge. */
 export async function deleteTrip(db: D1Database, trip: TripRow): Promise<void> {
   await db.batch(repo.deleteTripStatements(db, trip.id, Date.now()));
+}
+
+// ---------- Event groups (organizers) ----------
+
+/** Groups and the cover belong to events, and the groups are frozen once the event is revealed. */
+function assertEditableEvent(trip: TripRow): void {
+  if (trip.type !== "event") throw conflict("Solo los eventos tienen grupos.");
+  if (isRevealed(trip)) throw conflict("Este evento ya se reveló.");
+}
+
+const GROUP_NAME_TAKEN = "Ya hay un grupo con ese nombre.";
+
+export async function createGroup(db: D1Database, trip: TripRow, name: string): Promise<{ id: string; name: string }> {
+  assertEditableEvent(trip);
+  if ((await repo.listGroups(db, trip.id)).length >= MAX_EVENT_GROUPS) throw conflict(`Un evento puede tener hasta ${MAX_EVENT_GROUPS} grupos.`);
+  const id = crypto.randomUUID();
+  try {
+    await repo.insertGroup(db, trip.id, id, name, Date.now()).run();
+  } catch (err) {
+    if (String(err).includes("UNIQUE")) throw conflict(GROUP_NAME_TAKEN);
+    throw err;
+  }
+  return { id, name };
+}
+
+export async function renameGroup(db: D1Database, trip: TripRow, groupId: string, name: string): Promise<{ id: string; name: string }> {
+  assertEditableEvent(trip);
+  try {
+    if (!(await repo.renameGroup(db, trip.id, groupId, name))) throw notFound("No encontramos ese grupo.");
+  } catch (err) {
+    if (String(err).includes("UNIQUE")) throw conflict(GROUP_NAME_TAKEN);
+    throw err;
+  }
+  return { id: groupId, name };
+}
+
+export async function deleteGroup(db: D1Database, trip: TripRow, groupId: string): Promise<void> {
+  assertEditableEvent(trip);
+  if (await repo.deleteEmptyGroup(db, trip.id, groupId)) return;
+  const groups = await repo.listGroups(db, trip.id);
+  if (!groups.some((g) => g.id === groupId)) throw notFound("No encontramos ese grupo.");
+  // The delete itself refuses the last group, so nobody is left with nothing to join.
+  if (groups.length <= 1) throw conflict("Un evento necesita al menos un grupo.");
+  throw conflict("Este grupo tiene gente o fotos.");
 }
