@@ -117,7 +117,7 @@ export const feed: RouteHandler<typeof feedRoute, AppEnv> = async (c) => {
 export const download: RouteHandler<typeof downloadRoute, AppEnv> = async (c) => {
   const { mediaId, variant } = c.req.valid("param");
   const { key, fallbackKey } = await service.getDownloadKey(c.env.DB, c.get("trip"), c.get("user").id, mediaId, variant);
-  return serveMediaFile(c.env.MEDIA, key, fallbackKey);
+  return serveMediaFile(c.env.MEDIA, key, fallbackKey, c.req.raw.headers);
 };
 
 export const remove: RouteHandler<typeof deleteRoute, AppEnv> = async (c) => {
