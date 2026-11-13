@@ -98,6 +98,14 @@ export const downloadRoute = createRoute({
         "video/mp4": { schema: z.string().openapi({ format: "binary" }) },
       },
     },
+    206: {
+      description: "Part of the file, for a single `Range: bytes=...` request (players such as AVPlayer need it for video). `Content-Range` says which bytes and the total size. Several ranges or an invalid one get the whole file with 200.",
+      content: {
+        "image/jpeg": { schema: z.string().openapi({ format: "binary" }) },
+        "video/mp4": { schema: z.string().openapi({ format: "binary" }) },
+      },
+    },
+    416: { description: "The requested range starts past the end of the file; `Content-Range: bytes */<size>` gives the size" },
     ...errors(401, 403, 404, 428, 429),
   },
 });

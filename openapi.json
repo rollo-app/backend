@@ -7372,6 +7372,23 @@
               }
             }
           },
+          "206": {
+            "description": "Part of the file, for a single `Range: bytes=...` request (players such as AVPlayer need it for video). `Content-Range` says which bytes and the total size. Several ranges or an invalid one get the whole file with 200.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Missing or invalid session token",
             "content": {
@@ -7401,6 +7418,9 @@
                 }
               }
             }
+          },
+          "416": {
+            "description": "The requested range starts past the end of the file; `Content-Range: bytes */<size>` gives the size"
           },
           "428": {
             "description": "Profile incomplete: set a name and a username first",
