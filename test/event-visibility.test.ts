@@ -269,4 +269,31 @@ describe("event photo visibility by group", () => {
       }
     }
   });
+
+  it.each([
+    ["removed", "removed_at"],
+    ["left", "left_at"],
+  ])("a %s author gets no like or comment push", async (_label, column) => {
+    const ev = await revealedEvent();
+    const expo = mockExpo();
+    const gaPush = await registerToken(ev.ga.token);
+    const resetWindows = () =>
+      env.DB.prepare("UPDATE media SET like_notified_at = NULL, comment_notified_at = NULL WHERE id = ?").bind(ev.photoA).run();
+    // Control: an active author is notified of both.
+    expect((await api("PUT", `/media/${ev.photoA}/like`, { token: ev.org.token })).status).toBe(204);
+    expect((await api("POST", `/media/${ev.photoA}/comments`, { token: ev.org.token, body: { text: "uno" } })).status).toBe(201);
+    await flushPendingPushes();
+    expect(expo.sent.filter((m) => m.to === gaPush)).toHaveLength(2);
+    // The author stops being an active member: their photo still exists (and they are not its viewer any more).
+    await env.DB.prepare(`UPDATE members SET ${column} = ? WHERE id = ?`).bind(Date.now(), ev.ga.memberId).run();
+    await env.DB.prepare("DELETE FROM likes WHERE media_id = ?").bind(ev.photoA).run();
+    await resetWindows();
+    expect((await api("PUT", `/media/${ev.photoA}/like`, { token: ev.org.token })).status).toBe(204);
+    expect((await api("POST", `/media/${ev.photoA}/comments`, { token: ev.org.token, body: { text: "dos" } })).status).toBe(201);
+    await flushPendingPushes();
+    expect(expo.sent.filter((m) => m.to === gaPush)).toHaveLength(2);
+    // And they do not see it through the visibility rule either.
+    const raw = await env.DB.prepare(`SELECT ${mediaVisibleToSql("?1", "?2", "?3")} AS v`).bind(ev.ga.userId, ev.photoA, ev.tripId).first<{ v: number }>();
+    expect(raw!.v).toBe(0);
+  });
 });

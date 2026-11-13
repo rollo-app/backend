@@ -18,7 +18,8 @@ export function mediaVisibleToSql(viewerExpr: string, mediaExpr: string, tripExp
     `((SELECT vt.type FROM trips vt WHERE vt.id = ${tripExpr}) = 'trip'` +
     ` OR EXISTS (SELECT 1 FROM members va WHERE va.trip_id = ${tripExpr} AND va.user_id = ${viewerExpr} AND va.role = 'admin'` +
     ` AND va.removed_at IS NULL AND va.left_at IS NULL)` +
-    ` OR EXISTS (SELECT 1 FROM media vam JOIN members vau ON vau.id = vam.member_id WHERE vam.id = ${mediaExpr} AND vau.user_id = ${viewerExpr})` +
+    ` OR EXISTS (SELECT 1 FROM media vam JOIN members vau ON vau.id = vam.member_id WHERE vam.id = ${mediaExpr} AND vau.user_id = ${viewerExpr}` +
+    ` AND vau.trip_id = ${tripExpr} AND vau.removed_at IS NULL AND vau.left_at IS NULL)` +
     ` OR EXISTS (SELECT 1 FROM media_groups vmg JOIN member_groups vgm ON vgm.group_id = vmg.group_id` +
     ` JOIN members vm ON vm.id = vgm.member_id` +
     ` WHERE vmg.media_id = ${mediaExpr} AND vm.trip_id = ${tripExpr} AND vm.user_id = ${viewerExpr}` +
@@ -31,7 +32,8 @@ export function mediaVisibleTo(viewerUserId: string, mediaId: SQLWrapper, tripId
   return sql`((SELECT vt.type FROM trips vt WHERE vt.id = ${tripId}) = 'trip'
     OR EXISTS (SELECT 1 FROM members va WHERE va.trip_id = ${tripId} AND va.user_id = ${viewerUserId} AND va.role = 'admin'
                AND va.removed_at IS NULL AND va.left_at IS NULL)
-    OR EXISTS (SELECT 1 FROM media vam JOIN members vau ON vau.id = vam.member_id WHERE vam.id = ${mediaId} AND vau.user_id = ${viewerUserId})
+    OR EXISTS (SELECT 1 FROM media vam JOIN members vau ON vau.id = vam.member_id WHERE vam.id = ${mediaId} AND vau.user_id = ${viewerUserId}
+               AND vau.trip_id = ${tripId} AND vau.removed_at IS NULL AND vau.left_at IS NULL)
     OR EXISTS (SELECT 1 FROM media_groups vmg JOIN member_groups vgm ON vgm.group_id = vmg.group_id
                JOIN members vm ON vm.id = vgm.member_id
                WHERE vmg.media_id = ${mediaId} AND vm.trip_id = ${tripId} AND vm.user_id = ${viewerUserId}
@@ -45,4 +47,13 @@ export async function canSeeMediaInTrip(db: D1Database, viewerUserId: string, me
     .bind(viewerUserId, mediaId, tripId)
     .first<{ visible: number }>();
   return row?.visible === 1;
+}
+
+/** Whether a push about the photo may go to its author: still an active member of the trip (any type) and sees the photo. */
+export async function canNotifyAuthor(db: D1Database, authorUserId: string, mediaId: string, tripId: string): Promise<boolean> {
+  const member = await db
+    .prepare("SELECT 1 FROM members WHERE trip_id = ? AND user_id = ? AND removed_at IS NULL AND left_at IS NULL")
+    .bind(tripId, authorUserId)
+    .first();
+  return member !== null && (await canSeeMediaInTrip(db, authorUserId, mediaId, tripId));
 }
