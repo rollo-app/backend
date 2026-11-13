@@ -256,7 +256,7 @@ export const requestCoverRoute = createRoute({
   summary: "Get a URL to upload the event cover (admin)",
   description:
     "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /trips/{tripId}/cover/complete. " +
-    "409 for a regular trip. 503 when the storage limit is reached. A previous upload that was never completed is discarded.",
+    "409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). 503 when the storage limit is reached. A previous upload that was never completed is discarded.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: TripParams, body: { content: { "application/json": { schema: CoverUploadRequestSchema } }, required: true } },
@@ -270,7 +270,7 @@ export const completeCoverRoute = createRoute({
   summary: "Confirm the event cover upload (admin)",
   description:
     "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it the event's cover and deletes the previous one. " +
-    "Otherwise the upload is discarded and the response is a 400. The cover is served publicly at `coverUrl` (GET /covers/{tripId}/{file}).",
+    "Otherwise the upload is discarded and the response is a 400. 409 once the event is revealed (the pending upload is discarded). The cover is served publicly at `coverUrl` (GET /covers/{tripId}/{file}).",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: TripParams },

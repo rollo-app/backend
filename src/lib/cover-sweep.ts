@@ -10,8 +10,8 @@ const STATE_KEY = "cover_sweep_after";
  * `pending_cover_key` and were uploaded over 1 hour ago, so an upload that is about to be completed is never touched.
  * They appear from abandoned pending uploads, a presigned URL reused after `complete`, or concurrent completes.
  * Covers only exist under events, so it walks the event trips (ordered by id, `TRIPS_PER_RUN` per run) instead of
- * listing every media object, and only those not revealed or revealed less than 7 days ago (cover changes are frozen
- * after the reveal), to keep R2 list operations low. The cron calls it once an hour (`scheduled`); the last trip id it saw is kept in `cron_state` so the next run resumes after it, and the
+ * listing every media object, and only those not revealed or revealed less than 7 days ago (the cover is frozen after the
+ * reveal: `cover.service.ts` refuses uploads then), to keep R2 list operations low. The cron calls it once an hour (`scheduled`); the last trip id it saw is kept in `cron_state` so the next run resumes after it, and the
  * position is cleared once the walk reaches the end.
  */
 export async function sweepOrphanCovers(

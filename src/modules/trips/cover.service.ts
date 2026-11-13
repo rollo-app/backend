@@ -3,7 +3,7 @@ import { hasJpegMagic } from "../../lib/jpeg";
 import { presignPut } from "../../lib/r2";
 import { InvalidJpegError, stripJpegMetadata } from "../../lib/strip-jpeg-metadata";
 import { assertStorageAvailable } from "../../lib/storage";
-import { coverUrl } from "../../lib/util";
+import { coverUrl, isRevealed } from "../../lib/util";
 import { badRequest, conflict } from "../../shared/errors";
 import type { Env, TripRow } from "../../types";
 import * as repo from "./trips.repository";
@@ -17,6 +17,11 @@ function assertEvent(trip: TripRow): void {
   if (trip.type !== "event") throw conflict("Solo los eventos tienen portada.");
 }
 
+/** The cover is frozen once the event is revealed (like the groups). */
+function assertNotRevealed(trip: TripRow): void {
+  if (isRevealed(trip)) throw conflict("Este evento ya se reveló.");
+}
+
 /** Same flow as the avatar: a presigned PUT to a pending key, then `completeCoverUpload` validates and promotes it. */
 export async function requestCoverUpload(
   env: Env,
@@ -25,6 +30,7 @@ export async function requestCoverUpload(
   sizeBytes: number,
 ): Promise<{ upload: string; expiresIn: number }> {
   assertEvent(trip);
+  assertNotRevealed(trip);
   await assertNotDegraded(env);
   await assertStorageAvailable(env, sizeBytes);
   // Don't leave the previous unconfirmed upload orphaned in R2.
@@ -39,6 +45,14 @@ export async function requestCoverUpload(
 export async function completeCoverUpload(env: Env, trip: TripRow): Promise<{ coverUrl: string }> {
   assertEvent(trip);
   const pending = trip.pending_cover_key;
+  if (isRevealed(trip)) {
+    // Revealed between the request and now: discard the upload so nothing is left behind.
+    if (pending) {
+      await env.MEDIA.delete(pending);
+      await repo.clearPendingCoverKey(env.DB, trip.id).run();
+    }
+    assertNotRevealed(trip);
+  }
   if (!pending) throw badRequest("Primero pedí dónde subir la foto");
   const object = await env.MEDIA.get(pending);
   if (!object) throw badRequest("Falta la foto; volvé a subirla");

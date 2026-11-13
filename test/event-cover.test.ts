@@ -130,4 +130,26 @@ describe("event cover", () => {
     expect((await api("DELETE", `/trips/${ev.tripId}`, { token: ev.org.token })).status).toBe(204);
     expect(await env.DB.prepare("SELECT 1 FROM r2_purge WHERE key = ?").bind(key).first()).not.toBeNull();
   });
+
+  it("cover upload is refused after the reveal", async () => {
+    const ev = await eventFixture();
+    const reveal = (at: number) => env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(at, ev.tripId).run();
+
+    // Request before the reveal, reveal, then complete: 409, pending object discarded and key cleared.
+    const req = await api("POST", `/trips/${ev.tripId}/cover`, { token: ev.org.token, body: { sizeBytes: jpeg().length } });
+    expect(req.status).toBe(200);
+    const pendingKey = (await keys(ev.tripId))!.p!;
+    await env.MEDIA.put(pendingKey, jpeg());
+    await reveal(Date.now() - 1000);
+    const done = await api("POST", `/trips/${ev.tripId}/cover/complete`, { token: ev.org.token });
+    expect(done.status).toBe(409);
+    expect(done.body.error).toBe("Este evento ya se reveló.");
+    expect(await env.MEDIA.get(pendingKey)).toBeNull();
+    expect(await keys(ev.tripId)).toEqual({ c: null, p: null });
+
+    // A new request is refused too.
+    const again = await api("POST", `/trips/${ev.tripId}/cover`, { token: ev.org.token, body: { sizeBytes: jpeg().length } });
+    expect(again.status).toBe(409);
+    expect(again.body.error).toBe("Este evento ya se reveló.");
+  });
 });
