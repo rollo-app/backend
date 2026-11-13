@@ -214,6 +214,7 @@ const tripColumns = {
   endsAt: trips.endsAt,
   revealAt: trips.revealAt,
   revealedAt: trips.revealedAt,
+  type: trips.type,
   maxMembers: trips.maxMembers,
   keepOriginals: trips.keepOriginals,
   originalsPurgedAt: trips.originalsPurgedAt,
@@ -233,6 +234,7 @@ export type AdminTripRow = {
   endsAt: number;
   revealAt: number;
   revealedAt: number | null;
+  type: "trip" | "event";
   maxMembers: number;
   keepOriginals: number;
   originalsPurgedAt: number | null;
@@ -315,4 +317,22 @@ export async function listTripMembers(db: D1Database, tripId: string): Promise<A
     .bind(tripId)
     .all<Omit<AdminTripMemberRow, "isCreator"> & { isCreator: number | null }>();
   return results.map((r) => ({ ...r, isCreator: r.isCreator === 1 }));
+}
+
+export type AdminEventGroupRow = { id: string; name: string; memberCount: number; mediaCount: number };
+
+/** An event's groups in display order, with their active members and uploaded, not deleted media. */
+export async function listEventGroups(db: D1Database, tripId: string): Promise<AdminEventGroupRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT g.id, g.name,
+              (SELECT COUNT(*) FROM member_groups mg JOIN members m ON m.id = mg.member_id
+                WHERE mg.group_id = g.id AND m.left_at IS NULL AND m.removed_at IS NULL) AS memberCount,
+              (SELECT COUNT(*) FROM media_groups xg JOIN media md ON md.id = xg.media_id
+                WHERE xg.group_id = g.id AND md.status = 'uploaded' AND md.deleted_at IS NULL) AS mediaCount
+       FROM event_groups g WHERE g.trip_id = ? ORDER BY g.position ASC, g.id ASC`,
+    )
+    .bind(tripId)
+    .all<AdminEventGroupRow>();
+  return results;
 }

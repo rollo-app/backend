@@ -46,7 +46,7 @@ export const EXPECTED_COMMON: Record<string, CommonExpectation> = {
   Tomi: { atLeast: 5, excludes: [PRIVATE_TRIP] },
   Fede: { atLeast: 5, excludes: [PRIVATE_TRIP] },
   Pilar: { exactly: [] },
-  Bruno: { exactly: ["Finde en Tandil"] },
+  Bruno: { exactly: ["Finde en Tandil", "Casamiento de prueba"] },
   Rama: { exactly: [] },
   Vicky: { exactly: [] },
 };

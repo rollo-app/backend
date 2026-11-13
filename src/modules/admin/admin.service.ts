@@ -136,8 +136,8 @@ export async function listTrips(db: D1Database, query: PageQuery, now: number) {
 export async function getTrip(db: D1Database, tripId: string, now: number) {
   const trip = await repo.findAdminTrip(db, tripId);
   if (!trip) throw notFound();
-  const members = await repo.listTripMembers(db, tripId);
-  return { ...presentTrip(trip, now), members };
+  const [members, groups] = await Promise.all([repo.listTripMembers(db, tripId), repo.listEventGroups(db, tripId)]);
+  return { ...presentTrip(trip, now), members, groups };
 }
 
 /**

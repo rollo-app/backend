@@ -136,7 +136,12 @@ Fechas en epoch milisegundos. Errores: `{ "error": "mensaje" }`.
 | GET | `/usernames/{username}` | sesión | `{available, username}` (normalizado); 400 si el formato es inválido |
 | GET | `/me/trips` | sesión | Mis rollos |
 | POST | `/trips` | sesión | Crea el viaje (requiere nombre en el perfil); devuelve el código |
-| POST | `/trips/join` | sesión | `{code}` → 201 si te uniste, 200 si ya eras miembro |
+| POST | `/trips/join` | sesión | `{code, groupIds?}` → 201 si te uniste, 200 si ya eras miembro; en un evento `groupIds` es obligatorio (409 `EVENT_NEEDS_UPDATE` si falta) |
+| GET | `/events/:code` | cualquiera | Vista previa de un evento (nombre, portada, grupos); sin token |
+| PUT | `/trips/:tripId/members/me/groups` | miembro | `{groupIds}` → tus grupos en el evento |
+| POST / PATCH / DELETE | `/trips/:tripId/groups[/:groupId]` | admin | Crea, renombra y borra grupos del evento |
+| POST | `/trips/:tripId/cover` y `/cover/complete` | admin | Portada del evento (URL de subida y confirmación) |
+| GET | `/covers/:tripId/:file` | cualquiera | La portada actual (JPEG) |
 | GET | `/trips/:tripId` | miembro | Viaje, miembros, fotos/videos que te quedan hoy |
 | PATCH | `/trips/:tripId` | admin | Nombre, fin, revelado, límites |
 | POST | `/trips/:tripId/reveal` | admin | Revela el rollo ya |
