@@ -1,6 +1,7 @@
 import { assertNotDegraded } from "../../lib/degraded";
 import { hasJpegMagic } from "../../lib/jpeg";
 import { presignPut } from "../../lib/r2";
+import { InvalidJpegError, stripJpegMetadata } from "../../lib/strip-jpeg-metadata";
 import { assertStorageAvailable } from "../../lib/storage";
 import { coverUrl } from "../../lib/util";
 import { badRequest, conflict } from "../../shared/errors";
@@ -42,9 +43,18 @@ export async function completeCoverUpload(env: Env, trip: TripRow): Promise<{ co
   const object = await env.MEDIA.get(pending);
   if (!object) throw badRequest("Falta la foto; volvé a subirla");
 
-  // Validate and copy the very same bytes: the presigned PUT stays valid after this call.
-  const bytes = object.size > COVER_MAX_BYTES ? null : await object.arrayBuffer();
-  if (!bytes || bytes.byteLength > COVER_MAX_BYTES || !hasJpegMagic(new Uint8Array(bytes))) {
+  // Validate and copy the very same bytes: the presigned PUT stays valid after this call. The cover is public, so
+  // EXIF (GPS, author), XMP and comments are stripped before it is published.
+  const raw = object.size > COVER_MAX_BYTES ? null : new Uint8Array(await object.arrayBuffer());
+  let bytes: Uint8Array | null = null;
+  if (raw && raw.byteLength <= COVER_MAX_BYTES && hasJpegMagic(raw)) {
+    try {
+      bytes = stripJpegMetadata(raw);
+    } catch (err) {
+      if (!(err instanceof InvalidJpegError)) throw err;
+    }
+  }
+  if (!bytes) {
     await env.MEDIA.delete(pending);
     await repo.clearPendingCoverKey(env.DB, trip.id).run();
     throw badRequest("La portada tiene que ser un JPEG de hasta 2 MB");

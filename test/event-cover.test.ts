@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
 import { api, createTrip, newTrip, signUp } from "./helpers";
+import { BASELINE_JPEG, indexOfBytes, photoWithMetadata } from "./jpeg-fixture";
 
-const jpeg = (content = "cover") => new Uint8Array([0xff, 0xd8, 0xff, ...new TextEncoder().encode(content)]);
+// A well-formed JPEG: the cover is stripped of metadata on complete, which rejects anything else.
+const jpeg = (_label = "cover") => BASELINE_JPEG;
 
 async function eventFixture() {
   const org = await signUp(undefined, "Org");
@@ -39,7 +41,7 @@ describe("event cover", () => {
     expect(typeof req.body.upload).toBe("string");
     expect((await keys(ev.tripId))!.p).toMatch(new RegExp(`^trips/${ev.tripId}/cover/[0-9a-f-]+\\.jpg$`));
 
-    const done = await setCover(ev.org.token, ev.tripId, jpeg("the-bytes"));
+    const done = await setCover(ev.org.token, ev.tripId, jpeg());
     expect(done.status).toBe(200);
     expect(done.body.coverUrl).toMatch(new RegExp(`^/covers/${ev.tripId}/[0-9a-f-]+\\.jpg$`));
     expect((await keys(ev.tripId))!.p).toBeNull();
@@ -52,7 +54,6 @@ describe("event cover", () => {
     expect(file.headers.get("content-type")).toBe("image/jpeg");
     expect(file.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(file.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(file.body.endsWith("the-bytes")).toBe(true);
   });
 
   it("replacing the cover deletes the old one from R2 and only the current file is served", async () => {
@@ -64,6 +65,29 @@ describe("event cover", () => {
     expect(await env.MEDIA.get(oldKey)).toBeNull();
     expect((await api("GET", first.body.coverUrl)).status).toBe(404);
     expect((await api("GET", second.body.coverUrl)).status).toBe(200);
+  });
+
+  it("the published cover has no EXIF metadata", async () => {
+    const ev = await eventFixture();
+    const input = photoWithMetadata("secreto en el cerro");
+    expect(indexOfBytes(input, "Exif\0\0")).toBeGreaterThan(0);
+    const done = await setCover(ev.org.token, ev.tripId, input);
+    expect(done.status).toBe(200);
+    const key = (await keys(ev.tripId))!.c!;
+    const stored = new Uint8Array(await (await env.MEDIA.get(key))!.arrayBuffer());
+    expect(indexOfBytes(stored, "Exif\0\0")).toBe(-1);
+    expect(indexOfBytes(stored, "http://ns.adobe.com/xap/1.0/")).toBe(-1);
+    expect(indexOfBytes(stored, "secreto en el cerro")).toBe(-1);
+    expect((await api("GET", done.body.coverUrl)).status).toBe(200);
+  });
+
+  it("rejects a malformed JPEG and discards it", async () => {
+    const ev = await eventFixture();
+    const res = await setCover(ev.org.token, ev.tripId, new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3]));
+    expect(res.status).toBe(400);
+    const k = (await keys(ev.tripId))!;
+    expect(k.c).toBeNull();
+    expect(k.p).toBeNull();
   });
 
   it("rejects a file that is not a JPEG and discards it", async () => {
