@@ -130,6 +130,31 @@ describe("GET /events/{code}", () => {
     expect((await api("GET", `/events/${ev.code}`, { env: { RL_IP_PUBLIC: allow, RL_GLOBAL: deny, RL_SEARCH: deny } })).status).toBe(200);
   });
 
+  it("blocks an IP for a while after too many misses, even for valid codes, and leaves other IPs alone", async () => {
+    const ev = await newEvent();
+    let left = 2;
+    const miss = { limit: async () => ({ success: left-- > 0 }) };
+    const ip = (n: string) => ({ "cf-connecting-ip": n });
+    const guess = (n: string) => api("GET", "/events/ZZZZZZ", { env: { RL_IP_MISS: miss }, headers: ip(n) });
+    expect((await guess("203.0.113.7")).status).toBe(404);
+    expect((await guess("203.0.113.7")).status).toBe(404);
+    // The third miss trips the limiter: that answer is already the block.
+    expect((await guess("203.0.113.7")).status).toBe(429);
+    const blocked = await api("GET", `/events/${ev.code}`, { headers: ip("203.0.113.7") });
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBe("60");
+    expect((await api("GET", `/events/${ev.code}`, { headers: ip("203.0.113.8") })).status).toBe(200);
+  });
+
+  it("only GET skips the global limiter", async () => {
+    const ev = await newEvent();
+    const deny = { limit: async () => ({ success: false }) };
+    // Not a GET: it still goes through RL_GLOBAL by IP.
+    const pre = await api("OPTIONS", `/events/${ev.code}`, { env: { RL_GLOBAL: deny }, headers: { origin: "https://rolloproject.com" } });
+    expect(pre.status).toBe(429);
+    expect((await api("POST", `/events/${ev.code}`, { env: { RL_GLOBAL: deny } })).status).toBe(429);
+  });
+
   it("returns revealed: true once the event is revealed", async () => {
     const ev = await newEvent();
     await env.DB.prepare("UPDATE trips SET reveal_at = ? WHERE id = ?").bind(Date.now() - DAY, ev.tripId).run();

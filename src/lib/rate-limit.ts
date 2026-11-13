@@ -6,7 +6,7 @@ import type { AppEnv, Env, RateLimitBinding } from "../types";
 
 export const RATE_LIMIT_MESSAGE = "Estás yendo muy rápido. Probá de nuevo en un minuto.";
 
-type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_IP_FILES" | "RL_IP_PUBLIC" | "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH";
+type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_IP_FILES" | "RL_IP_PUBLIC" | "RL_IP_MISS" | "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH";
 const warned = new Set<string>();
 
 /** Consumes one hit of `key`. Fails open: without the binding (or if it throws) the request goes through. */
@@ -49,6 +49,40 @@ export const rateLimitByIp = (name: "RL_IP_PUBLIC") =>
     await next();
   });
 
+const BLOCK_SECONDS = 60;
+const blockRequest = (ip: string) => new Request(`https://rate-limit.internal/preview-block/${encodeURIComponent(ip)}`);
+
+/**
+ * Guards the public event preview against invite-code guessing: an IP whose lookups keep missing (404) is blocked for
+ * 60 s, and while blocked even valid codes answer 429. Workers Rate Limiting cannot "peek" (every call consumes a hit),
+ * so the miss count lives in `RL_IP_MISS` and, when it trips, the block is a synthetic entry in the Cache API
+ * (`caches.default`, max-age 60) that is read BEFORE the lookup. Trade-off: the cache is per Cloudflare location, like
+ * the limiters themselves, so an attacker spread over several colos gets a budget per colo; and a failing cache fails
+ * open (no block). Misses are cheap for real guests (a typo), so the budget (20/min) is far above honest use.
+ */
+export const previewMissGuard = createMiddleware<AppEnv>(async (c, next) => {
+  const rawIp = c.req.header("cf-connecting-ip");
+  const ip = rawIp ? ipKey(rawIp) : "unknown";
+  const cache = typeof caches === "undefined" ? undefined : caches.default;
+  const blocked = async () => {
+    try {
+      return !!(await cache?.match(blockRequest(ip)));
+    } catch {
+      return false;
+    }
+  };
+  if (await blocked()) throw tooFast();
+  await next();
+  if (c.res.status === 404 && !(await allowed(c.env, "RL_IP_MISS", `ip:${ip}`))) {
+    try {
+      await cache?.put(blockRequest(ip), new Response(null, { headers: { "Cache-Control": `max-age=${BLOCK_SECONDS}` } }));
+    } catch (err) {
+      console.error("[rate-limit] could not store the preview block", err);
+    }
+    throw tooFast();
+  }
+});
+
 /** Paths that cost nothing (static docs, the dev upload) and are not limited. */
 const SKIPPED = new Set(["/openapi.json", "/docs"]);
 
@@ -65,7 +99,7 @@ const SKIPPED = new Set(["/openapi.json", "/docs"]);
 const FILE_DOWNLOAD = /^\/(?:trips\/[^/]+\/media\/[^/]+\/(?:thumb|original)|featured\/[^/]+\/[^/]+\/[^/]+)$/;
 
 /**
- * `GET|OPTIONS /events/{code}`: the public event preview the website loads for every guest who opens the invite link.
+ * `GET /events/{code}` (only GET; other methods keep `RL_GLOBAL`): the public event preview the website loads for every guest who opens the invite link.
  * Anonymous, so `RL_GLOBAL` by IP (120/min) would cut a whole venue on one Wi-Fi or carrier NAT. It skips that and has its
  * own roomy per-IP budget on the route (`RL_IP_PUBLIC`, see `rateLimitByIp`).
  */
@@ -78,7 +112,7 @@ const PUBLIC_EVENT_PREVIEW = /^\/events\/[^/]+$/;
  */
 export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
   const path = new URL(c.req.url).pathname;
-  if (SKIPPED.has(path) || path.startsWith("/dev/upload/") || PUBLIC_EVENT_PREVIEW.test(path)) return next();
+  if (SKIPPED.has(path) || path.startsWith("/dev/upload/") || (c.req.method === "GET" && PUBLIC_EVENT_PREVIEW.test(path))) return next();
   const rawIp = c.req.header("cf-connecting-ip");
   const ip = rawIp ? ipKey(rawIp) : "unknown";
   const header = c.req.header("Authorization") ?? "";

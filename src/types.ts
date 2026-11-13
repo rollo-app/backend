@@ -7,6 +7,7 @@ export type Env = {
   RL_IP?: RateLimitBinding;
   RL_IP_FILES?: RateLimitBinding;
   RL_IP_PUBLIC?: RateLimitBinding;
+  RL_IP_MISS?: RateLimitBinding;
   RL_EXPENSIVE?: RateLimitBinding;
   RL_UPLOAD?: RateLimitBinding;
   RL_FILES?: RateLimitBinding;

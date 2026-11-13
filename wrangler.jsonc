@@ -32,7 +32,9 @@
     // Per IP for authenticated file downloads (5x RL_IP: they skip RL_GLOBAL and RL_IP so galleries and shared event Wi-Fi are not cut off).
     { "name": "RL_IP_FILES", "namespace_id": "1007", "simple": { "limit": 3000, "period": 60 } },
     // Per IP for the public event preview (GET /events/{code}): a whole venue opens the invite link from one Wi-Fi / carrier NAT. Skips RL_GLOBAL.
-    { "name": "RL_IP_PUBLIC", "namespace_id": "1008", "simple": { "limit": 1200, "period": 60 } },
+    { "name": "RL_IP_PUBLIC", "namespace_id": "1008", "simple": { "limit": 300, "period": 60 } },
+    // Per IP for lookups of the public event preview that missed (404): guessing invite codes. Tripping it blocks the IP for 60 s (see previewGuard).
+    { "name": "RL_IP_MISS", "namespace_id": "1009", "simple": { "limit": 20, "period": 60 } },
     // Per user: media completion, avatar upload, likes, adding members.
     { "name": "RL_EXPENSIVE", "namespace_id": "1003", "simple": { "limit": 20, "period": 60 } },
     // Per user: registering and completing media (the offline queue registers a burst when the phone gets back online).
