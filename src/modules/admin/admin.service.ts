@@ -83,16 +83,18 @@ export async function getUser(db: D1Database, id: string, now: number) {
   return { ...user, trips: trips.map((t) => ({ id: t.id, name: t.name, role: t.role, state: tripState(t, now) })) };
 }
 
-/** Edits another account: profile fields with the same rules as `PATCH /me`, plus the badge and the rollo-limit exemption, in one atomic batch. */
+/** Edits another account: profile fields with the same rules as `PATCH /me`, plus the badge, the rollo-limit exemption and the event permission, in one atomic batch. */
 export async function editUser(db: D1Database, id: string, patch: AdminEditUser, now: number) {
   const user = await repo.findUser(db, id);
   if (!user) throw notFound();
-  const { badge, unlimitedRollos, ...profile } = patch;
+  const { badge, unlimitedRollos, canCreateEvents, ...profile } = patch;
   const statements: D1PreparedStatement[] = [];
   if (profile.name !== undefined || profile.username !== undefined || profile.bio !== undefined) {
     statements.push((await prepareProfileUpdate(db, user, profile)).statement);
   }
-  if (badge !== undefined || unlimitedRollos !== undefined) statements.push(repo.updateUserFlags(db, id, { badge, unlimitedRollos }));
+  if (badge !== undefined || unlimitedRollos !== undefined || canCreateEvents !== undefined) {
+    statements.push(repo.updateUserFlags(db, id, { badge, unlimitedRollos, canCreateEvents }));
+  }
   await withUsernameConflict(() => db.batch(statements));
   return getUser(db, id, now);
 }

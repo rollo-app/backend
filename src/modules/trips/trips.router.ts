@@ -31,11 +31,11 @@ export const createTripRoute = createRoute({
   path: "/",
   tags,
   summary: "Create a trip",
-  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show.",
+  description: "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show. Events (`type: \"event\"`) are enabled per account (`users.can_create_events`, see `canCreateEvents` in GET /me): 403 without it, checked first; and 409 if you already created an event that is not revealed yet, for everyone including `unlimited_rollos` users.",
   security: bearerAuth,
   middleware: [requireUser] as const,
   request: { body: { content: { "application/json": { schema: CreateTripSchema } }, required: true } },
-  responses: { 201: json(TripCreatedSchema, "Trip created"), ...errors(400, 401, 409, 428) },
+  responses: { 201: json(TripCreatedSchema, "Trip created"), ...errors(400, 401, 403, 409, 428) },
 });
 
 export const joinTripRoute = createRoute({

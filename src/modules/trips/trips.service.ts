@@ -46,6 +46,13 @@ async function enforceCreateLimits(db: D1Database, userId: string, timeZone: str
   }
 }
 
+/** Events are for enabled accounts and one unrevealed at a time (for everyone, even `unlimited_rollos`). */
+async function enforceEventRules(db: D1Database, userId: string, now: number) {
+  if (await repo.hasUnrevealedEventCreated(db, userId, now)) {
+    throw conflict("Ya tenés un evento sin revelar. Vas a poder crear otro cuando se revele.");
+  }
+}
+
 /** Creates the trip with `user` as admin. `null` when no free join code could be generated. */
 export async function createTrip(
   db: D1Database,
@@ -56,7 +63,12 @@ export async function createTrip(
   await assertNotDegraded({ DB: db });
   const now = Date.now();
   const limited = !user.unlimited_rollos;
+  const isEvent = body.type === "event";
+  if (isEvent && !user.can_create_events) {
+    throw forbidden("Por ahora crear eventos está habilitado solo para algunas cuentas. Escribinos a support@rolloproject.com.");
+  }
   // Early check for a clear error; the INSERT below re-checks atomically.
+  if (isEvent) await enforceEventRules(db, user.id, now);
   if (limited) await enforceCreateLimits(db, user.id, body.timezone, now);
 
   // Unique code (collisions are very unlikely, but we retry just in case).
@@ -73,7 +85,6 @@ export async function createTrip(
   await hooks.beforeInsert?.();
 
   // Events: always a total photo limit (20 by default), no daily moment and room for a wedding-sized crowd.
-  const isEvent = body.type === "event";
   const groups = isEvent ? (body.groups ?? []).map((name) => ({ id: crypto.randomUUID(), name })) : [];
 
   await db.batch([
@@ -101,6 +112,7 @@ export async function createTrip(
     }, {
       userId: user.id,
       limited,
+      oneEventAtATime: isEvent,
       unrevealedMax: MAX_UNREVEALED_CREATED,
       windowMax: MAX_CREATED_IN_WINDOW,
       windowSince: now - CREATE_WINDOW_MS,
@@ -112,7 +124,9 @@ export async function createTrip(
   const trip = await repo.findTripById(db, tripId);
   if (!trip) {
     // The guarded INSERT wrote nothing: a concurrent create used the last slot. Say which limit hit.
-    await enforceCreateLimits(db, user.id, body.timezone, Date.now());
+    const later = Date.now();
+    if (isEvent) await enforceEventRules(db, user.id, later);
+    if (limited) await enforceCreateLimits(db, user.id, body.timezone, later);
     throw conflict("No pudimos crear el rollo ahora. Probá de nuevo.");
   }
   return { trip, member: { id: memberId, user_id: user.id, role: "admin" as Role } };

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
-import { api, createTrip, photoBody, signUp } from "./helpers";
+import { api, createTrip, photoBody, signUp, grantEvents } from "./helpers";
 
 async function eventFixture() {
   const org = await signUp(undefined, "Org");
+  await grantEvents(org.userId);
   const { tripId, code } = await createTrip(org.token, {
     type: "event",
     groups: ["A", "B"],

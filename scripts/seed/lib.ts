@@ -99,7 +99,7 @@ export function ensureUser(name: string): Promise<string> {
         d1(`INSERT INTO users (id, email, name, name_search, username, created_at) VALUES (${sqlStr(userId)}, ${sqlStr(email)}, ${sqlStr(name)}, ${nameSearch}, ${username}, ${now})`);
       }
       const badge = SEED_BADGES[name];
-      d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"}, unlimited_rollos = ${LIMITED_ROLLOS.has(name) ? 0 : 1} WHERE id = ${sqlStr(userId)}`);
+      d1(`UPDATE users SET badge = ${badge ? sqlStr(badge) : "NULL"}, unlimited_rollos = ${LIMITED_ROLLOS.has(name) ? 0 : 1}, can_create_events = ${name === "Juani" ? 1 : 0} WHERE id = ${sqlStr(userId)}`);
       const token = randomBytes(32).toString("base64url");
       const hash = createHash("sha256").update(token).digest("hex");
       d1(

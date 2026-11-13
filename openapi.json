@@ -131,6 +131,10 @@
           },
           "profileVisibility": {
             "$ref": "#/components/schemas/ProfileVisibility"
+          },
+          "canCreateEvents": {
+            "type": "boolean",
+            "description": "Whether this account can create events (POST /trips with type \"event\"); enabled by hand for now. Without it that call is a 403"
           }
         },
         "required": [
@@ -141,7 +145,8 @@
           "avatarUrl",
           "bio",
           "badge",
-          "profileVisibility"
+          "profileVisibility",
+          "canCreateEvents"
         ]
       },
       "ProfileVisibility": {
@@ -5341,7 +5346,7 @@
           "Trips"
         ],
         "summary": "Create a trip",
-        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show.",
+        "description": "Whoever creates it becomes the admin. The profile must have a name and a username. Returns the invite code. 409 at the limits on rollos you created (at most 2 unrevealed at once and 4 in the last 30 days; rollos you joined do not count; users with `users.unlimited_rollos` are exempt), with the message to show. Events (`type: \"event\"`) are enabled per account (`users.can_create_events`, see `canCreateEvents` in GET /me): 403 without it, checked first; and 409 if you already created an event that is not revealed yet, for everyone including `unlimited_rollos` users.",
         "security": [
           {
             "bearerAuth": []
@@ -5380,6 +5385,16 @@
           },
           "401": {
             "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {

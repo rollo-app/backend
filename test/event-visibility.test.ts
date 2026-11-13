@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
 import { canSeeMediaInTrip, mediaVisibleToSql } from "../src/lib/event-visibility";
 import { flushPendingPushes } from "../src/lib/push";
-import { DAY, addMediaDirect, addMembersDirect, api, createTrip, joinAs, mockExpo, newTrip, putFiles, registerToken, signUp, uploadMedia } from "./helpers";
+import { DAY, addMediaDirect, addMembersDirect, api, createTrip, joinAs, mockExpo, newTrip, putFiles, registerToken, signUp, uploadMedia, grantEvents } from "./helpers";
 
 type Guest = { token: string; userId: string; memberId: string };
 
 /** Revealed event with groups A and B: guest `ga` in A, guest `gb` in B, the organizer, a photo of `ga` in A and one of `gb` in B. */
 async function revealedEvent() {
   const org = await signUp(undefined, "Org");
+  await grantEvents(org.userId);
   const { tripId, code, memberId: orgMemberId } = await createTrip(org.token, {
     type: "event",
     groups: ["A", "B"],
@@ -223,6 +224,7 @@ describe("event photo visibility by group", () => {
 
   it("an author keeps seeing their own photo after leaving its group", async () => {
     const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
     const { tripId, code } = await createTrip(org.token, {
       type: "event", groups: ["A", "B"], photoLimitMode: "total", totalPhotoLimit: 20, dailyPhotoLimit: undefined, dailyVideoLimit: undefined,
     });

@@ -74,6 +74,11 @@ export async function makeSuperadmin(email?: string): Promise<{ token: string; u
   return su;
 }
 
+/** Lets the user create events (`users.can_create_events`, set from the backoffice in production). */
+export async function grantEvents(userId: string): Promise<void> {
+  await env.DB.prepare("UPDATE users SET can_create_events = 1 WHERE id = ?").bind(userId).run();
+}
+
 /** Logs an existing account in again: a new session (another phone). Returns its token. */
 export async function logIn(email: string): Promise<string> {
   // Skip the resend throttle: pretend the previous codes were requested an hour ago.

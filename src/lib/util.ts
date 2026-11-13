@@ -96,7 +96,7 @@ export function toBadge(value: string | null | undefined): "founder" | "first_ed
 
 /** Public shape of a user. */
 export function publicUser(
-  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility">,
+  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility" | "can_create_events">,
 ) {
   return {
     id: user.id,
@@ -107,6 +107,7 @@ export function publicUser(
     bio: user.bio,
     badge: toBadge(user.badge),
     profileVisibility: user.profile_visibility,
+    canCreateEvents: user.can_create_events !== 0,
   };
 }
 

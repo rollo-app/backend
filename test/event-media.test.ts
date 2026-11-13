@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
 import { resolveMediaGroups } from "../src/modules/media/media.service";
-import { DAY, api, createTrip, newTrip, photoBody, signUp, uploadMedia } from "./helpers";
+import { DAY, api, createTrip, newTrip, photoBody, signUp, uploadMedia, grantEvents } from "./helpers";
 
 type Guest = { token: string; memberId: string };
 
 /** Event with groups A and B, an organizer and one guest in A and B (`both`), one only in A (`ga`) and one only in B (`gb`). */
 async function eventWithGuests(overrides: Record<string, unknown> = {}) {
   const org = await signUp(undefined, "Org");
+  await grantEvents(org.userId);
   const { tripId, code } = await createTrip(org.token, {
     type: "event",
     groups: ["A", "B"],

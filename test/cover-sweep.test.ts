@@ -3,7 +3,7 @@ import { createExecutionContext, createScheduledController, waitOnExecutionConte
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
 import { sweepOrphanCovers } from "../src/lib/cover-sweep";
-import { createTrip, signUp } from "./helpers";
+import { createTrip, signUp, grantEvents } from "./helpers";
 
 const HOUR = 60 * 60 * 1000;
 const key = (tripId: string) => `trips/${tripId}/cover/${crypto.randomUUID()}.jpg`;
@@ -12,6 +12,7 @@ const put = (k: string) => env.MEDIA.put(k, new Uint8Array([0xff, 0xd8, 0xff]));
 
 async function newEvent() {
   const org = await signUp(undefined, "Org");
+  await grantEvents(org.userId);
   const { tripId } = await createTrip(org.token, {
     type: "event",
     groups: ["A"],

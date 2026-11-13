@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
-import { api, createTrip, newTrip, signUp } from "./helpers";
+import { api, createTrip, newTrip, signUp, grantEvents } from "./helpers";
 import { BASELINE_JPEG, indexOfBytes, photoWithMetadata } from "./jpeg-fixture";
 
 // A well-formed JPEG: the cover is stripped of metadata on complete, which rejects anything else.
@@ -8,6 +8,7 @@ const jpeg = () => BASELINE_JPEG;
 
 async function eventFixture() {
   const org = await signUp(undefined, "Org");
+  await grantEvents(org.userId);
   const { tripId, code } = await createTrip(org.token, {
     type: "event",
     groups: ["A"],

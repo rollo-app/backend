@@ -134,7 +134,7 @@ describe("POST /auth/email/verify", () => {
     expect(res.status).toBe(200);
     expect(res.body.token).toEqual(expect.any(String));
     expect(res.body.isNew).toBe(true);
-    expect(res.body.user).toEqual({ id: expect.any(String), email, name: null, username: null, avatarUrl: null, bio: null, badge: null, profileVisibility: "friends" });
+    expect(res.body.user).toEqual({ id: expect.any(String), email, name: null, username: null, avatarUrl: null, bio: null, badge: null, profileVisibility: "friends", canCreateEvents: false });
 
     expect((await api("GET", "/me", { token: res.body.token })).status).toBe(200);
   });

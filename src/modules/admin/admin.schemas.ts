@@ -28,6 +28,7 @@ export const TripStateSchema = z.enum(["upcoming", "open", "ended", "revealed"])
 export const AdminUserDetailSchema = AdminUserSchema.extend({
   bio: z.string().nullable(),
   unlimitedRollos: z.boolean(),
+  canCreateEvents: z.boolean(),
   trips: z.array(z.object({ id: z.string(), name: z.string(), role: z.enum(["admin", "member"]), state: TripStateSchema })),
 });
 
@@ -37,6 +38,7 @@ export const AdminEditUserSchema = z
     ...UpdateProfileSchema.pick({ name: true, username: true, bio: true }).shape,
     badge: UserBadgeSchema.optional(),
     unlimitedRollos: z.boolean().optional(),
+    canCreateEvents: z.boolean().optional(),
   })
   .strict();
 export type AdminEditUser = z.infer<typeof AdminEditUserSchema>;

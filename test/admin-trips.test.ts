@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { tripStage } from "../src/modules/admin/admin.service";
-import { DAY, addMembersDirect, api, createTrip, join, joinAs, makeSuperadmin, newTrip, signUp, uploadMedia } from "./helpers";
+import { DAY, addMembersDirect, api, createTrip, join, joinAs, makeSuperadmin, newTrip, signUp, uploadMedia, grantEvents } from "./helpers";
 
 const list = (token: string, qs = "") => api("GET", `/admin/trips${qs ? `?${qs}` : ""}`, { token });
 const names = (r: { body: any }) => r.body.items.map((t: any) => t.name);
@@ -136,6 +136,7 @@ describe("GET /admin/trips/:tripId", () => {
   it("admin trip detail lists event groups with counts", async () => {
     const su = await makeSuperadmin();
     const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
     const { tripId, code } = await createTrip(org.token, {
       type: "event",
       groups: ["Familia", "Amigos"],

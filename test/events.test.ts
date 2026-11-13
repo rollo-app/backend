@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
-import { DAY, HOUR, TZ, api, createTrip, newTrip, signUp } from "./helpers";
+import { DAY, HOUR, TZ, api, createTrip, newTrip, signUp, grantEvents } from "./helpers";
 
 const eventBody = (overrides: Record<string, unknown> = {}) => {
   const now = Date.now();
@@ -20,7 +20,9 @@ const eventBody = (overrides: Record<string, unknown> = {}) => {
 
 describe("POST /trips (event)", () => {
   it("creates an event with its groups in order", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     const res = await api("POST", "/trips", { token, body: eventBody() });
     expect(res.status).toBe(201);
     expect(res.body.trip.type).toBe("event");
@@ -30,7 +32,9 @@ describe("POST /trips (event)", () => {
   });
 
   it("an event takes up to 200 people; a regular rollo keeps 15", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     const event = await api("POST", "/trips", { token, body: eventBody() });
     expect(event.body.trip.maxMembers).toBe(200);
     const regular = await newTrip();
@@ -39,19 +43,25 @@ describe("POST /trips (event)", () => {
   });
 
   it("rejects an event without groups", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     expect((await api("POST", "/trips", { token, body: eventBody({ groups: [] }) })).status).toBe(400);
     expect((await api("POST", "/trips", { token, body: eventBody({ groups: undefined }) })).status).toBe(400);
   });
 
   it("rejects duplicate group names", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     const res = await api("POST", "/trips", { token, body: eventBody({ groups: ["Familia", "Familia"] }) });
     expect(res.status).toBe(400);
   });
 
   it("forces total photo limit and no moment on events", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     const created = await api("POST", "/trips", {
       token,
       body: eventBody({ photoLimitMode: "daily", momentMode: "photo", totalPhotoLimit: undefined }),
@@ -66,7 +76,9 @@ describe("POST /trips (event)", () => {
   });
 
   it("a regular trip reports type trip and no groups", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     const { tripId } = await createTrip(token);
     const res = await api("GET", `/trips/${tripId}`, { token });
     expect(res.body.trip.type).toBe("trip");
@@ -75,13 +87,17 @@ describe("POST /trips (event)", () => {
   });
 
   it("rejects groups on a regular trip", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     const res = await api("POST", "/trips", { token, body: eventBody({ type: "trip" }) });
     expect(res.status).toBe(400);
   });
 
   it("my trips list carries type and cover", async () => {
-    const { token } = await signUp(undefined, "Org");
+    const org = await signUp(undefined, "Org");
+    await grantEvents(org.userId);
+    const { token } = org;
     await api("POST", "/trips", { token, body: eventBody() });
     const res = await api("GET", "/me/trips", { token });
     expect(res.status).toBe(200);
@@ -91,6 +107,7 @@ describe("POST /trips (event)", () => {
 
 async function newEvent(overrides: Record<string, unknown> = {}) {
   const org = await signUp(undefined, "Org");
+  await grantEvents(org.userId);
   const { tripId, code, memberId } = await createTrip(org.token, {
     type: "event",
     groups: ["Familia de él", "Trabajo de ella"],

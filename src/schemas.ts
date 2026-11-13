@@ -83,6 +83,9 @@ export const UserSchema = z
     bio: z.string().nullable().openapi({ example: "Viajando por el sur", description: "Profile description (up to 3 lines); null if none" }),
     badge: UserBadgeSchema,
     profileVisibility: ProfileVisibilitySchema,
+    canCreateEvents: z.boolean().openapi({
+      description: "Whether this account can create events (POST /trips with type \"event\"); enabled by hand for now. Without it that call is a 403",
+    }),
   })
   .openapi("User");
 

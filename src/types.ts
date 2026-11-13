@@ -107,6 +107,7 @@ export type UserRow = {
   bio: string | null;
   badge: string | null;
   unlimited_rollos: number;
+  can_create_events: number;
   profile_visibility: ProfileVisibility;
   app_role: AppRole;
   created_at: number;

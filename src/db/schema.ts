@@ -53,6 +53,7 @@ export const users = sqliteTable(
     profileVisibility: text("profile_visibility", { enum: ["friends", "public"] }).notNull().default("friends"),
     badge: text("badge", { enum: ["founder", "first_edition"] }),
     unlimitedRollos: integer("unlimited_rollos").notNull().default(0),
+    canCreateEvents: integer("can_create_events").notNull().default(0),
     appRole: text("app_role", { enum: ["user", "superadmin"] }).notNull().default("user"),
   },
   (t) => [

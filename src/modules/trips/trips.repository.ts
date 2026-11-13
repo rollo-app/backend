@@ -33,6 +33,9 @@ export function findTripByJoinCode(db: D1Database, joinCode: string): Promise<Tr
   return db.prepare("SELECT * FROM trips WHERE join_code = ?").bind(joinCode).first<TripRow>();
 }
 
+/** Events `?1` created that are not revealed yet (params: user id, now). One fragment for the early check and the guarded INSERT. */
+const UNREVEALED_EVENTS_CREATED = `SELECT COUNT(*) FROM trips WHERE type = 'event' AND created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?`;
+
 /**
  * Inserts the trip only while the creator is under the limits on rollos they created (skipped with
  * `limited = false`). The check is part of the INSERT, so two concurrent creates cannot both pass.
@@ -40,7 +43,7 @@ export function findTripByJoinCode(db: D1Database, joinCode: string): Promise<Tr
 export function insertTrip(
   db: D1Database,
   t: NewTrip,
-  creator: { userId: string; limited: boolean; unrevealedMax: number; windowMax: number; windowSince: number },
+  creator: { userId: string; limited: boolean; oneEventAtATime: boolean; unrevealedMax: number; windowMax: number; windowSince: number },
 ): D1PreparedStatement {
   return db
     .prepare(
@@ -48,10 +51,11 @@ export function insertTrip(
                           daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at, featuring_disabled,
                           moment_mode, moment_window_start, moment_window_end, created_by_user_id, type, max_members)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE ? = 0 OR (
+       WHERE (? = 0 OR (
          (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?) < ?
          AND (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND created_at > ?) < ?
-       )`,
+       ))
+       AND (? = 0 OR (${UNREVEALED_EVENTS_CREATED}) = 0)`,
     )
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
@@ -60,6 +64,8 @@ export function insertTrip(
       creator.limited ? 1 : 0,
       creator.userId, t.created_at, creator.unrevealedMax,
       creator.userId, creator.windowSince, creator.windowMax,
+      creator.oneEventAtATime ? 1 : 0,
+      creator.userId, t.created_at,
     );
 }
 
@@ -307,6 +313,12 @@ export function setMemberArchived(db: D1Database, memberId: string, at: number |
 
 export function setMemberAllowFeaturing(db: D1Database, memberId: string, allow: boolean): D1PreparedStatement {
   return db.prepare("UPDATE members SET allow_featuring = ? WHERE id = ?").bind(allow ? 1 : 0, memberId);
+}
+
+/** Whether `userId` created an event that is not revealed yet. */
+export async function hasUnrevealedEventCreated(db: D1Database, userId: string, now: number): Promise<boolean> {
+  const row = await db.prepare(`SELECT (${UNREVEALED_EVENTS_CREATED}) AS n`).bind(userId, now).first<{ n: number }>();
+  return (row?.n ?? 0) > 0;
 }
 
 /** Rollos `userId` created (admin) that are not revealed yet: in progress, upcoming or ended. */

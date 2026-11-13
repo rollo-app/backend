@@ -120,16 +120,16 @@ export async function countUsers(db: D1Database, opts: { q?: string }): Promise<
   return row?.n ?? 0;
 }
 
-export type AdminUserDetailRow = AdminUserRow & { bio: string | null; unlimitedRollos: boolean };
+export type AdminUserDetailRow = AdminUserRow & { bio: string | null; unlimitedRollos: boolean; canCreateEvents: boolean };
 
 /** The list columns plus the editable fields only the detail needs (bio, rollo-limit exemption as a boolean). */
 export async function findAdminUser(db: D1Database, id: string): Promise<AdminUserDetailRow | null> {
   const [row] = await orm(db)
-    .select({ ...userColumns, bio: users.bio, unlimitedRollos: users.unlimitedRollos })
+    .select({ ...userColumns, bio: users.bio, unlimitedRollos: users.unlimitedRollos, canCreateEvents: users.canCreateEvents })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
-  return row ? { ...row, unlimitedRollos: row.unlimitedRollos !== 0 } : null;
+  return row ? { ...row, unlimitedRollos: row.unlimitedRollos !== 0, canCreateEvents: row.canCreateEvents !== 0 } : null;
 }
 
 export type UserTripRow = {
@@ -161,7 +161,7 @@ export async function listUserTrips(db: D1Database, userId: string): Promise<Use
 }
 
 /** Sets the manually assigned flags; only the given keys change. */
-export function updateUserFlags(db: D1Database, userId: string, flags: { badge?: "founder" | "first_edition" | null; unlimitedRollos?: boolean }): D1PreparedStatement {
+export function updateUserFlags(db: D1Database, userId: string, flags: { badge?: "founder" | "first_edition" | null; unlimitedRollos?: boolean; canCreateEvents?: boolean }): D1PreparedStatement {
   const sets: string[] = [];
   const values: (string | number | null)[] = [];
   if (flags.badge !== undefined) {
@@ -171,6 +171,10 @@ export function updateUserFlags(db: D1Database, userId: string, flags: { badge?:
   if (flags.unlimitedRollos !== undefined) {
     sets.push("unlimited_rollos = ?");
     values.push(flags.unlimitedRollos ? 1 : 0);
+  }
+  if (flags.canCreateEvents !== undefined) {
+    sets.push("can_create_events = ?");
+    values.push(flags.canCreateEvents ? 1 : 0);
   }
   return db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...values, userId);
 }
