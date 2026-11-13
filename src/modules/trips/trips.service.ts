@@ -11,7 +11,7 @@ import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedOfTrip } from "../featured/featured.repository";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
-import { MAX_TRIP_DURATION_MS, TRIP_TOO_LONG } from "./trips.schemas";
+import { MAX_EVENT_GROUPS, MAX_TRIP_DURATION_MS, TRIP_TOO_LONG } from "./trips.schemas";
 import type { CreateTripInput, UpdateTripInput } from "./trips.schemas";
 
 // ---------- Create ----------
@@ -278,4 +278,46 @@ export async function revealTrip(env: Env, trip: TripRow, actorId: string): Prom
 /** Deletes the rollo for everyone: rows go in one batch, its R2 files are queued for the cron purge. */
 export async function deleteTrip(db: D1Database, trip: TripRow): Promise<void> {
   await db.batch(repo.deleteTripStatements(db, trip.id, Date.now()));
+}
+
+// ---------- Event groups (organizers) ----------
+
+/** Groups and the cover belong to events, and the groups are frozen once the event is revealed. */
+function assertEditableEvent(trip: TripRow): void {
+  if (trip.type !== "event") throw conflict("Solo los eventos tienen grupos.");
+  if (isRevealed(trip)) throw conflict("Este evento ya se reveló.");
+}
+
+const GROUP_NAME_TAKEN = "Ya hay un grupo con ese nombre.";
+
+export async function createGroup(db: D1Database, trip: TripRow, name: string): Promise<{ id: string; name: string }> {
+  assertEditableEvent(trip);
+  if ((await repo.listGroups(db, trip.id)).length >= MAX_EVENT_GROUPS) throw conflict(`Un evento puede tener hasta ${MAX_EVENT_GROUPS} grupos.`);
+  const id = crypto.randomUUID();
+  try {
+    await repo.insertGroup(db, trip.id, id, name, Date.now()).run();
+  } catch (err) {
+    if (String(err).includes("UNIQUE")) throw conflict(GROUP_NAME_TAKEN);
+    throw err;
+  }
+  return { id, name };
+}
+
+export async function renameGroup(db: D1Database, trip: TripRow, groupId: string, name: string): Promise<{ id: string; name: string }> {
+  assertEditableEvent(trip);
+  try {
+    if (!(await repo.renameGroup(db, trip.id, groupId, name))) throw notFound("No encontramos ese grupo.");
+  } catch (err) {
+    if (String(err).includes("UNIQUE")) throw conflict(GROUP_NAME_TAKEN);
+    throw err;
+  }
+  return { id: groupId, name };
+}
+
+export async function deleteGroup(db: D1Database, trip: TripRow, groupId: string): Promise<void> {
+  assertEditableEvent(trip);
+  if (await repo.deleteEmptyGroup(db, trip.id, groupId)) return;
+  const exists = (await repo.listGroups(db, trip.id)).some((g) => g.id === groupId);
+  if (!exists) throw notFound("No encontramos ese grupo.");
+  throw conflict("Este grupo tiene gente o fotos.");
 }

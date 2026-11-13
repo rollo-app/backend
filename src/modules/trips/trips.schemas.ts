@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { isValidTimeZone } from "../../lib/util";
 import { epochMs, pathParam, PAST_TOLERANCE_MS } from "../../schemas";
 
+export const COVER_MAX_BYTES = 2 * 1024 * 1024;
 export const MAX_DAILY_PHOTOS = 30;
 export const MAX_TOTAL_PHOTOS = 200;
 export const MAX_TRIP_DURATION_MS = 31 * 86_400_000;
@@ -139,3 +140,40 @@ export const TripMemberParams = z.object({ tripId: pathParam("tripId"), memberId
 
 export type CreateTripInput = z.infer<typeof CreateTripSchema>;
 export type UpdateTripInput = z.infer<typeof UpdateTripSchema>;
+
+// ---------- Event groups and cover ----------
+
+export const MAX_EVENT_GROUPS = 30;
+
+export const GroupNameSchema = z
+  .object({ name: z.string().trim().min(1).max(40).openapi({ example: "Familia" }) })
+  .openapi("GroupName");
+
+export const GroupSchema = z.object({ id: z.string(), name: z.string() }).openapi("EventGroup");
+
+export const GroupParams = z.object({
+  tripId: pathParam("tripId"),
+  groupId: pathParam("groupId"),
+});
+
+export const CoverUploadRequestSchema = z
+  .object({
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(COVER_MAX_BYTES, "La portada tiene que ser un JPEG de hasta 2 MB")
+      .openapi({ description: "Exact byte size of the JPEG (max 2 MB); the upload URL is signed for exactly this Content-Length" }),
+  })
+  .openapi("CoverUploadRequest");
+
+export const CoverUploadSchema = z
+  .object({
+    upload: z.string().url().openapi({ description: "PUT of the JPEG cover" }),
+    expiresIn: z.number().int().openapi({ description: "Seconds the URL stays valid" }),
+  })
+  .openapi("CoverUpload");
+
+export const CoverSchema = z
+  .object({ coverUrl: z.string().openapi({ description: "Path of the cover (prefix the API base URL)", example: "/covers/abc/3f1c2a.jpg" }) })
+  .openapi("Cover");

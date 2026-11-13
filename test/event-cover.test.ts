@@ -1,0 +1,109 @@
+import { describe, expect, it } from "vitest";
+import { env } from "cloudflare:workers";
+import { api, createTrip, newTrip, signUp } from "./helpers";
+
+const jpeg = (content = "cover") => new Uint8Array([0xff, 0xd8, 0xff, ...new TextEncoder().encode(content)]);
+
+async function eventFixture() {
+  const org = await signUp(undefined, "Org");
+  const { tripId, code } = await createTrip(org.token, {
+    type: "event",
+    groups: ["A"],
+    photoLimitMode: "total",
+    totalPhotoLimit: 20,
+    dailyPhotoLimit: undefined,
+    dailyVideoLimit: undefined,
+  });
+  const guest = await signUp(undefined, "Guest");
+  const detail = await api("GET", `/trips/${tripId}`, { token: org.token });
+  await api("POST", "/trips/join", { token: guest.token, body: { code, groupIds: [detail.body.trip.groups[0].id] } });
+  return { org, guest, tripId };
+}
+
+const keys = (tripId: string) =>
+  env.DB.prepare("SELECT cover_key c, pending_cover_key p FROM trips WHERE id = ?").bind(tripId).first<{ c: string | null; p: string | null }>();
+
+async function setCover(token: string, tripId: string, bytes = jpeg()) {
+  const req = await api("POST", `/trips/${tripId}/cover`, { token, body: { sizeBytes: bytes.length } });
+  expect(req.status).toBe(200);
+  await env.MEDIA.put((await keys(tripId))!.p!, bytes);
+  return api("POST", `/trips/${tripId}/cover/complete`, { token });
+}
+
+describe("event cover", () => {
+  it("full cycle: request, upload, complete, serve", async () => {
+    const ev = await eventFixture();
+    const req = await api("POST", `/trips/${ev.tripId}/cover`, { token: ev.org.token, body: { sizeBytes: jpeg().length } });
+    expect(req.status).toBe(200);
+    expect(req.body.expiresIn).toBe(900);
+    expect(typeof req.body.upload).toBe("string");
+    expect((await keys(ev.tripId))!.p).toMatch(new RegExp(`^trips/${ev.tripId}/cover/[0-9a-f-]+\\.jpg$`));
+
+    const done = await setCover(ev.org.token, ev.tripId, jpeg("the-bytes"));
+    expect(done.status).toBe(200);
+    expect(done.body.coverUrl).toMatch(new RegExp(`^/covers/${ev.tripId}/[0-9a-f-]+\\.jpg$`));
+    expect((await keys(ev.tripId))!.p).toBeNull();
+
+    const detail = await api("GET", `/trips/${ev.tripId}`, { token: ev.guest.token });
+    expect(detail.body.trip.coverUrl).toBe(done.body.coverUrl);
+
+    const file = await api("GET", done.body.coverUrl);
+    expect(file.status).toBe(200);
+    expect(file.headers.get("content-type")).toBe("image/jpeg");
+    expect(file.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(file.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(file.body.endsWith("the-bytes")).toBe(true);
+  });
+
+  it("replacing the cover deletes the old one from R2 and only the current file is served", async () => {
+    const ev = await eventFixture();
+    const first = await setCover(ev.org.token, ev.tripId, jpeg("one"));
+    const oldKey = (await keys(ev.tripId))!.c!;
+    const second = await setCover(ev.org.token, ev.tripId, jpeg("two"));
+    expect(second.body.coverUrl).not.toBe(first.body.coverUrl);
+    expect(await env.MEDIA.get(oldKey)).toBeNull();
+    expect((await api("GET", first.body.coverUrl)).status).toBe(404);
+    expect((await api("GET", second.body.coverUrl)).status).toBe(200);
+  });
+
+  it("rejects a file that is not a JPEG and discards it", async () => {
+    const ev = await eventFixture();
+    const bytes = new TextEncoder().encode("not a jpeg");
+    const res = await setCover(ev.org.token, ev.tripId, bytes);
+    expect(res.status).toBe(400);
+    const k = (await keys(ev.tripId))!;
+    expect(k.c).toBeNull();
+    expect(k.p).toBeNull();
+  });
+
+  it("validates the size and the order of the calls", async () => {
+    const ev = await eventFixture();
+    expect((await api("POST", `/trips/${ev.tripId}/cover`, { token: ev.org.token, body: { sizeBytes: 3 * 1024 * 1024 } })).status).toBe(400);
+    expect((await api("POST", `/trips/${ev.tripId}/cover/complete`, { token: ev.org.token })).status).toBe(400);
+  });
+
+  it("only organizers can change the cover", async () => {
+    const ev = await eventFixture();
+    expect((await api("POST", `/trips/${ev.tripId}/cover`, { token: ev.guest.token, body: { sizeBytes: 10 } })).status).toBe(403);
+    expect((await api("POST", `/trips/${ev.tripId}/cover/complete`, { token: ev.guest.token })).status).toBe(403);
+  });
+
+  it("a regular trip has no cover", async () => {
+    const t = await newTrip();
+    expect((await api("POST", `/trips/${t.tripId}/cover`, { token: t.adminToken, body: { sizeBytes: 10 } })).status).toBe(409);
+  });
+
+  it("an unknown event or file is a 404", async () => {
+    const ev = await eventFixture();
+    expect((await api("GET", `/covers/${ev.tripId}/nope.jpg`)).status).toBe(404);
+    expect((await api("GET", `/covers/missing/nope.jpg`)).status).toBe(404);
+  });
+
+  it("deleting the event queues its cover for removal", async () => {
+    const ev = await eventFixture();
+    await setCover(ev.org.token, ev.tripId);
+    const key = (await keys(ev.tripId))!.c!;
+    expect((await api("DELETE", `/trips/${ev.tripId}`, { token: ev.org.token })).status).toBe(204);
+    expect(await env.DB.prepare("SELECT 1 FROM r2_purge WHERE key = ?").bind(key).first()).not.toBeNull();
+  });
+});

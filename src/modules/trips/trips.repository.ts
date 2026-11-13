@@ -84,6 +84,48 @@ export function insertGroups(db: D1Database, tripId: string, groups: { id: strin
   );
 }
 
+/** Adds a group at the end of the event's list. */
+export function insertGroup(db: D1Database, tripId: string, id: string, name: string, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO event_groups (id, trip_id, name, position, created_at)
+       SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ? FROM event_groups WHERE trip_id = ?`,
+    )
+    .bind(id, tripId, name, now, tripId);
+}
+
+export async function renameGroup(db: D1Database, tripId: string, groupId: string, name: string): Promise<boolean> {
+  const res = await db.prepare("UPDATE event_groups SET name = ? WHERE id = ? AND trip_id = ?").bind(name, groupId, tripId).run();
+  return res.meta.changes > 0;
+}
+
+/** Deletes the group only while nobody is in it and no photo is sent to it (the FKs cascade, so the check lives in the statement). */
+export async function deleteEmptyGroup(db: D1Database, tripId: string, groupId: string): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `DELETE FROM event_groups WHERE id = ? AND trip_id = ?
+         AND NOT EXISTS (SELECT 1 FROM member_groups WHERE group_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM media_groups WHERE group_id = ?)`,
+    )
+    .bind(groupId, tripId, groupId, groupId)
+    .run();
+  return res.meta.changes > 0;
+}
+
+// ---------- Event cover ----------
+
+export function setPendingCoverKey(db: D1Database, tripId: string, key: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET pending_cover_key = ? WHERE id = ?").bind(key, tripId);
+}
+
+export function clearPendingCoverKey(db: D1Database, tripId: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET pending_cover_key = NULL WHERE id = ?").bind(tripId);
+}
+
+export function promoteCover(db: D1Database, tripId: string, key: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET cover_key = ?, pending_cover_key = NULL WHERE id = ?").bind(key, tripId);
+}
+
 export async function listGroups(db: D1Database, tripId: string): Promise<{ id: string; name: string; position: number }[]> {
   const { results } = await db
     .prepare("SELECT id, name, position FROM event_groups WHERE trip_id = ? ORDER BY position")
@@ -355,7 +397,9 @@ export function deleteTripStatements(db: D1Database, tripId: string, now: number
         `INSERT OR IGNORE INTO r2_purge (key, created_at)
          SELECT original_key, ?1 FROM media WHERE trip_id = ?2
          UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2
-         UNION SELECT display_key, ?1 FROM media WHERE trip_id = ?2 AND display_key IS NOT NULL`,
+         UNION SELECT display_key, ?1 FROM media WHERE trip_id = ?2 AND display_key IS NOT NULL
+         UNION SELECT cover_key, ?1 FROM trips WHERE id = ?2 AND cover_key IS NOT NULL
+         UNION SELECT pending_cover_key, ?1 FROM trips WHERE id = ?2 AND pending_cover_key IS NOT NULL`,
       )
       .bind(now, tripId),
     db.prepare("INSERT OR IGNORE INTO deleted_trips (trip_id, deleted_at) VALUES (?, ?)").bind(tripId, now),

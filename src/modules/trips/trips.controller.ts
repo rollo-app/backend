@@ -6,6 +6,11 @@ import { publicMember } from "../../lib/util";
 import type { AppEnv } from "../../types";
 import type {
   addMembersRoute,
+  completeCoverRoute,
+  createGroupRoute,
+  deleteGroupRoute,
+  renameGroupRoute,
+  requestCoverRoute,
   createTripRoute,
   deleteTripRoute,
   getTripRoute,
@@ -20,6 +25,7 @@ import type {
   updateTripRoute,
 } from "./trips.router";
 import * as members from "./members.service";
+import * as cover from "./cover.service";
 import * as service from "./trips.service";
 
 export const create: RouteHandler<typeof createTripRoute, AppEnv> = async (c) => {
@@ -117,3 +123,20 @@ export const remove: RouteHandler<typeof deleteTripRoute, AppEnv> = async (c) =>
   await service.deleteTrip(c.env.DB, c.get("trip"));
   return c.body(null, 204);
 };
+
+export const createGroup: RouteHandler<typeof createGroupRoute, AppEnv> = async (c) =>
+  c.json(await service.createGroup(c.env.DB, c.get("trip"), c.req.valid("json").name), 201);
+
+export const renameGroup: RouteHandler<typeof renameGroupRoute, AppEnv> = async (c) =>
+  c.json(await service.renameGroup(c.env.DB, c.get("trip"), c.req.valid("param").groupId, c.req.valid("json").name), 200);
+
+export const deleteGroup: RouteHandler<typeof deleteGroupRoute, AppEnv> = async (c) => {
+  await service.deleteGroup(c.env.DB, c.get("trip"), c.req.valid("param").groupId);
+  return c.body(null, 204);
+};
+
+export const requestCover: RouteHandler<typeof requestCoverRoute, AppEnv> = async (c) =>
+  c.json(await cover.requestCoverUpload(c.env, new URL(c.req.url).origin, c.get("trip"), c.req.valid("json").sizeBytes), 200);
+
+export const completeCover: RouteHandler<typeof completeCoverRoute, AppEnv> = async (c) =>
+  c.json(await cover.completeCoverUpload(c.env, c.get("trip")), 200);
