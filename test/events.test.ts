@@ -121,10 +121,40 @@ describe("GET /events/{code}", () => {
     expect((await api("GET", "/events/ZZZZZZ")).status).toBe(404);
   });
 
-  it("is limited by IP", async () => {
+  it("is limited by IP with its own roomy budget, not RL_SEARCH nor RL_GLOBAL", async () => {
     const ev = await newEvent();
-    const e = { RL_SEARCH: { limit: async () => ({ success: false }) } };
-    expect((await api("GET", `/events/${ev.code}`, { env: e })).status).toBe(429);
+    const deny = { limit: async () => ({ success: false }) };
+    const allow = { limit: async () => ({ success: true }) };
+    expect((await api("GET", `/events/${ev.code}`, { env: { RL_IP_PUBLIC: deny } })).status).toBe(429);
+    // A shared venue IP must not trip the per-IP anonymous limiter (RL_GLOBAL) nor the user-search one.
+    expect((await api("GET", `/events/${ev.code}`, { env: { RL_IP_PUBLIC: allow, RL_GLOBAL: deny, RL_SEARCH: deny } })).status).toBe(200);
+  });
+
+  it("returns revealed: true once the event is revealed", async () => {
+    const ev = await newEvent();
+    await env.DB.prepare("UPDATE trips SET reveal_at = ? WHERE id = ?").bind(Date.now() - DAY, ev.tripId).run();
+    const res = await api("GET", `/events/${ev.code}`);
+    expect(res.status).toBe(200);
+    expect(res.body.revealed).toBe(true);
+  });
+
+  it("allows the website origins to read it from the browser (CORS, GET only)", async () => {
+    const ev = await newEvent();
+    for (const origin of ["https://rolloproject.com", "https://www.rolloproject.com"]) {
+      const res = await api("GET", `/events/${ev.code}`, { headers: { origin } });
+      expect(res.headers.get("access-control-allow-origin")).toBe(origin);
+    }
+    const other = await api("GET", `/events/${ev.code}`, { headers: { origin: "https://evil.example" } });
+    expect(other.status).toBe(200);
+    expect(other.headers.get("access-control-allow-origin")).toBeNull();
+    const pre = await api("OPTIONS", `/events/${ev.code}`, {
+      headers: { origin: "https://rolloproject.com", "access-control-request-method": "GET" },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-methods")).toBe("GET");
+    // No other route is open to the website.
+    const trips = await api("GET", "/", { headers: { origin: "https://rolloproject.com" } });
+    expect(trips.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 

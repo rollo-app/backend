@@ -105,9 +105,10 @@ export async function deleteEmptyGroup(db: D1Database, tripId: string, groupId: 
     .prepare(
       `DELETE FROM event_groups WHERE id = ? AND trip_id = ?
          AND NOT EXISTS (SELECT 1 FROM member_groups WHERE group_id = ?)
-         AND NOT EXISTS (SELECT 1 FROM media_groups WHERE group_id = ?)`,
+         AND NOT EXISTS (SELECT 1 FROM media_groups WHERE group_id = ?)
+         AND (SELECT COUNT(*) FROM event_groups WHERE trip_id = ?) > 1`,
     )
-    .bind(groupId, tripId, groupId, groupId)
+    .bind(groupId, tripId, groupId, groupId, tripId)
     .run();
   return res.meta.changes > 0;
 }

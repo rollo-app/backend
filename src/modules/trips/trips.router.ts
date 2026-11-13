@@ -74,7 +74,7 @@ export const updateTripRoute = createRoute({
   path: "/{tripId}",
   tags,
   summary: "Edit the trip (admin)",
-  description: "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything.",
+  description: "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: {
@@ -204,11 +204,11 @@ export const removeAdminRoute = createRoute({
   path: "/{tripId}/members/{memberId}/admin",
   tags,
   summary: "Take the admin role away (creator)",
-  description: "Only the creator. The creator's own admin role can't be removed (400).",
+  description: "Only the creator. The creator's own admin role can't be removed (400). In an event, 409 if the organizer is in no group (they would become a guest without one).",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireCreator] as const,
   request: { params: TripMemberParams },
-  responses: { 200: json(MemberSchema, "The member, now a regular member"), ...errors(400, 401, 403, 404, 428) },
+  responses: { 200: json(MemberSchema, "The member, now a regular member"), ...errors(400, 401, 403, 404, 409, 428) },
 });
 
 const FROZEN = "409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ";
@@ -242,7 +242,7 @@ export const deleteGroupRoute = createRoute({
   path: "/{tripId}/groups/{groupId}",
   tags,
   summary: "Delete a group of an event (admin)",
-  description: `409 ('Este grupo tiene gente o fotos.') while anyone is in the group or any photo was sent to it. 404 if the group is not in this event. ${FROZEN}`,
+  description: `409 ('Este grupo tiene gente o fotos.') while anyone is in the group or any photo was sent to it; 409 ('Un evento necesita al menos un grupo.') for the last group. 404 if the group is not in this event. ${FROZEN}`,
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: GroupParams },

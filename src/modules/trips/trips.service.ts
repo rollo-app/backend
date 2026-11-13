@@ -202,6 +202,10 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
     moment_window_end: b.momentWindowEnd ?? trip.moment_window_end,
     moment_from_day: trip.moment_from_day,
   };
+  // An event's quota is the whole rollo's and it has no daily moment (they are forced at creation).
+  if (trip.type === "event" && (next.moment_mode !== "off" || next.photo_limit_mode !== "total")) {
+    throw conflict("En un evento el cupo es de todo el rollo y no hay momento del día.");
+  }
   // Moment mode or window changed in a running rollo: it applies from tomorrow; today's moment stays as it was.
   const momentChanged =
     next.moment_mode !== trip.moment_mode || next.moment_window_start !== trip.moment_window_start || next.moment_window_end !== trip.moment_window_end;
@@ -317,7 +321,9 @@ export async function renameGroup(db: D1Database, trip: TripRow, groupId: string
 export async function deleteGroup(db: D1Database, trip: TripRow, groupId: string): Promise<void> {
   assertEditableEvent(trip);
   if (await repo.deleteEmptyGroup(db, trip.id, groupId)) return;
-  const exists = (await repo.listGroups(db, trip.id)).some((g) => g.id === groupId);
-  if (!exists) throw notFound("No encontramos ese grupo.");
+  const groups = await repo.listGroups(db, trip.id);
+  if (!groups.some((g) => g.id === groupId)) throw notFound("No encontramos ese grupo.");
+  // The delete itself refuses the last group, so nobody is left with nothing to join.
+  if (groups.length <= 1) throw conflict("Un evento necesita al menos un grupo.");
   throw conflict("Este grupo tiene gente o fotos.");
 }

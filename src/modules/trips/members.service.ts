@@ -265,6 +265,10 @@ export async function removeAdmin(db: D1Database, trip: TripRow, memberId: strin
   const target = await repo.findActiveMemberById(db, trip.id, memberId);
   if (!target) throw notFound("Miembro no encontrado");
   if (isCreator(trip, target.user_id)) throw badRequest("El creador siempre es admin");
+  // An event guest always has a group: an organizer with none would become a guest nobody sees the photos of.
+  if (trip.type === "event" && target.role === "admin" && (await repo.listMemberGroupIds(db, target.id)).length === 0) {
+    throw conflict("Para quitarle el rol de organizador, primero tiene que sumarse a un grupo.");
+  }
   if (target.role === "admin") await repo.setMemberRole(db, target.id, "member").run();
   return { ...target, role: "member" };
 }

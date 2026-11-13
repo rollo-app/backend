@@ -131,19 +131,18 @@ export async function registerMedia(
 
   // Events only. The groups are fixed now (an organizer's "all groups" is the list at this moment, so a group
   // created later doesn't see the photo) and written in the same batch as the media row.
-  const groupRows =
-    trip.type === "event"
-      ? repo.insertMediaGroups(
-          env.DB,
-          input.id,
-          resolveMediaGroups({
-            requested: input.groupIds ?? [],
-            memberGroupIds: await tripsRepo.listMemberGroupIds(env.DB, member.id),
-            allGroupIds: (await tripsRepo.listGroups(env.DB, trip.id)).map((g) => g.id),
-            isAdmin: member.role === "admin",
-          }),
-        )
-      : [];
+  let groupRows: ReturnType<typeof repo.insertMediaGroups> = [];
+  if (trip.type === "event") {
+    const groupIds = resolveMediaGroups({
+      requested: input.groupIds ?? [],
+      memberGroupIds: await tripsRepo.listMemberGroupIds(env.DB, member.id),
+      allGroupIds: (await tripsRepo.listGroups(env.DB, trip.id)).map((g) => g.id),
+      isAdmin: member.role === "admin",
+    });
+    // A guest in no group would store a photo nobody sees.
+    if (groupIds.length === 0) throw conflict("Elegí un grupo para mandar fotos.");
+    groupRows = repo.insertMediaGroups(env.DB, input.id, groupIds);
+  }
 
   const keys = mediaKeys(trip.id, input.id, input.type);
   const insert = repo.insertMedia(env.DB, {

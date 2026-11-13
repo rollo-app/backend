@@ -6,7 +6,7 @@ import type { AppEnv, Env, RateLimitBinding } from "../types";
 
 export const RATE_LIMIT_MESSAGE = "Estás yendo muy rápido. Probá de nuevo en un minuto.";
 
-type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_IP_FILES" | "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH";
+type LimiterName = "RL_GLOBAL" | "RL_IP" | "RL_IP_FILES" | "RL_IP_PUBLIC" | "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_SEARCH";
 const warned = new Set<string>();
 
 /** Consumes one hit of `key`. Fails open: without the binding (or if it throws) the request goes through. */
@@ -42,7 +42,7 @@ export const rateLimit = (name: "RL_EXPENSIVE" | "RL_UPLOAD" | "RL_FILES" | "RL_
   });
 
 /** Per-route limiter keyed by client IP, for routes without a session. */
-export const rateLimitByIp = (name: "RL_SEARCH") =>
+export const rateLimitByIp = (name: "RL_IP_PUBLIC") =>
   createMiddleware<AppEnv>(async (c, next) => {
     const rawIp = c.req.header("cf-connecting-ip");
     if (!(await allowed(c.env, name, `ip:${rawIp ? ipKey(rawIp) : "unknown"}`))) throw tooFast();
@@ -65,13 +65,20 @@ const SKIPPED = new Set(["/openapi.json", "/docs"]);
 const FILE_DOWNLOAD = /^\/(?:trips\/[^/]+\/media\/[^/]+\/(?:thumb|original)|featured\/[^/]+\/[^/]+\/[^/]+)$/;
 
 /**
+ * `GET|OPTIONS /events/{code}`: the public event preview the website loads for every guest who opens the invite link.
+ * Anonymous, so `RL_GLOBAL` by IP (120/min) would cut a whole venue on one Wi-Fi or carrier NAT. It skips that and has its
+ * own roomy per-IP budget on the route (`RL_IP_PUBLIC`, see `rateLimitByIp`).
+ */
+const PUBLIC_EVENT_PREVIEW = /^\/events\/[^/]+$/;
+
+/**
  * App-level limiter, before auth runs. It keys by a hash of the Bearer token (one key per session, so friends sharing
  * a Wi-Fi or mobile IP do not share a budget) or, without token, by IP. Tokens are not validated here, so with a token
  * the IP also gets a roomier `RL_IP` budget: inventing tokens does not dodge the limit (file downloads get their own per-IP `RL_IP_FILES`, see above).
  */
 export const globalRateLimit = createMiddleware<AppEnv>(async (c, next) => {
   const path = new URL(c.req.url).pathname;
-  if (SKIPPED.has(path) || path.startsWith("/dev/upload/")) return next();
+  if (SKIPPED.has(path) || path.startsWith("/dev/upload/") || PUBLIC_EVENT_PREVIEW.test(path)) return next();
   const rawIp = c.req.header("cf-connecting-ip");
   const ip = rawIp ? ipKey(rawIp) : "unknown";
   const header = c.req.header("Authorization") ?? "";

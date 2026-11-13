@@ -24,7 +24,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 describe("rate limit bindings", () => {
   it("are configured in the test environment", () => {
-    for (const name of ["RL_GLOBAL", "RL_IP", "RL_IP_FILES", "RL_EXPENSIVE", "RL_UPLOAD", "RL_FILES", "RL_SEARCH"] as const) {
+    for (const name of ["RL_GLOBAL", "RL_IP", "RL_IP_FILES", "RL_IP_PUBLIC", "RL_EXPENSIVE", "RL_UPLOAD", "RL_FILES", "RL_SEARCH"] as const) {
       expect(typeof env[name]!.limit).toBe("function");
     }
   });
@@ -67,7 +67,7 @@ describe("global limit", () => {
 
   it("lets requests through when the bindings are missing", async () => {
     const a = await signUp();
-    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_IP_FILES: undefined, RL_EXPENSIVE: undefined, RL_UPLOAD: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
+    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_IP_FILES: undefined, RL_IP_PUBLIC: undefined, RL_EXPENSIVE: undefined, RL_UPLOAD: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
     expect((await api("GET", "/me", { token: a.token, env: e })).status).toBe(200);
     expect((await api("POST", "/me/avatar", { token: a.token, body: { sizeBytes: 100 }, env: e })).status).toBe(200);
   });
