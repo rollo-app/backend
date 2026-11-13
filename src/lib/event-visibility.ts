@@ -6,8 +6,8 @@ import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
  * Every read path that shows a trip member a photo ANDs this in, so the rule lives here and nowhere else.
  */
 
-/** Binds `mediaVisibleToSql` consumes when `viewerExpr` is a `?`: the viewer id, twice. */
-export const MEDIA_VISIBLE_BINDS = 2;
+/** Binds `mediaVisibleToSql` consumes when `viewerExpr` is a `?`: the viewer id, three times. */
+export const MEDIA_VISIBLE_BINDS = 3;
 
 /**
  * Raw SQL version, for the repositories that write their queries by hand. `viewerExpr`, `mediaExpr` and `tripExpr` are SQL
@@ -18,6 +18,7 @@ export function mediaVisibleToSql(viewerExpr: string, mediaExpr: string, tripExp
     `((SELECT vt.type FROM trips vt WHERE vt.id = ${tripExpr}) = 'trip'` +
     ` OR EXISTS (SELECT 1 FROM members va WHERE va.trip_id = ${tripExpr} AND va.user_id = ${viewerExpr} AND va.role = 'admin'` +
     ` AND va.removed_at IS NULL AND va.left_at IS NULL)` +
+    ` OR EXISTS (SELECT 1 FROM media vam JOIN members vau ON vau.id = vam.member_id WHERE vam.id = ${mediaExpr} AND vau.user_id = ${viewerExpr})` +
     ` OR EXISTS (SELECT 1 FROM media_groups vmg JOIN member_groups vgm ON vgm.group_id = vmg.group_id` +
     ` JOIN members vm ON vm.id = vgm.member_id` +
     ` WHERE vmg.media_id = ${mediaExpr} AND vm.trip_id = ${tripExpr} AND vm.user_id = ${viewerExpr}` +
@@ -30,6 +31,7 @@ export function mediaVisibleTo(viewerUserId: string, mediaId: SQLWrapper, tripId
   return sql`((SELECT vt.type FROM trips vt WHERE vt.id = ${tripId}) = 'trip'
     OR EXISTS (SELECT 1 FROM members va WHERE va.trip_id = ${tripId} AND va.user_id = ${viewerUserId} AND va.role = 'admin'
                AND va.removed_at IS NULL AND va.left_at IS NULL)
+    OR EXISTS (SELECT 1 FROM media vam JOIN members vau ON vau.id = vam.member_id WHERE vam.id = ${mediaId} AND vau.user_id = ${viewerUserId})
     OR EXISTS (SELECT 1 FROM media_groups vmg JOIN member_groups vgm ON vgm.group_id = vmg.group_id
                JOIN members vm ON vm.id = vgm.member_id
                WHERE vmg.media_id = ${mediaId} AND vm.trip_id = ${tripId} AND vm.user_id = ${viewerUserId}

@@ -1,7 +1,6 @@
 import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { canSeeProfile } from "../users/users.service";
 import { decodeCursor, encodeCursor } from "../../lib/cursor";
-import { canSeeMediaInTrip } from "../../lib/event-visibility";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import { rejectSelfie, rejectSelfieById } from "../moments/moments.service";
 import { actorName, sendPush, type PushMessage } from "../../lib/push";
@@ -140,7 +139,5 @@ async function notifyLike(
 ): Promise<void> {
   const silenced = await claimLikePush(env.DB, photo.id, now);
   if (silenced === null) return;
-  // The author may have left the groups the photo was sent to: then they get no push about a photo they cannot open.
-  if (!(await canSeeMediaInTrip(env.DB, photo.authorUserId, photo.id, photo.tripId))) return;
   await sendPush(env, [photo.authorUserId], "photoLiked", photoLikedMessage(liker, silenced, photo), { actorId: liker.id });
 }

@@ -1,4 +1,4 @@
-import { mediaVisibleToSql } from "../../lib/event-visibility";
+import { mediaVisibleToSql, MEDIA_VISIBLE_BINDS } from "../../lib/event-visibility";
 import { inChunks } from "../../lib/util";
 import type { MemberRow, Role, TripRow } from "../../types";
 
@@ -226,7 +226,7 @@ export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberI
       `SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL
        AND (archived_at IS NULL OR member_id = ?) AND ${mediaVisibleToSql("?", "media.id", "media.trip_id")}`,
     )
-    .bind(tripId, viewerMemberId, viewerUserId, viewerUserId)
+    .bind(tripId, viewerMemberId, ...Array<string>(MEDIA_VISIBLE_BINDS).fill(viewerUserId))
     .first<{ n: number }>();
 }
 
