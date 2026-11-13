@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { devSentBlocks, devSentCodes, devSentNotices, devSentReports } from "../src/lib/email";
 import { sendModerationSummary } from "../src/modules/moderation/moderation.service";
 import { LOGIN_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_DAY, LOGIN_NEW_USER_EMAILS_PER_IP_PER_DAY, SUPPORT_EMAILS_PER_USER_PER_DAY, MODERATION_ACTIONS_PER_DAY, SUPPORT_EMAILS_PER_DAY } from "../src/lib/email-caps";
-import { api, newTrip, requestCode, signUp, uploadMedia, DAY } from "./helpers";
+import { BASELINE_JPEG } from "./jpeg-fixture";
+import { api, newTrip, photoBody, requestCode, signUp, uploadMedia, DAY } from "./helpers";
 
 /** In-memory stand-in for a Workers Rate Limiting binding, with a fixed limit and no window. */
 function fakeLimiter(limit: number) {
@@ -23,7 +24,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 describe("rate limit bindings", () => {
   it("are configured in the test environment", () => {
-    for (const name of ["RL_GLOBAL", "RL_IP", "RL_EXPENSIVE", "RL_FILES", "RL_SEARCH"] as const) {
+    for (const name of ["RL_GLOBAL", "RL_IP", "RL_IP_FILES", "RL_IP_PUBLIC", "RL_IP_MISS", "RL_EXPENSIVE", "RL_UPLOAD", "RL_FILES", "RL_SEARCH"] as const) {
       expect(typeof env[name]!.limit).toBe("function");
     }
   });
@@ -39,6 +40,7 @@ describe("global limit", () => {
     const blocked = await api("GET", "/me", { token: a.token, env: e });
     expect(blocked.status).toBe(429);
     expect(blocked.body).toEqual({ error: TOO_FAST });
+    expect(blocked.headers.get("retry-after")).toBe("60");
     expect((await api("GET", "/me", { token: b.token, env: e })).status).toBe(200);
   });
 
@@ -65,7 +67,7 @@ describe("global limit", () => {
 
   it("lets requests through when the bindings are missing", async () => {
     const a = await signUp();
-    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_EXPENSIVE: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
+    const e = { RL_GLOBAL: undefined, RL_IP: undefined, RL_IP_FILES: undefined, RL_IP_PUBLIC: undefined, RL_IP_MISS: undefined, RL_EXPENSIVE: undefined, RL_UPLOAD: undefined, RL_FILES: undefined, RL_SEARCH: undefined };
     expect((await api("GET", "/me", { token: a.token, env: e })).status).toBe(200);
     expect((await api("POST", "/me/avatar", { token: a.token, body: { sizeBytes: 100 }, env: e })).status).toBe(200);
   });
@@ -87,15 +89,48 @@ describe("expensive endpoints", () => {
     expect((await api("GET", "/me", { token: a.token, env: e })).status).toBe(200);
   });
 
-  it("cover registering media, completing, likes and adding members", async () => {
+  it("cover avatar, likes and adding members", async () => {
     const trip = await newTrip();
     const e = { RL_EXPENSIVE: fakeLimiter(0) };
     const token = trip.adminToken;
-    expect((await api("POST", `/trips/${trip.tripId}/media`, { token, body: {}, env: e })).status).toBe(429);
-    expect((await api("POST", `/media/${crypto.randomUUID()}/complete`, { token, env: e })).status).toBe(429);
     expect((await api("POST", "/me/avatar/complete", { token, env: e })).status).toBe(429);
     expect((await api("PUT", `/media/${crypto.randomUUID()}/like`, { token, env: e })).status).toBe(429);
     expect((await api("POST", `/trips/${trip.tripId}/members`, { token, body: { friendIds: [] }, env: e })).status).toBe(429);
+  });
+});
+
+describe("media registration", () => {
+  it("is limited by RL_UPLOAD (429 with Retry-After) and not by RL_EXPENSIVE", async () => {
+    const trip = await newTrip();
+    const token = trip.adminToken;
+    const url = `/trips/${trip.tripId}/media`;
+    const blocked = await api("POST", url, { token, body: {}, env: { RL_UPLOAD: fakeLimiter(0) } });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: TOO_FAST });
+    expect(blocked.headers.get("retry-after")).toBe("60");
+    // A denying RL_EXPENSIVE does not block it: the invalid body gets past the limiter and fails validation (400).
+    expect((await api("POST", url, { token, body: {}, env: { RL_EXPENSIVE: fakeLimiter(0) } })).status).toBe(400);
+  });
+
+  it("completing is limited by RL_UPLOAD (429 with Retry-After) and not by RL_EXPENSIVE", async () => {
+    const trip = await newTrip();
+    const token = trip.adminToken;
+    const url = `/media/${crypto.randomUUID()}/complete`;
+    const blocked = await api("POST", url, { token, env: { RL_UPLOAD: fakeLimiter(0) } });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body).toEqual({ error: TOO_FAST });
+    expect(blocked.headers.get("retry-after")).toBe("60");
+    // A denying RL_EXPENSIVE does not block it: unknown media id gets past the limiter (404).
+    expect((await api("POST", url, { token, env: { RL_EXPENSIVE: fakeLimiter(0) } })).status).toBe(404);
+  });
+
+  it("the daily photo quota 429 has no Retry-After (the app must not retry it)", async () => {
+    const { tripId, adminToken } = await newTrip({ dailyPhotoLimit: 1 });
+    await uploadMedia(tripId, adminToken);
+    const res = await api("POST", `/trips/${tripId}/media`, { token: adminToken, body: photoBody() });
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: "Ya usaste tus 1 fotos de hoy" });
+    expect(res.headers.get("retry-after")).toBeNull();
   });
 });
 
@@ -109,6 +144,95 @@ describe("file downloads", () => {
     // RL_EXPENSIVE is not involved: with a roomy RL_FILES it gets past the limiter (403: not revealed yet).
     expect((await api("GET", url, { token, env: { RL_FILES: fakeLimiter(5), RL_EXPENSIVE: fakeLimiter(0) } })).status).toBe(403);
     expect((await api("GET", `/featured/${trip.adminUserId}/${mediaId}/thumb`, { token, env: { RL_FILES: fakeLimiter(0) } })).status).toBe(429);
+  });
+});
+
+describe("file downloads and the global limit", () => {
+  async function revealed() {
+    const trip = await newTrip();
+    const mediaId = await uploadMedia(trip.tripId, trip.adminToken);
+    expect((await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken })).status).toBe(200);
+    return { ...trip, mediaId, token: trip.adminToken };
+  }
+
+  it("skip RL_GLOBAL: thumbs, originals and featured files still download", async () => {
+    const t = await revealed();
+    // Featured files are re-encoded as JPEG, so they need real JPEG bytes.
+    await env.MEDIA.put(`trips/${t.tripId}/${t.mediaId}/thumb.jpg`, BASELINE_JPEG);
+    expect((await api("PUT", `/me/featured/${t.mediaId}`, { token: t.token })).status).toBe(204);
+    const e = { RL_GLOBAL: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/thumb`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/original`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", `/featured/${t.adminUserId}/${t.mediaId}/thumb`, { token: t.token, env: e })).status).toBe(200);
+  });
+
+  it("do not skip it for other routes (the feed still gets 429)", async () => {
+    const t = await revealed();
+    const res = await api("GET", `/trips/${t.tripId}/media`, { token: t.token, env: { RL_GLOBAL: fakeLimiter(0) } });
+    expect(res.status).toBe(429);
+    expect((await api("GET", "/me", { token: t.token, env: { RL_GLOBAL: fakeLimiter(0) } })).status).toBe(429);
+  });
+
+  it("with a token they skip RL_IP too: a shared IP (event Wi-Fi) does not block downloads", async () => {
+    const t = await revealed();
+    await env.MEDIA.put(`trips/${t.tripId}/${t.mediaId}/thumb.jpg`, BASELINE_JPEG);
+    expect((await api("PUT", `/me/featured/${t.mediaId}`, { token: t.token })).status).toBe(204);
+    const e = { RL_IP: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/thumb`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/original`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", `/featured/${t.adminUserId}/${t.mediaId}/thumb`, { token: t.token, env: e })).status).toBe(200);
+  });
+
+  it("with a token, a denying RL_IP still blocks the feed and /me/trips", async () => {
+    const t = await revealed();
+    const e = { RL_IP: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/media`, { token: t.token, env: e })).status).toBe(429);
+    expect((await api("GET", "/me/trips", { token: t.token, env: e })).status).toBe(429);
+  });
+
+  it("with a token they are capped per IP by RL_IP_FILES (429 with Retry-After): invented tokens do not hit D1 forever", async () => {
+    const t = await revealed();
+    const e = { RL_IP_FILES: fakeLimiter(0) };
+    for (const url of [
+      `/trips/${t.tripId}/media/${t.mediaId}/thumb`,
+      `/trips/${t.tripId}/media/${t.mediaId}/original`,
+      `/featured/${t.adminUserId}/${t.mediaId}/thumb`,
+    ]) {
+      const res = await api("GET", url, { token: t.token, env: e });
+      expect(res.status).toBe(429);
+      expect(res.headers.get("retry-after")).toBe("60");
+    }
+    const invented = await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/thumb`, { token: "fake-token", env: e });
+    expect(invented.status).toBe(429);
+  });
+
+  it("a denying RL_IP_FILES does not affect the feed or /me/trips", async () => {
+    const t = await revealed();
+    const e = { RL_IP_FILES: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/feed`, { token: t.token, env: e })).status).toBe(200);
+    expect((await api("GET", "/me/trips", { token: t.token, env: e })).status).toBe(200);
+  });
+
+  it("are still limited per user by RL_FILES (429 with Retry-After)", async () => {
+    const t = await revealed();
+    const url = `/trips/${t.tripId}/media/${t.mediaId}/thumb`;
+    const files = await api("GET", url, { token: t.token, env: { RL_FILES: fakeLimiter(0) } });
+    expect(files.status).toBe(429);
+    expect(files.headers.get("retry-after")).toBe("60");
+  });
+
+  it("without a token they keep RL_GLOBAL by IP (and would get 401 anyway)", async () => {
+    const t = await revealed();
+    const url = `/trips/${t.tripId}/media/${t.mediaId}/thumb`;
+    expect((await api("GET", url, { env: { RL_GLOBAL: fakeLimiter(0) } })).status).toBe(429);
+    expect((await api("GET", url)).status).toBe(401);
+  });
+
+  it("only the exact download paths are skipped", async () => {
+    const t = await revealed();
+    const e = { RL_GLOBAL: fakeLimiter(0) };
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}/thumb/extra`, { token: t.token, env: e })).status).toBe(429);
+    expect((await api("GET", `/trips/${t.tripId}/media/${t.mediaId}`, { token: t.token, env: e })).status).toBe(429);
   });
 });
 

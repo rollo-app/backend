@@ -10,7 +10,7 @@ export default defineConfig({
       miniflare: {
         // Tests share one IP key and sign up many users: the real limits would trip them. The limit tests use their own low-limit stand-ins.
         ratelimits: Object.fromEntries(
-          [["RL_GLOBAL", "1001"], ["RL_IP", "1002"], ["RL_EXPENSIVE", "1003"], ["RL_FILES", "1004"], ["RL_SEARCH", "1005"]].map(([name, namespace_id]) => [
+          [["RL_GLOBAL", "1001"], ["RL_IP", "1002"], ["RL_IP_FILES", "1007"], ["RL_IP_PUBLIC", "1008"], ["RL_IP_MISS", "1009"], ["RL_EXPENSIVE", "1003"], ["RL_UPLOAD", "1006"], ["RL_FILES", "1004"], ["RL_SEARCH", "1005"]].map(([name, namespace_id]) => [
             name,
             { namespace_id, simple: { limit: 1_000_000, period: 60 as const } },
           ]),

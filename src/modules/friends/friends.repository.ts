@@ -1,3 +1,4 @@
+import { inChunks } from "../../lib/util";
 import type { TripRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -128,4 +129,34 @@ export async function listCommonTrips(db: D1Database, me: string, friendId: stri
 export async function friendshipExists(db: D1Database, userA: string, userB: string): Promise<boolean> {
   const row = await db.prepare("SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?").bind(userA, userB).first();
   return row !== null;
+}
+
+/** Which of `ids` are friends of `me`. One query per `D1_IN_CHUNK` ids (a single one for up to 90). */
+export async function friendIdsAmong(db: D1Database, me: string, ids: string[]): Promise<Set<string>> {
+  const found = new Set<string>();
+  for (const chunk of inChunks(ids)) {
+    const marks = chunk.map((_, i) => `?${i + 2}`).join(", ");
+    const { results } = await db
+      .prepare(
+        `SELECT user_b AS id FROM friendships WHERE user_a = ?1 AND user_b IN (${marks})
+         UNION ALL SELECT user_a AS id FROM friendships WHERE user_b = ?1 AND user_a IN (${marks})`,
+      )
+      .bind(me, ...chunk)
+      .all<{ id: string }>();
+    for (const r of results) found.add(r.id);
+  }
+  return found;
+}
+
+/** Which of `ids` are complete users (name and @username), same rule as `findUser`. */
+export async function completeUserIdsAmong(db: D1Database, ids: string[]): Promise<Set<string>> {
+  const found = new Set<string>();
+  for (const chunk of inChunks(ids)) {
+    const { results } = await db
+      .prepare(`SELECT id FROM users WHERE id IN (${chunk.map(() => "?").join(", ")}) AND name IS NOT NULL AND TRIM(name) <> '' AND username IS NOT NULL`)
+      .bind(...chunk)
+      .all<{ id: string }>();
+    for (const r of results) found.add(r.id);
+  }
+  return found;
 }

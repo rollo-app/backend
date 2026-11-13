@@ -4,7 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEGRADED_MESSAGE, resetDegradedCache } from "../src/lib/degraded";
 import { GOOGLE_ERROR, GOOGLE_UNAVAILABLE, setGoogleKeysForTests } from "../src/lib/google";
 import { USE_EMAIL_CODE } from "../src/modules/auth/auth.service";
-import { api, signUp } from "./helpers";
+import { REGISTRATIONS_CLOSED_MESSAGE, resetRegistrationsCache } from "../src/lib/registrations";
+import { api, closeRegistrations, signUp } from "./helpers";
 
 // Audiences come from GOOGLE_CLIENT_IDS in vitest.config.ts.
 const WEB_CLIENT = "test-web.apps.googleusercontent.com";
@@ -21,7 +22,10 @@ beforeAll(async () => {
   setGoogleKeysForTests(createLocalJWKSet({ keys: [jwk] }));
 });
 afterAll(() => setGoogleKeysForTests(null));
-beforeEach(() => resetDegradedCache());
+beforeEach(() => {
+  resetDegradedCache();
+  resetRegistrationsCache();
+});
 
 let subCounter = 0;
 
@@ -169,5 +173,27 @@ describe("POST /auth/google", () => {
     expect(again.status).toBe(200);
     expect(again.body.user.id).not.toBe(first.body.user.id);
     expect(again.body.isNew).toBe(true);
+  });
+});
+
+describe("closed registrations", () => {
+  it("a new account gets 403 with the code; an existing email account and a linked identity still get in", async () => {
+    const existing = await signUp("ana@gmail.com");
+    const linked = await signInWithGoogle(await googleToken({ sub: "g-linked", email: "linkeada@gmail.com" }));
+    expect(linked.status).toBe(200);
+    await closeRegistrations();
+
+    const fresh = await signInWithGoogle(await googleToken({ sub: "g-fresh", email: "nadie@gmail.com" }));
+    expect(fresh.status).toBe(403);
+    expect(fresh.body).toEqual({ error: REGISTRATIONS_CLOSED_MESSAGE, code: "REGISTRATIONS_CLOSED" });
+    expect(await env.DB.prepare("SELECT 1 FROM users WHERE email = 'nadie@gmail.com'").first()).toBeNull();
+    expect(await env.DB.prepare("SELECT 1 FROM user_identities WHERE subject = 'g-fresh'").first()).toBeNull();
+
+    const byEmail = await signInWithGoogle(await googleToken({ sub: "g-ana", email: "ana@gmail.com" }));
+    expect(byEmail.status).toBe(200);
+    expect(byEmail.body.user.id).toBe(existing.userId);
+    const bySub = await signInWithGoogle(await googleToken({ sub: "g-linked", email: "otro-mail@gmail.com" }));
+    expect(bySub.status).toBe(200);
+    expect(bySub.body.user.id).toBe(linked.body.user.id);
   });
 });

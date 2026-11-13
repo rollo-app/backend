@@ -29,7 +29,14 @@ export const trips = sqliteTable("trips", {
   momentWindowEnd: integer("moment_window_end").notNull().default(1380),
   momentFromDay: text("moment_from_day"),
   createdByUserId: text("created_by_user_id"),
-});
+  maxMembers: integer("max_members").notNull().default(15),
+  keepOriginals: integer("keep_originals").notNull().default(0),
+  originalsNoticeAt: integer("originals_notice_at"),
+  originalsPurgedAt: integer("originals_purged_at"),
+  type: text("type", { enum: ["trip", "event"] }).notNull().default("trip"),
+  coverKey: text("cover_key"),
+  pendingCoverKey: text("pending_cover_key"),
+}, (t) => [check("trips_type_check", sql`${t.type} IN ('trip', 'event')`)]);
 
 export const users = sqliteTable(
   "users",
@@ -46,6 +53,7 @@ export const users = sqliteTable(
     profileVisibility: text("profile_visibility", { enum: ["friends", "public"] }).notNull().default("friends"),
     badge: text("badge", { enum: ["founder", "first_edition"] }),
     unlimitedRollos: integer("unlimited_rollos").notNull().default(0),
+    canCreateEvents: integer("can_create_events").notNull().default(0),
     appRole: text("app_role", { enum: ["user", "superadmin"] }).notNull().default("user"),
   },
   (t) => [
@@ -164,6 +172,9 @@ export const media = sqliteTable(
     momentDay: text("moment_day"),
     pairedMediaId: text("paired_media_id"),
     archivedAt: integer("archived_at"),
+    displayKey: text("display_key"),
+    displaySizeBytes: integer("display_size_bytes"),
+    originalPurgedAt: integer("original_purged_at"),
   },
   (t) => [
     index("idx_media_trip_time").on(t.tripId, t.takenAt),
@@ -309,6 +320,7 @@ export const userSettings = sqliteTable("user_settings", {
   allowFeaturing: integer("allow_featuring").notNull().default(1),
   notifyDailyMoment: integer("notify_daily_moment").notNull().default(1),
   notifyMomentPosted: integer("notify_moment_posted").notNull().default(1),
+  notifyOriginalsExpiring: integer("notify_originals_expiring").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -392,6 +404,26 @@ export const emailCounters = sqliteTable(
     count: integer("count").notNull(),
   },
   (t) => [primaryKey({ columns: [t.kind, t.day] })],
+);
+
+export const waitlist = sqliteTable(
+  "waitlist",
+  {
+    email: text("email").primaryKey(),
+    source: text("source").notNull().default("app"),
+    createdAt: integer("created_at").notNull(),
+    confirmTokenHash: text("confirm_token_hash").notNull(),
+    confirmedAt: integer("confirmed_at"),
+    unsubscribeTokenHash: text("unsubscribe_token_hash").notNull(),
+    unsubscribedAt: integer("unsubscribed_at"),
+    lastSentAt: integer("last_sent_at"),
+  },
+  (t) => [
+    uniqueIndex("idx_waitlist_confirm_token").on(t.confirmTokenHash),
+    uniqueIndex("idx_waitlist_unsubscribe_token").on(t.unsubscribeTokenHash),
+    index("idx_waitlist_created").on(t.createdAt),
+    check("waitlist_source_check", sql`${t.source} IN ('app', 'web')`),
+  ],
 );
 
 // Relations (for the relational query API, `db.query.x.findFirst({ with })`); one per foreign key.
@@ -520,5 +552,37 @@ export type CronState = typeof cronState.$inferSelect;
 export type NewCronState = typeof cronState.$inferInsert;
 export type MetricDaily = typeof metricsDaily.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;
+export type WaitlistRow = typeof waitlist.$inferSelect;
 export type EmailCounter = typeof emailCounters.$inferSelect;
 export type NewEmailCounter = typeof emailCounters.$inferInsert;
+
+export const eventGroups = sqliteTable(
+  "event_groups",
+  {
+    id: text("id").primaryKey(),
+    tripId: text("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    position: integer("position").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [unique().on(t.tripId, t.name)],
+);
+
+export const memberGroups = sqliteTable(
+  "member_groups",
+  {
+    memberId: text("member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+    groupId: text("group_id").notNull().references(() => eventGroups.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.groupId] }), index("idx_member_groups_group").on(t.groupId)],
+);
+
+export const mediaGroups = sqliteTable(
+  "media_groups",
+  {
+    mediaId: text("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+    groupId: text("group_id").notNull().references(() => eventGroups.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.mediaId, t.groupId] }), index("idx_media_groups_group").on(t.groupId)],
+);

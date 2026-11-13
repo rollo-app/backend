@@ -10,12 +10,12 @@ const BATCH = 100;
  */
 export async function cleanupStalePending(env: Pick<Env, "DB" | "MEDIA">, now = Date.now()): Promise<void> {
   const { results } = await env.DB
-    .prepare("SELECT id, original_key, thumb_key FROM media WHERE status = 'pending' AND created_at < ? ORDER BY created_at LIMIT ?")
+    .prepare("SELECT id, original_key, thumb_key, display_key FROM media WHERE status = 'pending' AND created_at < ? ORDER BY created_at LIMIT ?")
     .bind(now - STALE_AFTER_MS, BATCH)
-    .all<{ id: string; original_key: string; thumb_key: string }>();
+    .all<{ id: string; original_key: string; thumb_key: string; display_key: string | null }>();
   if (!results.length) return;
 
-  await env.MEDIA.delete(results.flatMap((r) => [r.original_key, r.thumb_key]));
+  await env.MEDIA.delete(results.flatMap((r) => [r.original_key, r.thumb_key, ...(r.display_key ? [r.display_key] : [])]));
   await env.DB.batch(
     results.map((r) => env.DB.prepare("DELETE FROM media WHERE id = ? AND status = 'pending'").bind(r.id)),
   );

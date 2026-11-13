@@ -1,6 +1,7 @@
 import { sendReportEmail } from "../../lib/email";
 import { atModerationActionCap, MODERATION_ACTION_CAP_MESSAGE, withinModerationEmailCap } from "../moderation/moderation.service";
 import { canSeeProfile } from "../users/users.service";
+import { canSeeMediaInTrip } from "../../lib/event-visibility";
 import { presignGet } from "../../lib/r2";
 import { badRequest, notFound, rateLimited } from "../../shared/errors";
 import type { Env, MediaRow, UserRow } from "../../types";
@@ -10,7 +11,8 @@ import * as repo from "./reports.repository";
 
 /** Whether the viewer may see the photo: active member of its trip, or a featured photo on a profile they can see. */
 async function canSeeMedia(db: D1Database, viewerId: string, media: Pick<MediaRow, "id" | "trip_id">): Promise<boolean> {
-  if (await repo.isActiveTripMember(db, media.trip_id, viewerId)) return true;
+  // An event guest only sees the photos of their groups.
+  if ((await repo.isActiveTripMember(db, media.trip_id, viewerId)) && (await canSeeMediaInTrip(db, viewerId, media.id, media.trip_id))) return true;
   const owners = await repo.listFeaturedOwners(db, media.id, Date.now());
   for (const owner of owners) if (await canSeeProfile(db, viewerId, owner)) return true;
   return false;
@@ -29,7 +31,10 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
     // A comment is only visible to the active members of its photo's rollo (never through a profile).
     comment = await repo.findLiveComment(db, commentId);
     const commented = comment && (await repo.findUploadedMedia(db, comment.media_id, viewer.id));
-    if (!comment || !commented || !(await repo.isActiveTripMember(db, commented.trip_id, viewer.id))) throw notFound();
+    if (
+      !comment || !commented || !(await repo.isActiveTripMember(db, commented.trip_id, viewer.id)) ||
+      !(await canSeeMediaInTrip(db, viewer.id, commented.id, commented.trip_id))
+    ) throw notFound();
     commentTripId = commented.trip_id;
     targetId = comment.user_id;
   } else if (mediaId !== undefined) {
@@ -83,7 +88,8 @@ export async function createReport(env: Env, viewer: UserRow, input: CreateRepor
             type: media.type,
             caption: media.caption,
             takenAt: media.taken_at,
-            url: await presignGet(env, media.original_key),
+            // Once the original was purged only the display is left.
+            url: await presignGet(env, media.original_purged_at !== null && media.display_key ? media.display_key : media.original_key),
           },
         }),
         adminBase,

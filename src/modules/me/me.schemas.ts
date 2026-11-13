@@ -15,6 +15,8 @@ export const TripSummarySchema = z
     archived: z.boolean().openapi({ description: "You archived this rollo (only for you)" }),
     totalUploaded: z.number().int(),
     momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
+    type: z.enum(["trip", "event"]),
+    coverUrl: z.string().nullable().openapi({ description: "Public path of the event cover; null if none" }),
     coverThumbhash: z.string().nullable().openapi({
       description:
         "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
@@ -67,6 +69,7 @@ export const NotificationSettingsSchema = z
     friendRequest: z.boolean().openapi({ description: "Someone sends you a friend request" }),
     dailyMoment: z.boolean().openapi({ description: "It is your moment of the day in a rollo with the daily moment on" }),
     momentPosted: z.boolean().openapi({ description: "Someone in a rollo you are in uploaded their daily moment" }),
+    originalsExpiring: z.boolean().openapi({ description: "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)" }),
   })
   .openapi("NotificationSettings");
 

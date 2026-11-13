@@ -30,7 +30,7 @@ export async function findSessionUser(
 ): Promise<(UserRow & { session_id: string; last_used_at: number }) | null> {
   return db
     .prepare(
-      `SELECT s.id AS session_id, s.last_used_at, u.id, u.email, u.name, u.username, u.avatar_key, u.pending_avatar_key, u.bio, u.badge, u.unlimited_rollos, u.profile_visibility, u.app_role, u.created_at
+      `SELECT s.id AS session_id, s.last_used_at, u.id, u.email, u.name, u.username, u.avatar_key, u.pending_avatar_key, u.bio, u.badge, u.unlimited_rollos, u.can_create_events, u.profile_visibility, u.app_role, u.created_at
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
     )

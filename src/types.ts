@@ -5,7 +5,11 @@ export type Env = {
   /** Rate limiters (see `src/lib/rate-limit.ts`); optional so a missing binding fails open. */
   RL_GLOBAL?: RateLimitBinding;
   RL_IP?: RateLimitBinding;
+  RL_IP_FILES?: RateLimitBinding;
+  RL_IP_PUBLIC?: RateLimitBinding;
+  RL_IP_MISS?: RateLimitBinding;
   RL_EXPENSIVE?: RateLimitBinding;
+  RL_UPLOAD?: RateLimitBinding;
   RL_FILES?: RateLimitBinding;
   RL_SEARCH?: RateLimitBinding;
   DB: D1Database;
@@ -74,6 +78,20 @@ export type TripRow = {
   /** First trip-local day the moment config applies to (YYYY-MM-DD); null = no restriction. */
   moment_from_day: string | null;
   created_by_user_id: string | null;
+  /** Maximum active members (neither left nor removed); 15 for free rollos. */
+  max_members: number;
+  /** 1 = the originals are never deleted (rollos that existed before the retention policy; later the paid pass). */
+  keep_originals: number;
+  /** When the "originals expire in 5 days" push was claimed. */
+  originals_notice_at: number | null;
+  /** When the cron found no purgeable original left. */
+  originals_purged_at: number | null;
+  /** 'trip' (regular rollo) or 'event' (guests join groups). */
+  type: "trip" | "event";
+  /** Published cover image key (events), null if none. */
+  cover_key: string | null;
+  /** Cover being uploaded, not yet confirmed. */
+  pending_cover_key: string | null;
 };
 
 /** Global backoffice role (distinct from the per-rollo `Role`). */
@@ -89,6 +107,7 @@ export type UserRow = {
   bio: string | null;
   badge: string | null;
   unlimited_rollos: number;
+  can_create_events: number;
   profile_visibility: ProfileVisibility;
   app_role: AppRole;
   created_at: number;
@@ -149,6 +168,11 @@ export type MediaRow = {
   comments_since_notified: number;
   /** The author archived it (after the reveal): only they still see it. */
   archived_at: number | null;
+  /** R2 key of the 2048 px display JPEG (kept forever); null for uploads from builds that predate it. */
+  display_key: string | null;
+  display_size_bytes: number | null;
+  /** When the original was queued for deletion by the retention cron. */
+  original_purged_at: number | null;
 };
 
 export type AppEnv = {

@@ -1,4 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
+import { mediaVisibleToSql, MEDIA_VISIBLE_BINDS } from "../../lib/event-visibility";
 import { hiddenMediaSql } from "../reports/reports.repository";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 
@@ -10,20 +11,24 @@ export type CommentableRow = Pick<MediaRow, "id" | "type" | "trip_id" | "paired_
 
 export type CommentRow = { id: string; text: string; created_at: number; user_id: string } & Pick<UserRow, "name" | "username" | "avatar_key">;
 
-/** The live uploaded media the viewer hasn't hidden (reported or blocked author), with whether they are an active member (and admin) of its rollo. */
+/**
+ * The live uploaded media the viewer hasn't hidden (reported or blocked author), with whether they are an active member (and admin) of its rollo.
+ * `is_member` is 0 for a photo the viewer does not see (an event photo of a group they are not in), so it answers 404.
+ */
 export function findCommentableRow(db: D1Database, viewerId: string, mediaId: string): Promise<CommentableRow | null> {
   return db
     .prepare(
       `SELECT m.id, m.type, m.trip_id, m.paired_media_id, m.moment_day, m.archived_at, author.user_id AS author_user_id, t.revealed_at, t.reveal_at,
-              EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
-                        AND me.removed_at IS NULL AND me.left_at IS NULL) AS is_member,
+              (EXISTS (SELECT 1 FROM members me WHERE me.trip_id = m.trip_id AND me.user_id = ?
+                        AND me.removed_at IS NULL AND me.left_at IS NULL)
+               AND ${mediaVisibleToSql("?", "m.id", "m.trip_id")}) AS is_member,
               EXISTS (SELECT 1 FROM members ad WHERE ad.trip_id = m.trip_id AND ad.user_id = ? AND ad.role = 'admin'
                         AND ad.removed_at IS NULL AND ad.left_at IS NULL) AS is_admin
        FROM media m JOIN trips t ON t.id = m.trip_id JOIN members author ON author.id = m.member_id
        WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${hiddenMediaSql("m", "author")}
          AND (m.archived_at IS NULL OR author.user_id = ?)`,
     )
-    .bind(viewerId, viewerId, mediaId, viewerId, viewerId, viewerId)
+    .bind(viewerId, ...Array<string>(MEDIA_VISIBLE_BINDS).fill(viewerId), viewerId, mediaId, viewerId, viewerId, viewerId)
     .first<CommentableRow>();
 }
 
@@ -100,13 +105,13 @@ export function countSilencedComment(db: D1Database, mediaId: string): D1Prepare
   return db.prepare("UPDATE media SET comments_since_notified = comments_since_notified + 1 WHERE id = ?").bind(mediaId);
 }
 
-/** Active members of the rollo (other than the photo's author) with a live comment on the photo. */
+/** Active members of the rollo (other than the photo's author) with a live comment on the photo who still see the photo (an event group they left no longer notifies them). */
 export async function listEarlierCommenters(db: D1Database, tripId: string, mediaId: string, authorUserId: string): Promise<string[]> {
   const { results } = await db
     .prepare(
       `SELECT DISTINCT c.user_id FROM comments c
        JOIN members m ON m.trip_id = ? AND m.user_id = c.user_id AND m.removed_at IS NULL AND m.left_at IS NULL
-       WHERE c.media_id = ? AND c.deleted_at IS NULL AND c.user_id <> ?`,
+       WHERE c.media_id = ? AND c.deleted_at IS NULL AND c.user_id <> ? AND ${mediaVisibleToSql("c.user_id", "c.media_id", "m.trip_id")}`,
     )
     .bind(tripId, mediaId, authorUserId)
     .all<{ user_id: string }>();
@@ -128,6 +133,7 @@ const MY_COMMENTS_FROM = `
   JOIN members author ON author.id = m.member_id
   JOIN members me ON me.trip_id = m.trip_id AND me.user_id = ? AND me.removed_at IS NULL AND me.left_at IS NULL
   WHERE (t.revealed_at IS NOT NULL OR t.reveal_at <= ?)
+    AND ${mediaVisibleToSql("me.user_id", "m.id", "m.trip_id")}
     AND c.user_id = ? AND c.deleted_at IS NULL
     AND m.type = 'photo' AND m.paired_media_id IS NULL AND m.status = 'uploaded' AND m.deleted_at IS NULL
     AND (m.archived_at IS NULL OR author.user_id = ?)

@@ -1,6 +1,7 @@
 import { isBlockedEitherWay } from "../blocks/blocks.service";
 import { canSeeProfile } from "../users/users.service";
 import { decodeCursor, encodeCursor } from "../../lib/cursor";
+import { canNotifyAuthor } from "../../lib/event-visibility";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import { rejectSelfie, rejectSelfieById } from "../moments/moments.service";
 import { actorName, sendPush, type PushMessage } from "../../lib/push";
@@ -139,5 +140,7 @@ async function notifyLike(
 ): Promise<void> {
   const silenced = await claimLikePush(env.DB, photo.id, now);
   if (silenced === null) return;
+  // An author who left or was removed (or no longer sees the photo in an event) gets no push about it.
+  if (!(await canNotifyAuthor(env.DB, photo.authorUserId, photo.id, photo.tripId))) return;
   await sendPush(env, [photo.authorUserId], "photoLiked", photoLikedMessage(liker, silenced, photo), { actorId: liker.id });
 }

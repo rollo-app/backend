@@ -51,7 +51,7 @@ const lerp = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, 
 });
 const lastDays = (n: number) => Array.from({ length: n }, (_, i) => localMidnight(n - 1 - i)); // n days, today included
 
-type Ctx = { tripId: string; tokens: string[]; names: string[] };
+type Ctx = { tripId: string; tokens: string[]; names: string[]; groupIds: string[] };
 type Scenario = {
   name: string;
   tests: string;
@@ -63,6 +63,8 @@ type Scenario = {
   /** Daily moment mode sent when creating the trip (default band 9:00-23:00). */
   momentMode?: "off" | "photo" | "photo_selfie";
   shots?: () => Shot[];
+  /** Makes it an event (`type: "event"`): its groups, and the group indexes each member (aligned with `members`, then Juani if a member) joins; the admin joins none. */
+  event?: { groups: string[]; groupsOf: number[][] };
   /** Extra steps after uploading (`ids` is aligned with `shots`). */
   after?: (ctx: Ctx, shots: Shot[], ids: string[]) => Promise<void>;
 };
@@ -255,6 +257,24 @@ export const SCENARIOS: Scenario[] = [
     trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 6 * DAY, revealAt: Date.now() + 6 * DAY }),
   },
   {
+    name: "Casamiento de prueba",
+    tests: "EVENT (unrevealed, ongoing): Juani is the organizer (admin, no groups). Groups Familia (Cami, Tomi), Trabajo (Fede, Lu) and Amigos (Sofi, Bruno, Tomi: Tomi is in two groups). Photos per group; a guest only sees their groups' photos",
+    juani: "admin",
+    members: ["Cami", "Tomi", "Fede", "Lu", "Sofi", "Bruno"],
+    event: { groups: ["Familia", "Trabajo", "Amigos"], groupsOf: [[0], [0, 2], [1], [1], [2], [2]] },
+    trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 2 * DAY, revealAt: Date.now() + 2 * DAY }),
+    shots() {
+      const p = new Planner(lastDays(2), 5);
+      // member index (Juani is 0): Cami 1 and Tomi 2 in Familia, Fede 3 and Lu 4 in Trabajo, Sofi 5, Bruno 6 and Tomi in Amigos.
+      for (const [m, group] of [[1, 0], [2, 0], [3, 1], [4, 1], [5, 2], [6, 2], [2, 2]] as const)
+        for (let i = 0; i < 2; i++) {
+          p.add(m, i, "photo", near(pick(PLACES)!, 0.005), cap(0.5));
+          p.shots.at(-1)!.groups = [group];
+        }
+      return p.shots;
+    },
+  },
+  {
     name: "Escapada sin Juani",
     tests: "Juani is NOT a member: must not show up as common with Cami or Bruno (privacy)",
     juani: "absent",
@@ -328,6 +348,7 @@ export async function runScenario(s: Scenario): Promise<Row> {
     dailyPhotoLimit: dates.dailyPhotoLimit,
     dailyVideoLimit: dates.dailyVideoLimit,
     ...(s.momentMode ? { momentMode: s.momentMode } : {}),
+    ...(s.event ? { type: "event", groups: s.event.groups, photoLimitMode: "total", totalPhotoLimit: 20, dailyPhotoLimit: undefined, dailyVideoLimit: undefined } : {}),
   };
   const juani = s.juani ?? "member";
   const names = juani === "admin" ? [JUANI, ...s.members] : juani === "absent" ? s.members : [...s.members, JUANI];
@@ -335,18 +356,22 @@ export async function runScenario(s: Scenario): Promise<Row> {
   const created = await api("POST", "/trips", body, tokens[0]);
   const tripId: string = created.trip.id;
   d1(`UPDATE trips SET starts_at=${dates.startsAt}, ends_at=${dates.endsAt}, reveal_at=${dates.revealAt} WHERE id='${tripId}'`);
-  for (let i = 1; i < names.length; i++) await api("POST", "/trips/join", { code: created.trip.joinCode }, tokens[i]);
+  const groupIds: string[] = (created.trip.groups ?? []).map((g: { id: string }) => g.id);
+  // Event guests join with their groups (names[0] is the organizer); the guest list is `names` without the admin.
+  const guestGroups = (i: number) => (s.event?.groupsOf[juani === "admin" ? i - 1 : i] ?? []).map((g) => groupIds[g]!);
+  for (let i = 1; i < names.length; i++)
+    await api("POST", "/trips/join", { code: created.trip.joinCode, ...(s.event ? { groupIds: guestGroups(i) } : {}) }, tokens[i]);
 
   const shots = s.shots?.() ?? [];
   let ids: string[] = [];
   if (shots.length) {
     console.log(`  uploading ${shots.length} shots (${shots.filter((x) => x.type === "video").length} videos)...`);
     ids = await pool(
-      shots.map((shot, i) => () => uploadShot(tripId, tokens[shot.member]!, shot, Math.floor(Math.random() * POOL_SIZE) + i)),
+      shots.map((shot, i) => () => uploadShot(tripId, tokens[shot.member]!, shot, Math.floor(Math.random() * POOL_SIZE) + i, shot.groups?.map((g) => groupIds[g]!))),
       6,
       (done) => done % 25 === 0 && console.log(`    ${done}/${shots.length}`),
     );
   }
-  await s.after?.({ tripId, tokens, names }, shots, ids);
+  await s.after?.({ tripId, tokens, names, groupIds }, shots, ids);
   return { name: s.name, ...stats(s.name), tests: s.tests, juani: s.juani ?? "member" };
 }

@@ -1,3 +1,5 @@
+import { mediaVisibleToSql, MEDIA_VISIBLE_BINDS } from "../../lib/event-visibility";
+import { inChunks } from "../../lib/util";
 import type { MemberRow, Role, TripRow } from "../../types";
 
 // Reads execute and return rows; writes return an unexecuted statement so the service decides
@@ -10,7 +12,7 @@ export type ActiveMemberRow = {
 export type NewTrip = Pick<
   TripRow,
   "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit" | "created_at"
-  | "moment_mode" | "moment_window_start" | "moment_window_end"
+  | "moment_mode" | "moment_window_start" | "moment_window_end" | "type" | "max_members"
 > & { started_notified_at: number | null; featuring_disabled: number };
 
 export type TripEdit = Pick<
@@ -31,6 +33,9 @@ export function findTripByJoinCode(db: D1Database, joinCode: string): Promise<Tr
   return db.prepare("SELECT * FROM trips WHERE join_code = ?").bind(joinCode).first<TripRow>();
 }
 
+/** Events `?1` created that are not revealed yet (params: user id, now). One fragment for the early check and the guarded INSERT. */
+const UNREVEALED_EVENTS_CREATED = `SELECT COUNT(*) FROM trips WHERE type = 'event' AND created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?`;
+
 /**
  * Inserts the trip only while the creator is under the limits on rollos they created (skipped with
  * `limited = false`). The check is part of the INSERT, so two concurrent creates cannot both pass.
@@ -38,26 +43,29 @@ export function findTripByJoinCode(db: D1Database, joinCode: string): Promise<Tr
 export function insertTrip(
   db: D1Database,
   t: NewTrip,
-  creator: { userId: string; limited: boolean; unrevealedMax: number; windowMax: number; windowSince: number },
+  creator: { userId: string; limited: boolean; oneEventAtATime: boolean; unrevealedMax: number; windowMax: number; windowSince: number },
 ): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
                           daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at, featuring_disabled,
-                          moment_mode, moment_window_start, moment_window_end, created_by_user_id)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE ? = 0 OR (
+                          moment_mode, moment_window_start, moment_window_end, created_by_user_id, type, max_members)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE (? = 0 OR (
          (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?) < ?
          AND (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND created_at > ?) < ?
-       )`,
+       ))
+       AND (? = 0 OR (${UNREVEALED_EVENTS_CREATED}) = 0)`,
     )
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
       t.daily_photo_limit, t.daily_video_limit, t.photo_limit_mode, t.total_photo_limit, t.created_at, t.started_notified_at, t.featuring_disabled,
-      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId,
+      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId, t.type, t.max_members,
       creator.limited ? 1 : 0,
       creator.userId, t.created_at, creator.unrevealedMax,
       creator.userId, creator.windowSince, creator.windowMax,
+      creator.oneEventAtATime ? 1 : 0,
+      creator.userId, t.created_at,
     );
 }
 
@@ -70,8 +78,108 @@ export function insertAdminMember(db: D1Database, id: string, tripId: string, us
     .bind(id, tripId, userId, now, tripId);
 }
 
+/** Inserts the groups of an event, in the given order. Only when the trip exists (like the admin member). */
+export function insertGroups(db: D1Database, tripId: string, groups: { id: string; name: string }[], now: number): D1PreparedStatement[] {
+  return groups.map((g, position) =>
+    db
+      .prepare(
+        `INSERT INTO event_groups (id, trip_id, name, position, created_at)
+         SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM trips WHERE id = ?)`,
+      )
+      .bind(g.id, tripId, g.name, position, now, tripId),
+  );
+}
+
+/** Adds a group at the end of the event's list. */
+export function insertGroup(db: D1Database, tripId: string, id: string, name: string, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO event_groups (id, trip_id, name, position, created_at)
+       SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ? FROM event_groups WHERE trip_id = ?`,
+    )
+    .bind(id, tripId, name, now, tripId);
+}
+
+export async function renameGroup(db: D1Database, tripId: string, groupId: string, name: string): Promise<boolean> {
+  const res = await db.prepare("UPDATE event_groups SET name = ? WHERE id = ? AND trip_id = ?").bind(name, groupId, tripId).run();
+  return res.meta.changes > 0;
+}
+
+/** Deletes the group only while nobody is in it and no photo is sent to it (the FKs cascade, so the check lives in the statement). */
+export async function deleteEmptyGroup(db: D1Database, tripId: string, groupId: string): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `DELETE FROM event_groups WHERE id = ? AND trip_id = ?
+         AND NOT EXISTS (SELECT 1 FROM member_groups WHERE group_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM media_groups WHERE group_id = ?)
+         AND (SELECT COUNT(*) FROM event_groups WHERE trip_id = ?) > 1`,
+    )
+    .bind(groupId, tripId, groupId, groupId, tripId)
+    .run();
+  return res.meta.changes > 0;
+}
+
+// ---------- Event cover ----------
+
+export function setPendingCoverKey(db: D1Database, tripId: string, key: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET pending_cover_key = ? WHERE id = ?").bind(key, tripId);
+}
+
+export function clearPendingCoverKey(db: D1Database, tripId: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET pending_cover_key = NULL WHERE id = ?").bind(tripId);
+}
+
+export function promoteCover(db: D1Database, tripId: string, key: string): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET cover_key = ?, pending_cover_key = NULL WHERE id = ?").bind(key, tripId);
+}
+
+export async function listGroups(db: D1Database, tripId: string): Promise<{ id: string; name: string; position: number }[]> {
+  const { results } = await db
+    .prepare("SELECT id, name, position FROM event_groups WHERE trip_id = ? ORDER BY position")
+    .bind(tripId)
+    .all<{ id: string; name: string; position: number }>();
+  return results;
+}
+
+const ACTIVE_MEMBER_SQL = "EXISTS (SELECT 1 FROM members WHERE id = ? AND left_at IS NULL AND removed_at IS NULL)";
+
+/** Adds the member to the groups, keeping the ones they already have. Writes only while they are an active member, so a skipped join leaves nothing behind. */
+export function addMemberGroups(db: D1Database, memberId: string, groupIds: string[], now: number): D1PreparedStatement[] {
+  return groupIds.map((groupId) =>
+    db
+      .prepare(`INSERT OR IGNORE INTO member_groups (member_id, group_id, created_at) SELECT ?, ?, ? WHERE ${ACTIVE_MEMBER_SQL}`)
+      .bind(memberId, groupId, now, memberId),
+  );
+}
+
+/** Replaces the member's groups with `groupIds` (deletes, then inserts). */
+export function setMemberGroups(db: D1Database, memberId: string, groupIds: string[], now = Date.now()): D1PreparedStatement[] {
+  return [db.prepare("DELETE FROM member_groups WHERE member_id = ?").bind(memberId), ...addMemberGroups(db, memberId, groupIds, now)];
+}
+
+export async function listMemberGroupIds(db: D1Database, memberId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare("SELECT mg.group_id FROM member_groups mg JOIN event_groups g ON g.id = mg.group_id WHERE mg.member_id = ? ORDER BY g.position")
+    .bind(memberId)
+    .all<{ group_id: string }>();
+  return results.map((r) => r.group_id);
+}
+
 export function findMember(db: D1Database, tripId: string, userId: string): Promise<MemberRow | null> {
   return db.prepare("SELECT * FROM members WHERE trip_id = ? AND user_id = ?").bind(tripId, userId).first<MemberRow>();
+}
+
+/** Memberships (any state) of `userIds` in the trip, keyed by user id. One query per `D1_IN_CHUNK` ids. */
+export async function findMembersByUsers(db: D1Database, tripId: string, userIds: string[]): Promise<Map<string, MemberRow>> {
+  const found = new Map<string, MemberRow>();
+  for (const chunk of inChunks(userIds)) {
+    const { results } = await db
+      .prepare(`SELECT * FROM members WHERE trip_id = ? AND user_id IN (${chunk.map(() => "?").join(", ")})`)
+      .bind(tripId, ...chunk)
+      .all<MemberRow>();
+    for (const m of results) found.set(m.user_id, m);
+  }
+  return found;
 }
 
 export function insertMember(db: D1Database, id: string, tripId: string, userId: string, now: number, addedBy: string | null): D1PreparedStatement {
@@ -80,24 +188,64 @@ export function insertMember(db: D1Database, id: string, tripId: string, userId:
     .bind(id, tripId, userId, now, addedBy);
 }
 
-/** Brings back someone the admin removed (clears `left_at` too). */
+/** "The trip still has room": active members (neither left nor removed) are fewer than `trips.max_members`. `tripIdSql` is the trip id expression. */
+const HAS_ROOM_SQL = (tripIdSql: string) =>
+  `(SELECT COUNT(*) FROM members a WHERE a.trip_id = ${tripIdSql} AND a.left_at IS NULL AND a.removed_at IS NULL) < (SELECT max_members FROM trips WHERE id = ${tripIdSql})`;
+
+/**
+ * Like `insertMember`, but only writes while the trip has room. The check is part of the statement, so two concurrent
+ * joins cannot both take the last spot; the caller reads `meta.changes` (0 = full).
+ */
+export function insertMemberIfRoom(db: D1Database, id: string, tripId: string, userId: string, now: number, addedBy: string | null): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO members (id, trip_id, user_id, role, created_at, added_by_user_id)
+       SELECT ?, ?, ?, 'member', ?, ? WHERE ${HAS_ROOM_SQL("?")}`,
+    )
+    .bind(id, tripId, userId, now, addedBy, tripId, tripId);
+}
+
+/** Brings back someone the admin removed (clears `left_at` too) while the trip has room (`meta.changes` 0 = full). Coming back takes a spot. */
 export function reactivateRemovedMember(db: D1Database, memberId: string, addedBy: string | null): D1PreparedStatement {
-  return db.prepare("UPDATE members SET removed_at = NULL, left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, memberId);
+  return db
+    .prepare(
+      `UPDATE members SET removed_at = NULL, left_at = NULL, added_by_user_id = ?
+       WHERE id = ? AND ${HAS_ROOM_SQL("members.trip_id")}`,
+    )
+    .bind(addedBy, memberId);
 }
 
-/** Brings back someone who left. */
+/** Brings back someone who left while the trip has room (`meta.changes` 0 = full). Coming back takes a spot. */
 export function reactivateLeftMember(db: D1Database, memberId: string, addedBy: string | null): D1PreparedStatement {
-  return db.prepare("UPDATE members SET left_at = NULL, added_by_user_id = ? WHERE id = ?").bind(addedBy, memberId);
+  return db
+    .prepare(
+      `UPDATE members SET left_at = NULL, added_by_user_id = ?
+       WHERE id = ? AND ${HAS_ROOM_SQL("members.trip_id")}`,
+    )
+    .bind(addedBy, memberId);
 }
 
-export function listActiveMembers(db: D1Database, tripId: string): Promise<{ results: ActiveMemberRow[] }> {
+/**
+ * Active members the viewer sees. In a regular trip, all of them. In an event, the organizers (admins), the viewer themself and
+ * the guests who share at least one group with the viewer; an organizer sees everyone.
+ */
+export function listActiveMembers(db: D1Database, tripId: string, viewerUserId: string): Promise<{ results: ActiveMemberRow[] }> {
   return db
     .prepare(
       `SELECT m.id, m.user_id, m.role, u.name, u.username, u.avatar_key
        FROM members m JOIN users u ON u.id = m.user_id
-       WHERE m.trip_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL ORDER BY m.created_at`,
+       WHERE m.trip_id = ?1 AND m.removed_at IS NULL AND m.left_at IS NULL
+         AND ((SELECT t.type FROM trips t WHERE t.id = ?1) = 'trip'
+              OR m.role = 'admin' OR m.user_id = ?2
+              OR EXISTS (SELECT 1 FROM members va WHERE va.trip_id = ?1 AND va.user_id = ?2 AND va.role = 'admin'
+                         AND va.removed_at IS NULL AND va.left_at IS NULL)
+              OR EXISTS (SELECT 1 FROM member_groups g JOIN member_groups vg ON vg.group_id = g.group_id
+                         JOIN members vm ON vm.id = vg.member_id
+                         WHERE g.member_id = m.id AND vm.trip_id = ?1 AND vm.user_id = ?2
+                           AND vm.removed_at IS NULL AND vm.left_at IS NULL))
+       ORDER BY m.created_at`,
     )
-    .bind(tripId)
+    .bind(tripId, viewerUserId)
     .all<ActiveMemberRow>();
 }
 
@@ -120,14 +268,14 @@ export function countMediaByTypeTotal(db: D1Database, memberId: string): Promise
     .all<{ type: string; n: number }>();
 }
 
-/** Uploaded, not deleted items of the rollo; archived ones only count for their author (`viewerMemberId`), who still sees them. */
-export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberId: string): Promise<{ n: number } | null> {
+/** Uploaded, not deleted items of the rollo the viewer sees; archived ones only count for their author (`viewerMemberId`), who still sees them. */
+export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberId: string, viewerUserId: string): Promise<{ n: number } | null> {
   return db
     .prepare(
       `SELECT COUNT(*) AS n FROM media WHERE trip_id = ? AND status = 'uploaded' AND deleted_at IS NULL AND paired_media_id IS NULL
-       AND (archived_at IS NULL OR member_id = ?)`,
+       AND (archived_at IS NULL OR member_id = ?) AND ${mediaVisibleToSql("?", "media.id", "media.trip_id")}`,
     )
-    .bind(tripId, viewerMemberId)
+    .bind(tripId, viewerMemberId, ...Array<string>(MEDIA_VISIBLE_BINDS).fill(viewerUserId))
     .first<{ n: number }>();
 }
 
@@ -165,6 +313,12 @@ export function setMemberArchived(db: D1Database, memberId: string, at: number |
 
 export function setMemberAllowFeaturing(db: D1Database, memberId: string, allow: boolean): D1PreparedStatement {
   return db.prepare("UPDATE members SET allow_featuring = ? WHERE id = ?").bind(allow ? 1 : 0, memberId);
+}
+
+/** Whether `userId` created an event that is not revealed yet. */
+export async function hasUnrevealedEventCreated(db: D1Database, userId: string, now: number): Promise<boolean> {
+  const row = await db.prepare(`SELECT (${UNREVEALED_EVENTS_CREATED}) AS n`).bind(userId, now).first<{ n: number }>();
+  return (row?.n ?? 0) > 0;
 }
 
 /** Rollos `userId` created (admin) that are not revealed yet: in progress, upcoming or ended. */
@@ -255,7 +409,10 @@ export function deleteTripStatements(db: D1Database, tripId: string, now: number
       .prepare(
         `INSERT OR IGNORE INTO r2_purge (key, created_at)
          SELECT original_key, ?1 FROM media WHERE trip_id = ?2
-         UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2`,
+         UNION SELECT thumb_key, ?1 FROM media WHERE trip_id = ?2
+         UNION SELECT display_key, ?1 FROM media WHERE trip_id = ?2 AND display_key IS NOT NULL
+         UNION SELECT cover_key, ?1 FROM trips WHERE id = ?2 AND cover_key IS NOT NULL
+         UNION SELECT pending_cover_key, ?1 FROM trips WHERE id = ?2 AND pending_cover_key IS NOT NULL`,
       )
       .bind(now, tripId),
     db.prepare("INSERT OR IGNORE INTO deleted_trips (trip_id, deleted_at) VALUES (?, ?)").bind(tripId, now),
@@ -263,4 +420,87 @@ export function deleteTripStatements(db: D1Database, tripId: string, now: number
     db.prepare("DELETE FROM members WHERE trip_id = ?").bind(tripId),
     db.prepare("DELETE FROM trips WHERE id = ?").bind(tripId),
   ];
+}
+
+// ---------- Original retention (see originals.service.ts) ----------
+
+/** The rollo's reveal moment: the admin's manual reveal when there was one, else the scheduled one. */
+const REVEAL_SQL = "COALESCE(t.revealed_at, t.reveal_at)";
+/** A photo whose original the cron may still delete: it has a display, so deleting the original leaves a usable image. */
+const PURGEABLE_MEDIA_SQL =
+  "m.type = 'photo' AND m.status = 'uploaded' AND m.deleted_at IS NULL AND m.display_key IS NOT NULL AND m.original_purged_at IS NULL";
+
+/**
+ * Rollos whose "originals expire soon" push is due: they do not keep their originals, nothing was purged or announced
+ * yet, the notice window (`ttlMs - noticeMs` after the reveal) has begun but the expiry has not come, and some photo
+ * still has an original to lose.
+ */
+export async function listTripsToNoticeOriginals(db: D1Database, now: number, ttlMs: number, noticeMs: number, limit: number): Promise<TripRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.* FROM trips t
+       WHERE t.keep_originals = 0 AND t.originals_purged_at IS NULL AND t.originals_notice_at IS NULL
+         AND ${REVEAL_SQL} + ?1 <= ?3 AND ${REVEAL_SQL} + ?2 > ?3
+         AND EXISTS (SELECT 1 FROM media m WHERE m.trip_id = t.id AND ${PURGEABLE_MEDIA_SQL})
+       ORDER BY ${REVEAL_SQL}, t.id LIMIT ?4`,
+    )
+    .bind(ttlMs - noticeMs, ttlMs, now, limit)
+    .all<TripRow>();
+  return results;
+}
+
+/** Claims the notice (set only while still null), so whoever changes the row is the only one who sends. */
+export function claimOriginalsNotice(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare("UPDATE trips SET originals_notice_at = ? WHERE id = ? AND originals_notice_at IS NULL AND keep_originals = 0")
+    .bind(now, tripId);
+}
+
+/** Rollos past their expiry that still may have originals to delete. */
+export async function listTripsToPurgeOriginals(db: D1Database, now: number, ttlMs: number, limit: number): Promise<{ id: string }[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.id FROM trips t
+       WHERE t.keep_originals = 0 AND t.originals_purged_at IS NULL AND ${REVEAL_SQL} + ?1 <= ?2
+       ORDER BY ${REVEAL_SQL}, t.id LIMIT ?3`,
+    )
+    .bind(ttlMs, now, limit)
+    .all<{ id: string }>();
+  return results;
+}
+
+export async function listPurgeableOriginalIds(db: D1Database, tripId: string, limit: number): Promise<string[]> {
+  const { results } = await db
+    .prepare(`SELECT m.id FROM media m WHERE m.trip_id = ? AND ${PURGEABLE_MEDIA_SQL} ORDER BY m.id LIMIT ?`)
+    .bind(tripId, limit)
+    .all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
+const TRIP_KEEPS_NOT = "EXISTS (SELECT 1 FROM trips k WHERE k.id = ?2 AND k.keep_originals = 0)";
+
+/**
+ * Statements that queue the originals of these media (at most 80 ids) in `r2_purge` and mark them purged. Both only
+ * touch rows still unmarked of a rollo that does not keep its originals at that moment, so a concurrent run or an
+ * admin turning "keep" on in between cannot make them delete anything they should not.
+ */
+export function purgeOriginalsStatements(db: D1Database, tripId: string, mediaIds: string[], now: number): D1PreparedStatement[] {
+  const ids = mediaIds.map((_, i) => `?${i + 3}`).join(",");
+  return [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO r2_purge (key, created_at)
+         SELECT original_key, ?1 FROM media WHERE trip_id = ?2 AND id IN (${ids}) AND original_purged_at IS NULL AND ${TRIP_KEEPS_NOT}`,
+      )
+      .bind(now, tripId, ...mediaIds),
+    db
+      .prepare(`UPDATE media SET original_purged_at = ?1 WHERE trip_id = ?2 AND id IN (${ids}) AND original_purged_at IS NULL AND ${TRIP_KEEPS_NOT}`)
+      .bind(now, tripId, ...mediaIds),
+  ];
+}
+
+export function markOriginalsPurged(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare("UPDATE trips SET originals_purged_at = ? WHERE id = ? AND keep_originals = 0 AND originals_purged_at IS NULL")
+    .bind(now, tripId);
 }

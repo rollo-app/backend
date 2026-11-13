@@ -4,22 +4,22 @@ import type { MediaRow, Role } from "../../types";
 // whether to `.run()` it or group it with others in `db.batch([...])`.
 
 export type AccountMembership = { id: string; trip_id: string; role: Role; removed_at: number | null; left_at: number | null };
-type MediaKeys = Pick<MediaRow, "original_key" | "thumb_key">;
+type MediaKeys = Pick<MediaRow, "original_key" | "thumb_key" | "display_key">;
 
 export async function listMemberships(db: D1Database, userId: string): Promise<AccountMembership[]> {
   const { results } = await db.prepare("SELECT * FROM members WHERE user_id = ?").bind(userId).all<AccountMembership>();
   return results;
 }
 
-/** R2 keys (original and thumb) of the media of a member. */
+/** R2 keys (original, thumb and display) of the media of a member. */
 export async function listMemberMediaKeys(db: D1Database, memberId: string): Promise<MediaKeys[]> {
-  const { results } = await db.prepare("SELECT original_key, thumb_key FROM media WHERE member_id = ?").bind(memberId).all<MediaKeys>();
+  const { results } = await db.prepare("SELECT original_key, thumb_key, display_key FROM media WHERE member_id = ?").bind(memberId).all<MediaKeys>();
   return results;
 }
 
-/** R2 keys (original and thumb) of every media of a trip. */
+/** R2 keys (original, thumb and display) of every media of a trip. */
 export async function listTripMediaKeys(db: D1Database, tripId: string): Promise<MediaKeys[]> {
-  const { results } = await db.prepare("SELECT original_key, thumb_key FROM media WHERE trip_id = ?").bind(tripId).all<MediaKeys>();
+  const { results } = await db.prepare("SELECT original_key, thumb_key, display_key FROM media WHERE trip_id = ?").bind(tripId).all<MediaKeys>();
   return results;
 }
 

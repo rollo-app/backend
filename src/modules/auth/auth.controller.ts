@@ -17,11 +17,11 @@ export const start: RouteHandler<typeof startRoute, AppEnv> = async (c) => {
 
 export const verify: RouteHandler<typeof verifyRoute, AppEnv> = async (c) => {
   const { email, code } = c.req.valid("json");
-  return c.json(present(await service.verifyCode(c.env.DB, email, code)), 200);
+  return c.json(present(await service.verifyCode(c.env, email, code)), 200);
 };
 
 export const verifyLink: RouteHandler<typeof verifyLinkRoute, AppEnv> = async (c) => {
-  return c.json(present(await service.verifyLink(c.env.DB, c.req.valid("json"))), 200);
+  return c.json(present(await service.verifyLink(c.env, c.req.valid("json"))), 200);
 };
 
 export const google: RouteHandler<typeof googleRoute, AppEnv> = async (c) => {

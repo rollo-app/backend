@@ -39,8 +39,18 @@ export function generateJoinCode(length = 6): string {
   return randomFromAlphabet(LOGIN_CODE_ALPHABET, length);
 }
 
+/** Originals are deleted this long after the reveal unless the rollo keeps them. */
+export const ORIGINALS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** When a rollo's originals expire: 30 days after the reveal (manual or scheduled); null if it keeps them. */
+export function originalsExpireAt(trip: Pick<TripRow, "keep_originals" | "revealed_at" | "reveal_at">): number | null {
+  return trip.keep_originals !== 0 ? null : (trip.revealed_at ?? trip.reveal_at) + ORIGINALS_TTL_MS;
+}
+
 /** Public shape of a trip (what the app sees). */
-export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId: string; name: string } | null = null) {
+export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId: string; name: string } | null = null,
+  groups: { id: string; name: string }[] = [],
+) {
   return {
     id: trip.id,
     name: trip.name,
@@ -58,8 +68,18 @@ export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId:
     momentMode: trip.moment_mode,
     momentWindowStart: trip.moment_window_start,
     momentWindowEnd: trip.moment_window_end,
+    maxMembers: trip.max_members,
+    originals: { keep: trip.keep_originals !== 0, expiresAt: originalsExpireAt(trip), purged: trip.originals_purged_at !== null },
     createdBy,
+    type: trip.type,
+    coverUrl: coverUrl(trip),
+    groups,
   };
+}
+
+/** Public path of an event's cover (the app prefixes the API base URL), or null if it has none. */
+export function coverUrl(trip: Pick<TripRow, "id" | "cover_key">): string | null {
+  return trip.cover_key ? `/covers/${trip.id}/${trip.cover_key.split("/").pop()}` : null;
 }
 
 /** Public path of a user's avatar (the app prefixes the API base URL), or null if they have none. */
@@ -76,7 +96,7 @@ export function toBadge(value: string | null | undefined): "founder" | "first_ed
 
 /** Public shape of a user. */
 export function publicUser(
-  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility">,
+  user: Pick<UserRow, "id" | "email" | "name" | "username" | "avatar_key" | "bio" | "badge" | "profile_visibility" | "can_create_events">,
 ) {
   return {
     id: user.id,
@@ -87,6 +107,7 @@ export function publicUser(
     bio: user.bio,
     badge: toBadge(user.badge),
     profileVisibility: user.profile_visibility,
+    canCreateEvents: user.can_create_events !== 0,
   };
 }
 
@@ -107,4 +128,14 @@ export function publicMember(member: Pick<MemberRow, "id" | "user_id" | "role">,
 /** Pragmatic email check (a code is sent anyway, so this only filters typos). */
 export function isEmail(s: string): boolean {
   return s.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+/** Ids per `IN (...)` query: D1 allows 100 bound parameters per statement; 90 leaves room for the fixed ones. */
+export const D1_IN_CHUNK = 90;
+
+/** Splits `items` into slices of at most `size` (for `IN (...)` queries under D1's bound-parameter limit). */
+export function inChunks<T>(items: T[], size = D1_IN_CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }

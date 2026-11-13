@@ -18,7 +18,8 @@ export const startRoute = createRoute({
     "Sends a 6-character code (letters and digits, no 0/O/1/I/L; valid 5 minutes, 5 attempts) and, only when `linkChallenge` is sent, " +
     "a magic link for the same attempt (`<LOGIN_LINK_URL>#t=<token>&e=<email>`, see `/auth/email/verify-link`), bound to that challenge. " +
     "Using either one consumes both. A new request invalidates the previous codes. " +
-    "Rate limited per email and per IP, and capped globally per day (429). Works for new and existing users alike.",
+    "Rate limited per email and per IP, and capped globally per day (429). Works for new and existing users alike, " +
+    "and answers the same while new registrations are closed (the rejection comes when verifying).",
   request: { body: { content: { "application/json": { schema: EmailStartSchema } }, required: true } },
   responses: { 204: { description: "Code sent" }, ...errors(400, 429, 502) },
 });
@@ -32,9 +33,10 @@ export const verifyRoute = createRoute({
   summary: "Exchange the emailed code for a session token",
   description:
     "Creates the user on the first successful verification. `isNew` is true while the user has no name. " +
-    "The code is case-insensitive and spaces or dashes are ignored; a malformed code is answered like a wrong one.",
+    "The code is case-insensitive and spaces or dashes are ignored; a malformed code is answered like a wrong one." +
+    " While new registrations are closed (`GET /config` → `registrationsOpen: false`), an email with no account gets 403 `{ error, code: \"REGISTRATIONS_CLOSED\" }` here (after the code or link checks out), and existing accounts sign in as always.",
   request: { body: { content: { "application/json": { schema: EmailVerifySchema } }, required: true } },
-  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400) },
+  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 403) },
 });
 
 // ---------- Verify link ----------
@@ -49,9 +51,10 @@ export const verifyLinkRoute = createRoute({
     "SHA-256 was sent as `linkChallenge` to `/auth/email/start`: the link only signs in the phone that asked for it. Shares the code's " +
     "expiry, attempts and single use: a wrong or missing token or verifier uses up an attempt, and after the link or the code is used " +
     "neither works again. Attempts started without a challenge have no link, so this always fails for them. " +
-    "Every failure answers the same 400. Only POST: the token is never accepted in a URL.",
+    "Every failure answers the same 400. Only POST: the token is never accepted in a URL." +
+    " While new registrations are closed (`GET /config` → `registrationsOpen: false`), an email with no account gets 403 `{ error, code: \"REGISTRATIONS_CLOSED\" }` here (after the code or link checks out), and existing accounts sign in as always.",
   request: { body: { content: { "application/json": { schema: EmailVerifyLinkSchema } }, required: true } },
-  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400) },
+  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 403) },
 });
 
 // ---------- Google ----------
@@ -69,9 +72,10 @@ export const googleRoute = createRoute({
     "address with an account the answer is 409 (sign in with the emailed code instead). " +
     "An account without a name gets the Google profile name (single spaces, up to 30 characters) as a suggestion: it stays incomplete " +
     "(`isNew`) until it has a username, so the profile step shows it prefilled. " +
-    "503 when Google sign-in is not configured, or in degraded mode for an email without an account.",
+    "503 when Google sign-in is not configured, or in degraded mode for an email without an account. " +
+    "While new registrations are closed, a Google account with no Rollo account (no linked identity, no account with that email) gets 403 `{ error, code: \"REGISTRATIONS_CLOSED\" }`.",
   request: { body: { content: { "application/json": { schema: GoogleSignInSchema } }, required: true } },
-  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 409, 503) },
+  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 403, 409, 503) },
 });
 
 // ---------- Apple ----------
@@ -88,9 +92,10 @@ export const appleRoute = createRoute({
     "email signs into that email's account or creates it, and links it. An existing account is only linked when Apple owns the " +
     "address (iCloud, or the Hide My Email relay); any other address with an account answers 409 (sign in with the emailed code). " +
     "A first sign-in without an email is a 400. `name`, which Apple gives only on the first sign-in, prefills an account without a name. " +
-    "503 when Apple sign-in is not configured, or in degraded mode for an email without an account.",
+    "503 when Apple sign-in is not configured, or in degraded mode for an email without an account. " +
+    "While new registrations are closed, an Apple account with no Rollo account gets 403 `{ error, code: \"REGISTRATIONS_CLOSED\" }`.",
   request: { body: { content: { "application/json": { schema: AppleSignInSchema } }, required: true } },
-  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 409, 503) },
+  responses: { 200: json(AuthSessionSchema, "Signed in"), ...errors(400, 403, 409, 503) },
 });
 
 // ---------- Logout ----------

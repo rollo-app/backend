@@ -1,5 +1,6 @@
 import { type AnyColumn, type SQL, and, asc, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { type AppSetting, members, trips, users } from "../../db/schema";
+import { searchText } from "../../lib/search-text";
 import { orm } from "../../shared/db";
 import type { UserRow } from "../../types";
 
@@ -119,16 +120,16 @@ export async function countUsers(db: D1Database, opts: { q?: string }): Promise<
   return row?.n ?? 0;
 }
 
-export type AdminUserDetailRow = AdminUserRow & { bio: string | null; unlimitedRollos: boolean };
+export type AdminUserDetailRow = AdminUserRow & { bio: string | null; unlimitedRollos: boolean; canCreateEvents: boolean };
 
 /** The list columns plus the editable fields only the detail needs (bio, rollo-limit exemption as a boolean). */
 export async function findAdminUser(db: D1Database, id: string): Promise<AdminUserDetailRow | null> {
   const [row] = await orm(db)
-    .select({ ...userColumns, bio: users.bio, unlimitedRollos: users.unlimitedRollos })
+    .select({ ...userColumns, bio: users.bio, unlimitedRollos: users.unlimitedRollos, canCreateEvents: users.canCreateEvents })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
-  return row ? { ...row, unlimitedRollos: row.unlimitedRollos !== 0 } : null;
+  return row ? { ...row, unlimitedRollos: row.unlimitedRollos !== 0, canCreateEvents: row.canCreateEvents !== 0 } : null;
 }
 
 export type UserTripRow = {
@@ -160,7 +161,7 @@ export async function listUserTrips(db: D1Database, userId: string): Promise<Use
 }
 
 /** Sets the manually assigned flags; only the given keys change. */
-export function updateUserFlags(db: D1Database, userId: string, flags: { badge?: "founder" | "first_edition" | null; unlimitedRollos?: boolean }): D1PreparedStatement {
+export function updateUserFlags(db: D1Database, userId: string, flags: { badge?: "founder" | "first_edition" | null; unlimitedRollos?: boolean; canCreateEvents?: boolean }): D1PreparedStatement {
   const sets: string[] = [];
   const values: (string | number | null)[] = [];
   if (flags.badge !== undefined) {
@@ -171,5 +172,171 @@ export function updateUserFlags(db: D1Database, userId: string, flags: { badge?:
     sets.push("unlimited_rollos = ?");
     values.push(flags.unlimitedRollos ? 1 : 0);
   }
+  if (flags.canCreateEvents !== undefined) {
+    sets.push("can_create_events = ?");
+    values.push(flags.canCreateEvents ? 1 : 0);
+  }
   return db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...values, userId);
+}
+
+/** Cap and active member count of a rollo (active = neither left nor removed), or null if it does not exist. */
+export function findTripCapacity(db: D1Database, tripId: string): Promise<{ active: number; max: number } | null> {
+  return db
+    .prepare(
+      `SELECT (SELECT COUNT(*) FROM members WHERE trip_id = t.id AND left_at IS NULL AND removed_at IS NULL) AS active, t.max_members AS max
+       FROM trips t WHERE t.id = ?`,
+    )
+    .bind(tripId)
+    .first<{ active: number; max: number }>();
+}
+
+/** Sets the cap only while it stays at or above the active member count (checked in the statement, so a concurrent join cannot slip under it). */
+export function setTripMaxMembers(db: D1Database, tripId: string, maxMembers: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE trips SET max_members = ?1
+       WHERE id = ?2 AND (SELECT COUNT(*) FROM members WHERE trip_id = ?2 AND left_at IS NULL AND removed_at IS NULL) <= ?1`,
+    )
+    .bind(maxMembers, tripId);
+}
+
+/** Statement: a superadmin keeps (or stops keeping) a rollo's originals. Nothing already purged comes back. */
+export function setTripKeepOriginals(db: D1Database, tripId: string, keep: boolean): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET keep_originals = ? WHERE id = ?").bind(keep ? 1 : 0, tripId);
+}
+
+// Rollos. Same raw, qualified identifiers as above (correlated subqueries against `trips`).
+const tripActiveMembers = sql<number>`(SELECT COUNT(*) FROM members m WHERE m.trip_id = trips.id AND m.removed_at IS NULL AND m.left_at IS NULL)`;
+const tripMediaCount = sql<number>`(SELECT COUNT(*) FROM media md WHERE md.trip_id = trips.id AND md.status = 'uploaded' AND md.deleted_at IS NULL)`;
+
+const tripColumns = {
+  id: trips.id,
+  name: trips.name,
+  joinCode: trips.joinCode,
+  createdAt: trips.createdAt,
+  startsAt: trips.startsAt,
+  endsAt: trips.endsAt,
+  revealAt: trips.revealAt,
+  revealedAt: trips.revealedAt,
+  type: trips.type,
+  maxMembers: trips.maxMembers,
+  keepOriginals: trips.keepOriginals,
+  originalsPurgedAt: trips.originalsPurgedAt,
+  creatorId: users.id,
+  creatorName: users.name,
+  creatorUsername: users.username,
+  activeMembers: tripActiveMembers,
+  mediaCount: tripMediaCount,
+};
+
+export type AdminTripRow = {
+  id: string;
+  name: string;
+  joinCode: string;
+  createdAt: number;
+  startsAt: number;
+  endsAt: number;
+  revealAt: number;
+  revealedAt: number | null;
+  type: "trip" | "event";
+  maxMembers: number;
+  keepOriginals: number;
+  originalsPurgedAt: number | null;
+  creatorId: string | null;
+  creatorName: string | null;
+  creatorUsername: string | null;
+  activeMembers: number;
+  mediaCount: number;
+};
+
+/** Sort keys the rollos list accepts (an allowlist: they map to SQL, so never user input). */
+export const tripSortable = { createdAt: trips.createdAt, name: trips.name, activeMembers: tripActiveMembers, mediaCount: tripMediaCount };
+
+// SQLite folds ASCII case only, so accents are replaced in SQL (rollos have no normalized name column).
+const ACCENT_FOLDS = ["aáàäâãåÁÀÄÂÃÅ", "eéèëêÉÈËÊ", "iíìïîÍÌÏÎ", "oóòöôõÓÒÖÔÕ", "uúùüûÚÙÜÛ", "nñÑ", "cçÇ"];
+// Literals, not bound params: 50 pairs as parameters would blow D1's 100-parameter limit.
+const foldedTripName = ACCENT_FOLDS.flatMap(([to, ...from]) => from.map((ch) => [ch, to!] as const)).reduce<SQL>(
+  (expr, [ch, to]) => sql`replace(${expr}, ${sql.raw(`'${ch}'`)}, ${sql.raw(`'${to}'`)})`,
+  sql`${trips.name}`,
+);
+
+/**
+ * Rollo name as a literal substring (ignoring case and accents) or the exact join code. Uses `instr`, not `LIKE`:
+ * D1 rejects LIKE patterns over 50 bytes and `q` may be 60 characters, and `instr` needs no wildcard escaping.
+ */
+export function tripSearch(q: string): SQL {
+  const text = searchText(q);
+  return sql`(instr(lower(${foldedTripName}), ${text}) > 0 OR lower(${trips.joinCode}) = ${text})`;
+}
+
+export async function listTrips(
+  db: D1Database,
+  opts: { search?: SQL; orderBy: SQL; limit: number; offset: number },
+): Promise<AdminTripRow[]> {
+  return orm(db)
+    .select(tripColumns)
+    .from(trips)
+    .leftJoin(users, eq(users.id, trips.createdByUserId))
+    .where(opts.search)
+    .orderBy(opts.orderBy, asc(trips.id))
+    .limit(opts.limit)
+    .offset(opts.offset);
+}
+
+export async function countTrips(db: D1Database, opts: { search?: SQL }): Promise<number> {
+  const [row] = await orm(db).select({ n: count() }).from(trips).where(opts.search);
+  return row?.n ?? 0;
+}
+
+export async function findAdminTrip(db: D1Database, tripId: string): Promise<AdminTripRow | null> {
+  const [row] = await orm(db)
+    .select(tripColumns)
+    .from(trips)
+    .leftJoin(users, eq(users.id, trips.createdByUserId))
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  return row ?? null;
+}
+
+export type AdminTripMemberRow = {
+  id: string;
+  userId: string;
+  name: string | null;
+  username: string | null;
+  role: "admin" | "member";
+  isCreator: boolean;
+  joinedAt: number;
+};
+
+/** Active members: the creator first, then the other admins, then by join time. */
+export async function listTripMembers(db: D1Database, tripId: string): Promise<AdminTripMemberRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT m.id, m.user_id AS userId, u.name, u.username, m.role,
+              (m.user_id = t.created_by_user_id) AS isCreator, m.created_at AS joinedAt
+       FROM members m JOIN users u ON u.id = m.user_id JOIN trips t ON t.id = m.trip_id
+       WHERE m.trip_id = ? AND m.removed_at IS NULL AND m.left_at IS NULL
+       ORDER BY isCreator DESC, (m.role = 'admin') DESC, m.created_at ASC, m.id ASC`,
+    )
+    .bind(tripId)
+    .all<Omit<AdminTripMemberRow, "isCreator"> & { isCreator: number | null }>();
+  return results.map((r) => ({ ...r, isCreator: r.isCreator === 1 }));
+}
+
+export type AdminEventGroupRow = { id: string; name: string; memberCount: number; mediaCount: number };
+
+/** An event's groups in display order, with their active members and uploaded, not deleted media. */
+export async function listEventGroups(db: D1Database, tripId: string): Promise<AdminEventGroupRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT g.id, g.name,
+              (SELECT COUNT(*) FROM member_groups mg JOIN members m ON m.id = mg.member_id
+                WHERE mg.group_id = g.id AND m.left_at IS NULL AND m.removed_at IS NULL) AS memberCount,
+              (SELECT COUNT(*) FROM media_groups xg JOIN media md ON md.id = xg.media_id
+                WHERE xg.group_id = g.id AND md.status = 'uploaded' AND md.deleted_at IS NULL) AS mediaCount
+       FROM event_groups g WHERE g.trip_id = ? ORDER BY g.position ASC, g.id ASC`,
+    )
+    .bind(tripId)
+    .all<AdminEventGroupRow>();
+  return results;
 }

@@ -1,3 +1,4 @@
+import { mediaVisibleToSql, MEDIA_VISIBLE_BINDS } from "../../lib/event-visibility";
 import { hiddenMediaSql } from "../reports/reports.repository";
 import type { MediaRow, TripRow, UserRow } from "../../types";
 
@@ -48,7 +49,7 @@ export type FeaturedPhotoRow = {
   like_count: number; liked_by_me: number;
 };
 
-/** The media if it exists, is uploaded and not deleted, and `userId` is an active member of its rollo. */
+/** The media if it exists, is uploaded and not deleted, and `userId` is an active member of its rollo who sees it (an event guest, only the photos of their groups). */
 export function findFeaturableMedia(db: D1Database, userId: string, mediaId: string): Promise<FeaturableMedia | null> {
   return db
     .prepare(
@@ -62,9 +63,9 @@ export function findFeaturableMedia(db: D1Database, userId: string, mediaId: str
      JOIN members author ON author.id = m.member_id
      LEFT JOIN user_settings author_settings ON author_settings.user_id = author.user_id
      JOIN members me ON me.trip_id = m.trip_id AND me.user_id = ? AND me.removed_at IS NULL AND me.left_at IS NULL
-     WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL`,
+     WHERE m.id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND ${mediaVisibleToSql("?", "m.id", "m.trip_id")}`,
     )
-    .bind(userId, userId, userId, mediaId)
+    .bind(userId, userId, userId, mediaId, ...Array<string>(MEDIA_VISIBLE_BINDS).fill(userId))
     .first<FeaturableMedia>();
 }
 
@@ -169,14 +170,14 @@ export function findVisibleFeaturedKeys(
   ownerId: string,
   mediaId: string,
   now: number,
-): Promise<Pick<MediaRow, "original_key" | "thumb_key"> | null> {
+): Promise<Pick<MediaRow, "original_key" | "thumb_key" | "display_key" | "original_purged_at"> | null> {
   return db
     .prepare(
-      `SELECT m.original_key, m.thumb_key FROM ${VISIBLE_FROM}
+      `SELECT m.original_key, m.thumb_key, m.display_key, m.original_purged_at FROM ${VISIBLE_FROM}
      WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND f.media_id = ? AND ${hiddenMediaSql("m", "author")}`,
     )
     .bind(now, ownerId, mediaId, viewerId, viewerId)
-    .first<Pick<MediaRow, "original_key" | "thumb_key">>();
+    .first<Pick<MediaRow, "original_key" | "thumb_key" | "display_key" | "original_purged_at">>();
 }
 
 export type FeaturedByRow = {

@@ -2,23 +2,26 @@ import { conflict, badRequest, forbidden, notFound, rateLimited } from "../../sh
 import { assertNotDegraded } from "../../lib/degraded";
 import { assertStorageAvailable } from "../../lib/storage";
 import { mediaKeys, presignPut } from "../../lib/r2";
+import { resolveVariantKey, type MediaVariant } from "../../lib/media-variant";
 import { isRevealed, localDate } from "../../lib/util";
 import { MOMENT_WINDOW_MS } from "../../lib/moments";
+import { decodeCursor, encodeCursor } from "../../lib/cursor";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import { actorName, sendPush } from "../../lib/push";
 import type { AfterResponse } from "../../shared/after-response";
 import type { Env, MemberRow, TripRow, UserRow } from "../../types";
-import { MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
+import { DEFAULT_FEED_PAGE, MAX_DISPLAY_SIZE, MAX_SIZE, MAX_THUMB_SIZE, type RegisterMediaInput } from "./media.schemas";
 import { deleteFeaturedOfMedia } from "../featured/featured.repository";
 import { deleteLikesOfMedia } from "../likes/likes.repository";
 import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
 import { rejectSelfie, resolveMoment } from "../moments/moments.service";
 import { recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
+import * as tripsRepo from "../trips/trips.repository";
 
 const UPLOAD_URL_TTL = 15 * 60;
 
-type UploadResponse = { id: string; status: "pending"; upload: { original: string; thumb: string }; expiresIn: number };
+type UploadResponse = { id: string; status: "pending"; upload: { original: string; thumb: string; display?: string }; expiresIn: number };
 
 export type RegisterResult =
   | { created: true; body: UploadResponse }
@@ -31,12 +34,32 @@ async function uploadResponse(
   originalKey: string,
   thumbKey: string,
   sizes: { original: number | null; thumb: number | null },
+  display: { key: string; size: number } | null = null,
 ) {
-  const [original, thumb] = await Promise.all([
+  const [original, thumb, displayUrl] = await Promise.all([
     presignPut(env, originalKey, origin, sizes.original),
     presignPut(env, thumbKey, origin, sizes.thumb),
+    display ? presignPut(env, display.key, origin, display.size) : null,
   ]);
-  return { id, status: "pending" as const, upload: { original, thumb }, expiresIn: UPLOAD_URL_TTL };
+  // `display` only goes out when the phone declared one: older builds get the response they always got.
+  return { id, status: "pending" as const, upload: { original, thumb, ...(displayUrl && { display: displayUrl }) }, expiresIn: UPLOAD_URL_TTL };
+}
+
+/**
+ * The groups a new photo goes to. An organizer keeps the requested ids that are groups of the event, a guest the ones
+ * they are in. Ids that no longer apply (the guest left the group, it was deleted) are dropped so a queued photo never
+ * fails; if none is left, a guest's photo goes to all their groups and an organizer's to all the groups.
+ */
+export function resolveMediaGroups(args: {
+  requested: string[];
+  memberGroupIds: string[];
+  allGroupIds: string[];
+  isAdmin: boolean;
+}): string[] {
+  const allowed = new Set(args.isAdmin ? args.allGroupIds : args.memberGroupIds);
+  const chosen = [...new Set(args.requested.filter((id) => allowed.has(id)))];
+  if (chosen.length > 0) return chosen;
+  return [...(args.isAdmin ? args.allGroupIds : args.memberGroupIds)];
 }
 
 /** Registers a photo or video and returns signed upload URLs. Idempotent by `input.id`; `created` tells a new row from a retry. */
@@ -60,10 +83,15 @@ export async function registerMedia(
     if (existing.status === "uploaded") return { created: false, body: { id: existing.id, status: "uploaded" as const } };
     return {
       created: false,
-      body: await uploadResponse(env, origin, existing.id, existing.originalKey, existing.thumbKey, {
-        original: existing.sizeBytes,
-        thumb: existing.thumbSizeBytes,
-      }),
+      body: await uploadResponse(
+        env,
+        origin,
+        existing.id,
+        existing.originalKey,
+        existing.thumbKey,
+        { original: existing.sizeBytes, thumb: existing.thumbSizeBytes },
+        existing.displayKey && existing.displaySizeBytes !== null ? { key: existing.displayKey, size: existing.displaySizeBytes } : null,
+      ),
     };
   }
 
@@ -79,7 +107,7 @@ export async function registerMedia(
 
   const moment = await resolveMoment(env.DB, trip, member, input);
 
-  await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes);
+  await assertStorageAvailable(env, input.sizeBytes + input.thumbSizeBytes + (input.displaySizeBytes ?? 0));
 
   // Daily limit by the trip's local date. Also counts pending ones
   // (so you can't "reserve" more than allowed) and the ones deleted by the admin.
@@ -99,6 +127,21 @@ export async function registerMedia(
     }
   } else if ((await repo.countMemberMediaOnDay(env.DB, member.id, day, "photo")) >= trip.daily_photo_limit) {
     throw rateLimited(`Ya usaste tus ${trip.daily_photo_limit} fotos de hoy`);
+  }
+
+  // Events only. The groups are fixed now (an organizer's "all groups" is the list at this moment, so a group
+  // created later doesn't see the photo) and written in the same batch as the media row.
+  let groupRows: ReturnType<typeof repo.insertMediaGroups> = [];
+  if (trip.type === "event") {
+    const groupIds = resolveMediaGroups({
+      requested: input.groupIds ?? [],
+      memberGroupIds: await tripsRepo.listMemberGroupIds(env.DB, member.id),
+      allGroupIds: (await tripsRepo.listGroups(env.DB, trip.id)).map((g) => g.id),
+      isAdmin: member.role === "admin",
+    });
+    // A guest in no group would store a photo nobody sees.
+    if (groupIds.length === 0) throw conflict("Elegí un grupo para mandar fotos.");
+    groupRows = repo.insertMediaGroups(env.DB, input.id, groupIds);
   }
 
   const keys = mediaKeys(trip.id, input.id, input.type);
@@ -121,12 +164,16 @@ export async function registerMedia(
       thumbSizeBytes: input.thumbSizeBytes,
       originalKey: keys.original,
       thumbKey: keys.thumb,
+      // Declared at registration (like the other sizes) so the cleanup crons and deletes know about the file;
+      // only photos have one, and the retention cron treats a row as having a display once it is uploaded.
+      displayKey: input.displaySizeBytes ? keys.display : null,
+      displaySizeBytes: input.displaySizeBytes ?? null,
       createdAt: now,
       momentDay: moment?.day ?? null,
       pairedMediaId: moment?.pairedMediaId ?? null,
     });
   if (!moment) {
-    await insert.run();
+    await env.DB.batch([insert, ...groupRows]);
   } else {
     // The slot claim runs first and fails closed: if it didn't take (a concurrent request got there), the row
     // just inserted would be a photo outside every quota with no moment, so it is removed and the request is a 409.
@@ -141,7 +188,7 @@ export async function registerMedia(
           input.takenAt,
           input.takenAt >= moment.notifyAt && input.takenAt <= moment.notifyAt + MOMENT_WINDOW_MS,
         );
-    const [claimed] = await env.DB.batch([claim, insert]);
+    const [claimed] = await env.DB.batch([claim, insert, ...groupRows]);
     if (claimed!.meta.changes === 0) {
       await env.DB.prepare("DELETE FROM media WHERE id = ?").bind(input.id).run();
       throw conflict(moment.pairedMediaId ? "Este momento ya tiene selfie" : "Este momento ya tiene foto");
@@ -150,7 +197,15 @@ export async function registerMedia(
 
   return {
     created: true,
-    body: await uploadResponse(env, origin, input.id, keys.original, keys.thumb, { original: input.sizeBytes, thumb: input.thumbSizeBytes }),
+    body: await uploadResponse(
+      env,
+      origin,
+      input.id,
+      keys.original,
+      keys.thumb,
+      { original: input.sizeBytes, thumb: input.thumbSizeBytes },
+      input.displaySizeBytes ? { key: keys.display, size: input.displaySizeBytes } : null,
+    ),
   };
 }
 
@@ -167,17 +222,23 @@ export async function completeUpload(
   const done = { id: row.id, status: "uploaded" as const };
   if (row.status === "uploaded") return { body: done, notify: null };
 
-  const [original, thumb] = await Promise.all([env.MEDIA.head(row.originalKey), env.MEDIA.head(row.thumbKey)]);
-  if (!original || !thumb) {
+  const [original, thumb, display] = await Promise.all([
+    env.MEDIA.head(row.originalKey),
+    env.MEDIA.head(row.thumbKey),
+    row.displayKey ? env.MEDIA.head(row.displayKey) : null,
+  ]);
+  // A declared display is as required as the other two files.
+  if (!original || !thumb || (row.displayKey && !display)) {
     throw badRequest("Faltan archivos en el storage; volvé a subirlos");
   }
   const mismatch =
     original.size !== row.sizeBytes ||
     (row.thumbSizeBytes !== null && thumb.size !== row.thumbSizeBytes) ||
     original.size > MAX_SIZE[row.type] ||
-    thumb.size > MAX_THUMB_SIZE;
+    thumb.size > MAX_THUMB_SIZE ||
+    (display !== null && (display.size !== row.displaySizeBytes || display.size > MAX_DISPLAY_SIZE));
   if (mismatch) {
-    await env.MEDIA.delete([row.originalKey, row.thumbKey]);
+    await env.MEDIA.delete([row.originalKey, row.thumbKey, ...(row.displayKey ? [row.displayKey] : [])]);
     throw badRequest("El archivo no coincide con el que registraste; volvé a subirlo");
   }
 
@@ -205,27 +266,43 @@ export async function completeUpload(
 }
 
 /** Feed rows of the trip for the viewer; `revealed` decides how much of each row the controller exposes. */
-export async function getFeed(db: D1Database, trip: TripRow, viewerId: string): Promise<{ revealed: boolean; rows: repo.FeedRow[] }> {
+export async function getFeed(
+  db: D1Database,
+  trip: TripRow,
+  viewerId: string,
+  opts: { cursor?: string; limit?: number; order?: "asc" | "desc" } = {},
+): Promise<{ revealed: boolean; rows: repo.FeedRow[]; nextCursor: string | null }> {
   const revealed = isRevealed(trip);
-  return { revealed, rows: await repo.listFeed(db, trip.id, viewerId) };
+  const order = opts.order ?? "asc";
+  // Older app builds send neither param and expect the whole feed.
+  if (opts.cursor === undefined && opts.limit === undefined) {
+    return { revealed, rows: await repo.listFeed(db, trip.id, viewerId, null, order), nextCursor: null };
+  }
+  const limit = opts.limit ?? DEFAULT_FEED_PAGE;
+  const after = opts.cursor !== undefined ? decodeCursor(opts.cursor) : null;
+  const fetched = await repo.listFeed(db, trip.id, viewerId, { limit: limit + 1, after: after && { takenAt: after.at, id: after.id } }, order);
+  const rows = fetched.slice(0, limit);
+  const last = rows[rows.length - 1];
+  return { revealed, rows, nextCursor: fetched.length > limit && last ? encodeCursor({ at: last.takenAt, id: last.id }) : null };
 }
 
 /**
- * R2 key of the requested variant. Only after the reveal, except for the two images of a daily moment, which any
- * active member (the route already requires it) can fetch as soon as they are uploaded.
+ * R2 key of the requested variant (and the one to try if its object is missing, see `resolveVariantKey`). Only after
+ * the reveal, except for the two images of a daily moment, which any active member (the route already requires it)
+ * can fetch as soon as they are uploaded.
  */
 export async function getDownloadKey(
   db: D1Database,
   trip: TripRow,
   viewerId: string,
   mediaId: string,
-  variant: "thumb" | "original",
-): Promise<string> {
+  variant: MediaVariant,
+): Promise<{ key: string; fallbackKey: string | null }> {
   const revealed = isRevealed(trip);
   const row = await repo.findDownloadKeys(db, mediaId, trip.id, viewerId);
   if (!revealed && !row?.isMoment) throw forbidden("Todavía no se reveló el rollo");
   if (!row) throw notFound();
-  return variant === "thumb" ? row.thumbKey : row.originalKey;
+  return resolveVariantKey(row, variant);
 }
 
 /**
@@ -238,7 +315,7 @@ export async function deleteTripMedia(env: Env, mediaId: string, opts: { purge?:
   if (!row) return false;
   // A moment's selfie goes with its main photo.
   const rows = [row, ...(await repo.findLiveSelfies(env.DB, row.id))];
-  await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey]));
+  await env.MEDIA.delete(rows.flatMap((r) => [r.originalKey, r.thumbKey, ...(r.displayKey ? [r.displayKey] : [])]));
   const now = Date.now();
   await env.DB.batch(
     rows.flatMap((r) => [

@@ -1,7 +1,12 @@
 import { z } from "zod";
+import { PageQuerySchema } from "../../lib/paging";
 import { UpdateProfileSchema, UserBadgeSchema } from "../../schemas";
 
 export const DegradedModeBodySchema = z.object({ on: z.boolean() });
+
+export const RegistrationsBodySchema = z.object({ open: z.boolean() });
+
+export const WaitlistQuerySchema = PageQuerySchema.extend({ status: z.enum(["all", "confirmed", "pending", "unsubscribed"]).default("all") });
 
 export const MetricsQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(90).default(30) });
 
@@ -23,6 +28,7 @@ export const TripStateSchema = z.enum(["upcoming", "open", "ended", "revealed"])
 export const AdminUserDetailSchema = AdminUserSchema.extend({
   bio: z.string().nullable(),
   unlimitedRollos: z.boolean(),
+  canCreateEvents: z.boolean(),
   trips: z.array(z.object({ id: z.string(), name: z.string(), role: z.enum(["admin", "member"]), state: TripStateSchema })),
 });
 
@@ -32,6 +38,28 @@ export const AdminEditUserSchema = z
     ...UpdateProfileSchema.pick({ name: true, username: true, bio: true }).shape,
     badge: UserBadgeSchema.optional(),
     unlimitedRollos: z.boolean().optional(),
+    canCreateEvents: z.boolean().optional(),
   })
   .strict();
 export type AdminEditUser = z.infer<typeof AdminEditUserSchema>;
+
+export const MAX_TRIP_MEMBERS = 1000;
+
+/**
+ * The member cap (its lower bound, the current active count, depends on the rollo, so the service checks it) and
+ * `keepOriginals` (the rollo's originals are never deleted) are editable, either or both; anything else is rejected.
+ */
+export const AdminEditTripSchema = z
+  .object({ maxMembers: z.number().int().min(1).max(MAX_TRIP_MEMBERS).optional(), keepOriginals: z.boolean().optional() })
+  .strict();
+export type AdminEditTrip = z.infer<typeof AdminEditTripSchema>;
+
+/** Paging for the rollos list; `q` is 2 to 60 characters once trimmed (empty means no search). */
+export const AdminTripsQuerySchema = PageQuerySchema.extend({
+  q: z
+    .string()
+    .trim()
+    .max(60)
+    .refine((s) => s === "" || s.length >= 2)
+    .optional(),
+});

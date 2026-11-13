@@ -72,6 +72,8 @@ export function mediaKeys(tripId: string, mediaId: string, type: MediaType) {
   return {
     original: `${base}/original.${type === "video" ? "mp4" : "jpg"}`,
     thumb: `${base}/thumb.jpg`,
+    /** 2048 px compressed JPEG of a photo, kept forever (the original is deleted 30 days after the reveal). */
+    display: `${base}/display.jpg`,
   };
 }
 
@@ -102,21 +104,89 @@ export async function verifyDevUpload(
   return sig === (await devSignature(env, key, expMs, sizeBytes)) ? { size: sizeBytes } : false;
 }
 
-/**
- * Streams a media file from R2 with long private caching (keys never change content).
- * Throws 404 if the object is missing.
- */
-export async function serveMediaFile(bucket: R2Bucket, key: string): Promise<Response> {
-  const object = await bucket.get(key);
-  if (!object) throw new HTTPException(404, { message: "Archivo no encontrado" });
+type ByteRange = { start: number; end?: number } | { suffix: number };
 
+/**
+ * Parses a single `bytes=` range (RFC 9110). Returns null for anything we don't honor (missing, malformed,
+ * another unit or several ranges): those requests get the whole file with 200, which the RFC allows.
+ */
+export function parseByteRange(header: string | null): ByteRange | null {
+  const match = header?.trim().match(/^bytes=(\d*)-(\d*)$/);
+  if (!match) return null;
+  const [, first, last] = match;
+  if (first === "") return last === "" ? null : { suffix: Number(last) };
+  const start = Number(first);
+  if (last === "") return { start };
+  const end = Number(last);
+  return end < start ? null : { start, end };
+}
+
+/** Resolves a parsed range against the object size: inclusive offsets, or null if unsatisfiable (416). */
+function resolveRange(range: ByteRange, size: number): { start: number; end: number } | null {
+  if ("suffix" in range) {
+    if (range.suffix === 0 || size === 0) return null;
+    return { start: Math.max(0, size - range.suffix), end: size - 1 };
+  }
+  if (range.start >= size) return null;
+  return { start: range.start, end: Math.min(range.end ?? size - 1, size - 1) };
+}
+
+function mediaHeaders(object: R2Object): Headers {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   if (!headers.has("content-type")) {
-    headers.set("content-type", key.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
+    headers.set("content-type", object.key.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
   }
   headers.set("etag", object.httpEtag);
   headers.set("cache-control", "private, max-age=31536000, immutable");
+  headers.set("accept-ranges", "bytes");
+  return headers;
+}
+
+/**
+ * Streams a media file from R2 with long private caching (keys never change content).
+ * With `fallbackKey`, a missing object is replaced by that one (e.g. the display file standing in for a purged original).
+ * Throws 404 if neither exists.
+ *
+ * Honors a single `Range` (206 / 416): iOS AVPlayer probes videos with `bytes=0-1` and refuses to play if it gets
+ * the whole file back, and Cloudflare does not add range support to responses a Worker builds itself.
+ * `If-Range` only matches the exact etag; anything else (e.g. a date) falls back to the whole file.
+ */
+export async function serveMediaFile(
+  bucket: R2Bucket,
+  key: string,
+  fallbackKey?: string | null,
+  requestHeaders?: Headers,
+): Promise<Response> {
+  const notFound = () => new HTTPException(404, { message: "Archivo no encontrado" });
+  const range = parseByteRange(requestHeaders?.get("range") ?? null);
+
+  if (range) {
+    // The size is needed to resolve the range, so look the object up first (only when a range was asked for).
+    const head = (await bucket.head(key)) ?? (fallbackKey ? await bucket.head(fallbackKey) : null);
+    if (!head) throw notFound();
+    const ifRange = requestHeaders?.get("if-range");
+    if (!ifRange || ifRange === head.httpEtag) {
+      const bounds = resolveRange(range, head.size);
+      if (!bounds) {
+        const headers = mediaHeaders(head);
+        headers.set("content-range", `bytes */${head.size}`);
+        return new Response(null, { status: 416, headers });
+      }
+      const length = bounds.end - bounds.start + 1;
+      const object = await bucket.get(head.key, { range: { offset: bounds.start, length } });
+      if (!object) throw notFound();
+      const headers = mediaHeaders(object);
+      headers.set("content-range", `bytes ${bounds.start}-${bounds.end}/${object.size}`);
+      headers.set("content-length", String(length));
+      return new Response(object.body, { status: 206, headers });
+    }
+  }
+
+  const object = (await bucket.get(key)) ?? (fallbackKey ? await bucket.get(fallbackKey) : null);
+  if (!object) throw notFound();
+  const headers = mediaHeaders(object);
+  headers.set("content-length", String(object.size));
   return new Response(object.body, { headers });
 }
 
@@ -125,10 +195,11 @@ export async function serveMediaFile(bucket: R2Bucket, key: string): Promise<Res
  * buffered and served without metadata (EXIF GPS/date/caption/author, XMP, comments). Fails closed: anything
  * that isn't a well-formed JPEG is a 404, never the stored bytes.
  */
-export async function serveStrippedJpeg(bucket: R2Bucket, key: string): Promise<Response> {
+export async function serveStrippedJpeg(bucket: R2Bucket, key: string, fallbackKey?: string | null): Promise<Response> {
   const notFound = () => new HTTPException(404, { message: "Archivo no encontrado" });
-  const object = await bucket.get(key);
+  const object = (await bucket.get(key)) ?? (fallbackKey ? await bucket.get(fallbackKey) : null);
   if (!object) throw notFound();
+  key = object.key;
   const contentType = object.httpMetadata?.contentType;
   if (key.endsWith(".mp4") || (contentType && contentType !== "image/jpeg")) throw notFound();
 

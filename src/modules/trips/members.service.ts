@@ -6,7 +6,7 @@ import { badRequest, conflict, forbidden, notFound } from "../../shared/errors";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
 import { deleteFeaturedByOthersOfMember } from "../featured/featured.repository";
 import { blockedIdsFor } from "../blocks/blocks.service";
-import { areFriends, isCompleteUser } from "../friends/friends.service";
+import { completeUserIdsAmong, friendIdsAmong } from "../friends/friends.service";
 import * as repo from "./trips.repository";
 
 // ---------- Membership ----------
@@ -14,14 +14,60 @@ import * as repo from "./trips.repository";
 type AddResult =
   | { status: "added"; member: Pick<MemberRow, "id" | "user_id" | "role"> }
   | { status: "already_member"; member: MemberRow }
-  | { status: "removed" };
+  | { status: "removed" }
+  | { status: "full" };
+
+/** What to do to make someone a member, given what the trip already has on them. */
+type MembershipDecision =
+  | { action: "insert" }
+  | { action: "reactivate_left"; existing: MemberRow }
+  | { action: "reactivate_removed"; existing: MemberRow }
+  | { action: "already_member"; existing: MemberRow }
+  | { action: "removed" };
 
 /**
- * Single place where someone becomes a member of a trip (by code or added by a friend).
- * An active member stays as is; someone who left gets their old membership back (same id, so their
- * photos stay linked); someone the admin removed only comes back when `reactivateRemoved` is set
- * (an admin adding them as a friend). Does not check the reveal.
+ * The membership rule, in one place (by code and when added by a friend): an active member stays as is;
+ * someone who left gets their old membership back (same id, so their photos stay linked); someone the admin
+ * removed only comes back when `reactivateRemoved` is set (an admin adding them as a friend). Pure.
  */
+export function decideMembership(existing: MemberRow | null, reactivateRemoved: boolean): MembershipDecision {
+  if (!existing) return { action: "insert" };
+  if (existing.removed_at !== null) return reactivateRemoved ? { action: "reactivate_removed", existing } : { action: "removed" };
+  if (existing.left_at === null) return { action: "already_member", existing };
+  return { action: "reactivate_left", existing };
+}
+
+/**
+ * Turns a decision into its write (unexecuted, to run alone or in a batch) and the result for the caller.
+ * Does not check the reveal. The writes that take a spot (insert and both reactivations) are conditional on the
+ * rollo having room, so `result` is what happens if the write goes through: the caller must check the write's
+ * `meta.changes` and turn it into `full` when it is 0.
+ */
+function applyDecision(
+  db: D1Database,
+  decision: MembershipDecision,
+  tripId: string,
+  userId: string,
+  addedBy: string | null,
+  now: number,
+): { result: AddResult; write: D1PreparedStatement | null } {
+  switch (decision.action) {
+    case "insert": {
+      const member = { id: crypto.randomUUID(), user_id: userId, role: "member" as Role };
+      return { result: { status: "added", member }, write: repo.insertMemberIfRoom(db, member.id, tripId, userId, now, addedBy) };
+    }
+    case "reactivate_left":
+      return { result: { status: "added", member: decision.existing }, write: repo.reactivateLeftMember(db, decision.existing.id, addedBy) };
+    case "reactivate_removed":
+      return { result: { status: "added", member: decision.existing }, write: repo.reactivateRemovedMember(db, decision.existing.id, addedBy) };
+    case "already_member":
+      return { result: { status: "already_member", member: decision.existing }, write: null };
+    case "removed":
+      return { result: { status: "removed" }, write: null };
+  }
+}
+
+/** Someone becomes a member of a trip by code (see `decideMembership`). Does not check the reveal. */
 async function addMember(
   db: D1Database,
   tripId: string,
@@ -29,51 +75,69 @@ async function addMember(
   addedBy: string | null,
   now = Date.now(),
   reactivateRemoved = false,
+  groupIds: string[] = [],
 ): Promise<AddResult> {
   const existing = await repo.findMember(db, tripId, userId);
-  if (existing) {
-    if (existing.removed_at !== null) {
-      if (!reactivateRemoved) return { status: "removed" };
-      await repo.reactivateRemovedMember(db, existing.id, addedBy).run();
-      return { status: "added", member: existing };
-    }
-    if (existing.left_at === null) return { status: "already_member", member: existing };
-    await repo.reactivateLeftMember(db, existing.id, addedBy).run();
-    return { status: "added", member: existing };
-  }
-  const member = { id: crypto.randomUUID(), user_id: userId, role: "member" as Role };
-  await repo.insertMember(db, member.id, tripId, userId, now, addedBy).run();
-  return { status: "added", member };
+  const { result, write } = applyDecision(db, decideMembership(existing, reactivateRemoved), tripId, userId, addedBy, now);
+  if (!write) return result;
+  // The groups go in the same batch, after the member write; they only land if that write did (see `addMemberGroups`).
+  const outcomes = await db.batch([write, ...(result.status === "added" ? repo.addMemberGroups(db, result.member.id, groupIds, now) : [])]);
+  return outcomes[0]!.meta.changes ? result : { status: "full" };
 }
 
 // ---------- Join ----------
+
+const EVENT_NEEDS_UPDATE = "Actualizá Rollo para sumarte a este evento.";
+
+/** `groupIds` without repeats, 400 if any is not a group of this event. */
+async function validGroupIds(db: D1Database, tripId: string, groupIds: string[]): Promise<string[]> {
+  const known = new Set((await repo.listGroups(db, tripId)).map((g) => g.id));
+  const unique = [...new Set(groupIds)];
+  if (!unique.every((id) => known.has(id))) throw badRequest("Grupo inválido");
+  return unique;
+}
 
 /** Joins by invite code. `created` is false when `user` was already an active member. */
 export async function joinTrip(
   db: D1Database,
   user: UserRow,
   code: string,
+  groupIds?: string[],
 ): Promise<{ created: boolean; trip: TripRow; member: Pick<MemberRow, "id" | "user_id" | "role"> }> {
   const now = Date.now();
 
   const trip = await repo.findTripByJoinCode(db, code);
   if (!trip) throw notFound("Código inválido");
 
+  // An event is joined choosing groups. A 1.3 client sends none: it gets this before anything else (even if already a member
+  // or the event is revealed), so it never half-joins. A regular trip ignores `groupIds`.
+  let chosen: string[] = [];
+  if (trip.type === "event") {
+    if (!groupIds) throw conflict(EVENT_NEEDS_UPDATE, "EVENT_NEEDS_UPDATE");
+    chosen = await validGroupIds(db, trip.id, groupIds);
+  }
+
   // Active members are answered before the reveal check (they get 200 even after it).
   const current = await repo.findMember(db, trip.id, user.id);
   if (current?.removed_at != null) throw forbidden("El admin te sacó de este rollo");
-  if (current && current.left_at === null) return { created: false, trip, member: current };
+  if (current && current.left_at === null) {
+    // Rejoining an event with more groups adds them (before the reveal).
+    if (chosen.length && !isRevealed(trip, now)) await db.batch(repo.addMemberGroups(db, current.id, chosen, now));
+    return { created: false, trip, member: current };
+  }
 
-  if (isRevealed(trip, now)) throw conflict("Este rollo ya se reveló");
+  if (isRevealed(trip, now)) throw conflict(trip.type === "event" ? "Este evento ya se reveló." : "Este rollo ya se reveló");
 
-  const added = await addMember(db, trip.id, user.id, null, now);
+  const added = await addMember(db, trip.id, user.id, null, now, false, chosen);
+  // The joiner is not a member yet: the message must not reveal how many people the rollo holds.
+  if (added.status === "full") throw conflict("Este rollo está lleno. Pedile a quien lo creó que haga lugar.");
   if (added.status !== "added") throw forbidden("El admin te sacó de este rollo");
   return { created: true, trip, member: added.member };
 }
 
 // ---------- Add friends ----------
 
-export type AddMembersResult = { userId: string; status: "added" | "already_member" | "unavailable" };
+export type AddMembersResult = { userId: string; status: "added" | "already_member" | "unavailable" | "full" };
 
 /** Adds `friendIds` (a result per friend) and returns the "added to a rollo" push for those who were added. */
 export async function addFriendsToTrip(
@@ -83,21 +147,40 @@ export async function addFriendsToTrip(
   myRole: Role,
   friendIds: string[],
 ): Promise<{ results: AddMembersResult[]; notify: AfterResponse }> {
+  if (trip.type === "event") throw conflict("En un evento se entra con el código.");
   if (isRevealed(trip)) throw conflict("Este rollo ya se reveló");
 
-  const results: AddMembersResult[] = [];
-  for (const userId of new Set(friendIds)) {
-    if (userId === me.id) {
-      results.push({ userId, status: "already_member" });
-      continue;
+  const now = Date.now();
+  const userIds = [...new Set(friendIds)];
+  const others = userIds.filter((id) => id !== me.id);
+  // Three reads for the whole request (the friends module owns friendship and complete-user checks).
+  // A friend who lost their name or @ is hidden from friend lists, so they can't be added either.
+  const [friends, complete, memberships] = await Promise.all([
+    friendIdsAmong(env.DB, me.id, others),
+    completeUserIdsAmong(env.DB, others),
+    repo.findMembersByUsers(env.DB, trip.id, others),
+  ]);
+
+  // Writes that take a spot are conditional on room (see `applyDecision`); `slots[i]` is the friend each write belongs to.
+  const writes: D1PreparedStatement[] = [];
+  const slots: number[] = [];
+  const results: AddMembersResult[] = userIds.map((userId, i) => {
+    if (userId === me.id) return { userId, status: "already_member" };
+    if (!friends.has(userId) || !complete.has(userId)) return { userId, status: "unavailable" };
+    const { result, write } = applyDecision(env.DB, decideMembership(memberships.get(userId) ?? null, myRole === "admin"), trip.id, userId, me.id, now);
+    if (write) {
+      writes.push(write);
+      slots.push(i);
     }
-    // A friend who lost their name or @ is hidden from friend lists, so they can't be added either.
-    if (!(await areFriends(env.DB, me.id, userId)) || !(await isCompleteUser(env.DB, userId))) {
-      results.push({ userId, status: "unavailable" });
-      continue;
-    }
-    const added = await addMember(env.DB, trip.id, userId, me.id, Date.now(), myRole === "admin");
-    results.push({ userId, status: added.status === "removed" ? "unavailable" : added.status });
+    return { userId, status: result.status === "removed" || result.status === "full" ? "unavailable" : result.status };
+  });
+  // One atomic batch (D1 has no interactive transactions). Statements run in order, so each conditional write sees the
+  // spots taken by the ones before it: the first friends that fit are added, the rest come back with changes = 0 (full).
+  if (writes.length) {
+    const outcomes = await env.DB.batch(writes);
+    outcomes.forEach((o, n) => {
+      if (!o.meta.changes) results[slots[n]!]!.status = "full";
+    });
   }
   const addedIds = results.filter((r) => r.status === "added").map((r) => r.userId);
   const notify: AfterResponse = addedIds.length
@@ -133,6 +216,16 @@ export async function updateMyMembership(
     allowFeaturing: patch.allowFeaturing ?? member.allow_featuring !== 0,
     archived: patch.archived ?? member.archived_at !== null,
   };
+}
+
+/** Replaces my groups in an event. Guests need at least one; organizers (admins) may have none. */
+export async function setMyGroups(db: D1Database, trip: TripRow, member: MemberRow, groupIds: string[]): Promise<string[]> {
+  if (trip.type !== "event") throw conflict("Solo los eventos tienen grupos.");
+  if (isRevealed(trip)) throw conflict("Este evento ya se reveló.");
+  if (groupIds.length === 0 && member.role !== "admin") throw badRequest("Elegí al menos un grupo");
+  const chosen = await validGroupIds(db, trip.id, groupIds);
+  await db.batch(repo.setMemberGroups(db, member.id, chosen));
+  return repo.listMemberGroupIds(db, member.id);
 }
 
 // ---------- Leave ----------
@@ -172,6 +265,10 @@ export async function removeAdmin(db: D1Database, trip: TripRow, memberId: strin
   const target = await repo.findActiveMemberById(db, trip.id, memberId);
   if (!target) throw notFound("Miembro no encontrado");
   if (isCreator(trip, target.user_id)) throw badRequest("El creador siempre es admin");
+  // An event guest always has a group: an organizer with none would become a guest nobody sees the photos of.
+  if (trip.type === "event" && target.role === "admin" && (await repo.listMemberGroupIds(db, target.id)).length === 0) {
+    throw conflict("Para quitarle el rol de organizador, primero tiene que sumarse a un grupo.");
+  }
   if (target.role === "admin") await repo.setMemberRole(db, target.id, "member").run();
   return { ...target, role: "member" };
 }

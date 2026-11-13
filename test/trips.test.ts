@@ -561,7 +561,7 @@ describe("member shape", () => {
     const { tripId, code, adminUserId } = await newTrip();
     const fede = await joinAs(code, "Fede");
     const res = await api("GET", `/trips/${tripId}`, { token: fede.token });
-    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", isCreator: false, blockedByMe: false, allowFeaturing: true });
+    expect(res.body.me).toEqual({ id: fede.memberId, userId: fede.userId, name: "Fede", username: expect.any(String), avatarUrl: null, role: "member", isCreator: false, blockedByMe: false, allowFeaturing: true, groupIds: [] });
     expect(res.body.members[0]).toMatchObject({ userId: adminUserId, name: "Juani", role: "admin" });
   });
 
@@ -661,6 +661,129 @@ describe("POST /trips/:id/members (add friends)", () => {
     const res = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [friend.userId] } });
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: "Este rollo ya se reveló" });
+  });
+});
+
+describe("POST /trips/:id/members with many friends", () => {
+  /** Friendships straight into D1 (ordered pair user_a < user_b, like the table's CHECK). */
+  async function befriendDirect(me: string, others: string[]) {
+    const now = Date.now();
+    await env.DB.batch(
+      others.map((o) => {
+        const [a, b] = me < o ? [me, o] : [o, me];
+        return env.DB.prepare("INSERT INTO friendships (user_a, user_b, created_at) VALUES (?, ?, ?)").bind(a, b, now);
+      }),
+    );
+  }
+
+  /** `env.DB` that counts `prepare` and `batch` calls. */
+  function countingDb() {
+    const counts = { prepare: 0, batch: 0, sql: [] as string[] };
+    const db = new Proxy(env.DB, {
+      get(target, prop) {
+        const value = (target as any)[prop];
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (prop === "prepare") {
+            counts.prepare++;
+            counts.sql.push(String(args[0]));
+          }
+          if (prop === "batch") counts.batch++;
+          return value.apply(target, args);
+        };
+      },
+    });
+    return { db, counts };
+  }
+
+  async function setup(n: number) {
+    const { tripId, code, adminToken } = await newTrip();
+    // These tests add dozens of friends at once: lift the default cap of 15 (the cap itself is covered in trip-max-members.test.ts).
+    await env.DB.prepare("UPDATE trips SET max_members = 1000 WHERE id = ?").bind(tripId).run();
+    const actor = await joinAs(code, "Actor");
+    const friends = await addUsersDirect(n);
+    await befriendDirect(actor.userId, friends.map((f) => f.userId));
+    return { tripId, code, adminToken, actor, friends };
+  }
+
+  async function addUsersDirect(n: number) {
+    const now = Date.now();
+    const run = Math.random().toString(36).slice(2, 8);
+    const users = Array.from({ length: n }, (_, i) => ({ userId: crypto.randomUUID(), i }));
+    await env.DB.batch(
+      users.map((u) =>
+        env.DB.prepare("INSERT INTO users (id, email, name, name_search, username, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(
+          u.userId, `bulk-${run}-${u.i}@rollo.test`, `Amigo ${u.i}`, `amigo ${u.i}`, `b${run}${u.i}`, now,
+        ),
+      ),
+    );
+    return users;
+  }
+
+  it("30 friends at once: statuses per friend, in input order, duplicates collapsed", async () => {
+    const { tripId, code, adminToken, actor, friends } = await setup(30);
+    const ids = friends.map((f) => f.userId);
+    // [0] incomplete user, [1] already member, [2] left (comes back), [3] removed (unavailable for a member)
+    await env.DB.prepare("UPDATE users SET username = NULL WHERE id = ?").bind(ids[0]).run();
+    const already = await joinAs(code, "Ya");
+    await befriendDirect(actor.userId, [already.userId]);
+    const left = await joinAs(code, "Salido");
+    await befriendDirect(actor.userId, [left.userId]);
+    await api("DELETE", `/trips/${tripId}/members/me`, { token: left.token });
+    const removed = await joinAs(code, "Sacado");
+    await befriendDirect(actor.userId, [removed.userId]);
+    await api("DELETE", `/trips/${tripId}/members/${removed.memberId}`, { token: adminToken });
+    const stranger = await signUp(undefined, "Extraño");
+
+    const input = [...ids, ids[5], already.userId, left.userId, removed.userId, stranger.userId, actor.userId, "no-such-user"];
+    const res = await api("POST", `/trips/${tripId}/members`, { token: actor.token, body: { friendIds: input.slice(0, 50) } });
+    expect(res.status).toBe(200);
+    const expected = [
+      { userId: ids[0], status: "unavailable" },
+      ...ids.slice(1).map((userId) => ({ userId, status: "added" })),
+      { userId: already.userId, status: "already_member" },
+      { userId: left.userId, status: "added" },
+      { userId: removed.userId, status: "unavailable" },
+      { userId: stranger.userId, status: "unavailable" },
+      { userId: actor.userId, status: "already_member" },
+      { userId: "no-such-user", status: "unavailable" },
+    ];
+    expect(res.body.results).toEqual(expected);
+
+    const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM members WHERE trip_id = ? AND removed_at IS NULL AND left_at IS NULL").bind(tripId).first<{ n: number }>();
+    // admin + actor + already + 29 added + left back
+    expect(active!.n).toBe(1 + 1 + 1 + 29 + 1);
+
+    // The admin adds the removed one back.
+    const back = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [removed.userId] } });
+    expect(back.body.results).toEqual([{ userId: removed.userId, status: "unavailable" }]); // admin is not their friend
+    await befriendDirect((await env.DB.prepare("SELECT user_id FROM members WHERE trip_id = ? AND role = 'admin'").bind(tripId).first<{ user_id: string }>())!.user_id, [removed.userId]);
+    const back2 = await api("POST", `/trips/${tripId}/members`, { token: adminToken, body: { friendIds: [removed.userId] } });
+    expect(back2.body.results).toEqual([{ userId: removed.userId, status: "added" }]);
+  });
+
+  it("the number of reads does not grow with the number of friends, and the writes go in one batch", async () => {
+    const run = async (n: number) => {
+      const { tripId, actor, friends } = await setup(n);
+      const { db, counts } = countingDb();
+      const res = await api("POST", `/trips/${tripId}/members`, {
+        token: actor.token,
+        body: { friendIds: friends.map((f) => f.userId) },
+        env: { DB: db },
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.results.every((r: { status: string }) => r.status === "added")).toBe(true);
+      return counts;
+    };
+    // Reads = SELECTs prepared during the request. The "added to a rollo" push runs after the response
+    // (its own token/settings lookups, racing with this assertion), so it is left out.
+    const reads = (c: { sql: string[] }) => c.sql.filter((q) => q.trim().startsWith("SELECT") && !/push_tokens|user_settings/.test(q)).length;
+    const small = await run(3);
+    const big = await run(30);
+    expect(reads(big)).toBe(reads(small));
+    // The writes (one insert per added friend) go in a single batch.
+    expect(big.batch).toBe(1);
+    expect(small.batch).toBe(1);
   });
 });
 

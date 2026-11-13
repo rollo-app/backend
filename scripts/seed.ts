@@ -64,7 +64,7 @@ async function main() {
     ["Cami", "Creó \"Rollo con admins\" (Tomi y Fede son admins ahí, Juani miembro). Amiga con varios rollos en común; descripción corta (\"Mate, montaña y fotos movidas\"). No deja destacar su primera foto de Bariloche. Insignia First Edition."],
     ["Tomi", "Amigo con varios rollos en común; descripción de 150 caracteres justos (el tope). Perfil PÚBLICO con 3 destacadas."],
     ["Fede", "Amigo con varios rollos en común; descripción de 3 renglones."],
-    ["Bruno", "Amigo: 1 rollo en común (Tandil) y otro sin Juani (Escapada) que NO tiene que aparecer; descripción de 2 renglones."],
+    ["Bruno", "Amigo: 2 rollos en común (Tandil y el evento Casamiento de prueba) y otro sin Juani (Escapada) que NO tiene que aparecer; descripción de 2 renglones."],
     ["Pilar", "Amiga sin ningún rollo: perfil sin rollos en común; \"Sumar a un rollo\" ofrece los de Juani sin revelar."],
     ["Rama", "Amigo que se salió de Tandil (left_at): sin rollos en común. Juani lo puede volver a sumar."],
     ["Vicky", "Amiga que Juani (admin) sacó de Tandil (removed_at): sin rollos en común; solo el admin la vuelve a sumar."],

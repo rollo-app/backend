@@ -5,6 +5,7 @@ import { rateLimit } from "../../lib/rate-limit";
 import { MediaParams, TripParams } from "../../schemas";
 import * as controller from "./media.controller";
 import {
+  FeedQuery,
   FeedResponseSchema,
   MediaFileParams,
   MediaRegisteredSchema,
@@ -23,10 +24,12 @@ export const registerRoute = createRoute({
   summary: "Register a photo or video",
   description:
     "Returns signed URLs to upload the original and the thumbnail straight to R2; each is signed for the exact byte size declared (`sizeBytes`, `thumbSizeBytes`). " +
+    "Photos can also declare `displaySizeBytes` (2048px JPEG, kept forever): the response then adds `upload.display`. Photos registered without it keep their original forever. " +
     "Idempotent by `id`: retrying from the offline queue neither duplicates nor spends quota. " +
-    "503 when the storage limit is reached (new registrations only, never retries).",
+    "503 when the storage limit is reached (new registrations only, never retries). " +
+    "429 comes in two kinds: too fast (carries `Retry-After`, retry later) or photo quota used up (no `Retry-After`, do not retry).",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireTripMember] as const,
+  middleware: [requireUser, rateLimit("RL_UPLOAD"), requireTripMember] as const,
   request: {
     params: TripParams,
     body: { content: { "application/json": { schema: RegisterMediaSchema } }, required: true },
@@ -47,9 +50,10 @@ export const completeRoute = createRoute({
   summary: "Confirm the files were uploaded",
   description:
     "Checks that the original and the thumbnail are in R2 and that their sizes match what was registered. " +
-    "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs).",
+    "Only then does the photo show up in the feed. On a size mismatch both files are deleted and the media stays pending (register again for new URLs). " +
+    "429 comes in two kinds: too fast (carries `Retry-After`, retry later) or a quota error (no `Retry-After`, do not retry).",
   security: bearerAuth,
-  middleware: [requireUser, rateLimit("RL_EXPENSIVE"), requireMediaMember] as const,
+  middleware: [requireUser, rateLimit("RL_UPLOAD"), requireMediaMember] as const,
   request: { params: MediaParams },
   responses: { 200: json(MediaStatusSchema, "Upload confirmed"), ...errors(400, 401, 404, 428, 429) },
 });
@@ -65,11 +69,14 @@ export const feedRoute = createRoute({
     "Before the reveal: metadata only (author, time, place, caption, thumbhash), no files, not even your own. " +
     "After: includes dimensions, the download paths, whether you featured each photo, whether its author blocked featuring, " +
     "and its likes (`likeCount`, `likedByMe`) and comments (`commentCount`; before the reveal only a daily moment's photo has `commentCount`). " +
-    "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out.",
+    "Every item carries the author's user id (`author.userId`). Photos you reported and photos by people you blocked are left out. " +
+    "Oldest first by default (`order=asc`; `order=desc` for newest first), ordered by `takenAt` with ties by id, paginated with a keyset cursor: send `limit` and then each page's `nextCursor` as `cursor`. " +
+    "A cursor is only valid with the `order` it came from: keep `order` the same across pages. " +
+    "Without cursor or limit returns the whole feed (in the requested order), for older app builds; new clients should always send limit.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
-  request: { params: TripParams },
-  responses: { 200: json(FeedResponseSchema, "Feed ordered by the time the shot was taken"), ...errors(401, 403, 428) },
+  request: { params: TripParams, query: FeedQuery },
+  responses: { 200: json(FeedResponseSchema, "A page of the feed ordered by the time the shot was taken"), ...errors(400, 401, 403, 428) },
 });
 
 // ---------- Download ----------
@@ -79,7 +86,7 @@ export const downloadRoute = createRoute({
   path: "/trips/{tripId}/media/{mediaId}/{variant}",
   tags,
   summary: "Download a file (only after the reveal, except daily moment photos)",
-  description: "Streamed from R2 with the same Bearer token. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
+  description: "Streamed from R2 with the same Bearer token. `display` is the 2048px version (the original for uploads that have none); `original` serves the display once the original was purged 30 days after the reveal. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
   security: bearerAuth,
   middleware: [requireUser, rateLimit("RL_FILES"), requireTripMember] as const,
   request: { params: MediaFileParams },
@@ -91,6 +98,14 @@ export const downloadRoute = createRoute({
         "video/mp4": { schema: z.string().openapi({ format: "binary" }) },
       },
     },
+    206: {
+      description: "Part of the file, for a single `Range: bytes=...` request (players such as AVPlayer need it for video). `Content-Range` says which bytes and the total size. Several ranges or an invalid one get the whole file with 200.",
+      content: {
+        "image/jpeg": { schema: z.string().openapi({ format: "binary" }) },
+        "video/mp4": { schema: z.string().openapi({ format: "binary" }) },
+      },
+    },
+    416: { description: "The requested range starts past the end of the file; `Content-Range: bytes */<size>` gives the size" },
     ...errors(401, 403, 404, 428, 429),
   },
 });
