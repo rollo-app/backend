@@ -43,7 +43,7 @@ export async function sendLoginCode(env: Env, email: string, code: string, linkT
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <no-reply@rolloproject.com>",
+      from: env.EMAIL_FROM ?? "Rollo Project <no-reply@rolloproject.com>",
       to: [email],
       // The sender is no-reply@ (it receives nothing): a reply goes to support instead of getting lost.
       reply_to: SUPPORT_EMAIL,
@@ -89,7 +89,7 @@ async function deliverToSupport(env: Env, subject: string, text: string): Promis
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <no-reply@rolloproject.com>",
+      from: env.EMAIL_FROM ?? "Rollo Project <no-reply@rolloproject.com>",
       to: [env.REPORTS_EMAIL ?? SUPPORT_EMAIL],
       subject,
       text,
@@ -234,7 +234,7 @@ export async function sendWaitlistEmail(env: Env, email: string, links: Waitlist
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: env.EMAIL_FROM ?? "Rollo <no-reply@rolloproject.com>",
+      from: env.EMAIL_FROM ?? "Rollo Project <no-reply@rolloproject.com>",
       to: [email],
       reply_to: SUPPORT_EMAIL,
       // RFC 8058 one-click: the mail client POSTs `List-Unsubscribe=One-Click` to that same URL.

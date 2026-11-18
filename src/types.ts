@@ -22,7 +22,7 @@ export type Env = {
   DEV_LOCAL_UPLOADS?: string;
   /** Resend API key. Without it, login codes are only logged to the console (dev). */
   RESEND_API_KEY?: string;
-  /** Sender of the login emails, e.g. "Rollo <no-reply@rolloproject.com>". */
+  /** Sender of the login emails, e.g. "Rollo Project <no-reply@rolloproject.com>". */
   EMAIL_FROM?: string;
   /** Where report emails go. Defaults to support@rolloproject.com. */
   REPORTS_EMAIL?: string;
