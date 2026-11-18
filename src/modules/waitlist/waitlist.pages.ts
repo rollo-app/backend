@@ -23,12 +23,15 @@ export function renderPage(title: string, message: string, form?: { action: stri
 </html>`;
 }
 
-export const CONFIRMED_PAGE = renderPage("Rollo", "¡Listo! Te vamos a avisar cuando Rollo abra para todos.");
-export const UNSUBSCRIBED_PAGE = renderPage("Rollo", "Te diste de baja de la lista.");
-export const INVALID_LINK_PAGE = renderPage("Rollo", "El link no es válido.");
+/** The brand shown as each page's title and heading. */
+const BRAND = "Rollo Project";
+
+export const CONFIRMED_PAGE = renderPage(BRAND, "¡Listo! Te vamos a avisar cuando Rollo abra para todos.");
+export const UNSUBSCRIBED_PAGE = renderPage(BRAND, "Te diste de baja de la lista.");
+export const INVALID_LINK_PAGE = renderPage(BRAND, "El link no es válido.");
 
 /** What a mail scanner or a person opening the link sees: nothing happens until the button POSTs the token. */
 export const confirmPage = (token: string) =>
-  renderPage("Rollo", "Confirmá tu email para quedar en la lista de espera.", { action: "/waitlist/confirm", token, button: "Confirmar" });
+  renderPage(BRAND, "Confirmá tu email para quedar en la lista de espera.", { action: "/waitlist/confirm", token, button: "Confirmar" });
 export const unsubscribePage = (token: string) =>
-  renderPage("Rollo", "¿Querés darte de baja de la lista de espera?", { action: "/waitlist/unsubscribe", token, button: "Darme de baja" });
+  renderPage(BRAND, "¿Querés darte de baja de la lista de espera?", { action: "/waitlist/unsubscribe", token, button: "Darme de baja" });

@@ -47,7 +47,7 @@ export function renderLoginEmail({ code, url }: { code: string; url: string | nu
     <tr><td align="center" style="padding:40px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
         <tr><td style="padding:0 8px 16px;">
-          <span class="label" style="font-size:22px;font-weight:700;color:#000000;letter-spacing:-0.3px;">Rollo</span>
+          <span class="label" style="font-size:22px;font-weight:700;color:#000000;letter-spacing:-0.3px;">Rollo Project</span>
         </td></tr>
         <tr><td class="card" style="background:#FFFFFF;border-radius:22px;padding:32px 28px;">
           <p class="label" style="margin:0 0 8px;font-size:22px;font-weight:700;color:#000000;">Tu código para entrar</p>
