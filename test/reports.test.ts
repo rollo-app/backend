@@ -105,7 +105,7 @@ describe("report emails", () => {
     }) as typeof fetch;
     const res = await api("POST", "/reports", { token: a.token, body: { mediaId, reason: "offensive" }, env: { RESEND_API_KEY: "x" } });
     expect(res.status).toBe(204);
-    expect(bodies[0]).toMatchObject({ from: "Rollo <no-reply@rolloproject.com>", to: ["support@rolloproject.com"] });
+    expect(bodies[0]).toMatchObject({ from: "Rollo Project <no-reply@rolloproject.com>", to: ["support@rolloproject.com"] });
   });
 
   it("a failing email still records the report", async () => {

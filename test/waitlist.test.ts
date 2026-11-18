@@ -245,6 +245,8 @@ describe("mail scanners: GET never changes anything", () => {
     expect(c.body).toContain('method="post"');
     expect(c.body).toContain('action="/waitlist/confirm"');
     expect(c.body).toContain("Confirmar");
+    expect(c.body).toContain("<title>Rollo Project</title>");
+    expect(c.body).toContain("<h1>Rollo Project</h1>");
     expect(c.body).not.toContain("¡Listo!");
     const u = await api("GET", path(lastSent().unsubscribeUrl));
     expect(u.status).toBe(200);

@@ -15,6 +15,11 @@ describe("renderLoginEmail", () => {
     expect(html).toContain("user-select:all");
   });
 
+  it("shows the Rollo Project wordmark above the card", () => {
+    const { html } = renderLoginEmail({ code: "ABC234", url: null });
+    expect(html).toContain(">Rollo Project</span>");
+  });
+
   it("escapes the code", () => {
     const { html } = renderLoginEmail({ code: "<b>", url: null });
     expect(html).not.toContain("<b>");
