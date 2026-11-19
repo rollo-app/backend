@@ -266,6 +266,13 @@
           "revealed": {
             "type": "boolean"
           },
+          "memberCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "People already in the event: active members (not left, not removed), organizers included — the accounts that will be able to download the photos after the reveal. null below 5, so a near-empty event does not show a tiny number to strangers"
+          },
           "groups": {
             "type": "array",
             "items": {
@@ -290,6 +297,7 @@
           "name",
           "coverUrl",
           "revealed",
+          "memberCount",
           "groups"
         ]
       },
@@ -1738,6 +1746,10 @@
               "$ref": "#/components/schemas/Member"
             }
           },
+          "memberCount": {
+            "type": "integer",
+            "description": "Active members of the whole rollo (organizers included). In an event `members` only lists who you can see; this is the total"
+          },
           "today": {
             "type": "object",
             "properties": {
@@ -1769,6 +1781,7 @@
           "trip",
           "me",
           "members",
+          "memberCount",
           "today",
           "totalUploaded"
         ]

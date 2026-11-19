@@ -155,6 +155,7 @@ export const getCreator = repo.findCreator;
 
 export type TripDetail = {
   members: ActiveMemberRow[];
+  memberCount: number;
   blocked: Set<string>;
   today: { date: string; photosLeft: number; videosLeft: number };
   totalUploaded: number;
@@ -170,8 +171,9 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
   const now = Date.now();
   const today = localDate(now, trip.timezone);
 
-  const [members, usage, totals, blocked] = await Promise.all([
+  const [members, memberCount, usage, totals, blocked] = await Promise.all([
     repo.listActiveMembers(db, trip.id, userId),
+    repo.countActiveMembers(db, trip.id),
     trip.photo_limit_mode === "total" ? repo.countMediaByTypeTotal(db, me.id) : repo.countMediaByType(db, me.id, today),
     repo.countUploadedMedia(db, trip.id, me.id, userId),
     blockedIdsFor(db, userId),
@@ -183,6 +185,7 @@ export async function getTripDetail(db: D1Database, trip: TripRow, me: MemberRow
 
   return {
     members: members.results,
+    memberCount,
     blocked,
     today: {
       date: today,

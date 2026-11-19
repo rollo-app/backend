@@ -192,6 +192,15 @@ export function insertMember(db: D1Database, id: string, tripId: string, userId:
 const HAS_ROOM_SQL = (tripIdSql: string) =>
   `(SELECT COUNT(*) FROM members a WHERE a.trip_id = ${tripIdSql} AND a.left_at IS NULL AND a.removed_at IS NULL) < (SELECT max_members FROM trips WHERE id = ${tripIdSql})`;
 
+/** Active members of a trip (neither left nor removed, organizers included): the same definition as the `max_members` capacity check. */
+export async function countActiveMembers(db: D1Database, tripId: string): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM members WHERE trip_id = ? AND left_at IS NULL AND removed_at IS NULL")
+    .bind(tripId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 /**
  * Like `insertMember`, but only writes while the trip has room. The check is part of the statement, so two concurrent
  * joins cannot both take the last spot; the caller reads `meta.changes` (0 = full).
