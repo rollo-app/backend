@@ -171,6 +171,9 @@ export const TripDetailSchema = z
       groupIds: z.array(z.string().uuid()).openapi({ description: "Ids of the event groups the member is in; [] for a regular trip and for organizers without groups" }),
     }),
     members: z.array(MemberSchema),
+    memberCount: z.number().int().openapi({
+      description: "Active members of the whole rollo (organizers included). In an event `members` only lists who you can see; this is the total",
+    }),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),
       photosLeft: z.number().int().openapi({

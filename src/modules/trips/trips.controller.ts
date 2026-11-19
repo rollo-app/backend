@@ -50,13 +50,14 @@ export const join: RouteHandler<typeof joinTripRoute, AppEnv> = async (c) => {
 export const detail: RouteHandler<typeof getTripRoute, AppEnv> = async (c) => {
   const trip = c.get("trip");
   const user = c.get("user");
-  const { members, blocked, today, totalUploaded } = await service.getTripDetail(c.env.DB, trip, c.get("member"), user.id);
+  const { members, memberCount, blocked, today, totalUploaded } = await service.getTripDetail(c.env.DB, trip, c.get("member"), user.id);
   const createdBy = await service.getCreator(c.env.DB, trip);
   return c.json(
     {
       trip: await service.publicTripWithGroups(c.env.DB, trip, createdBy),
       me: { ...publicMember(c.get("member"), user, false, isCreator(trip, user.id)), allowFeaturing: c.get("member").allow_featuring !== 0, groupIds: await service.listMyGroupIds(c.env.DB, trip, c.get("member")) },
       members: members.map((m) => publicMember(m, m, blocked.has(m.user_id), isCreator(trip, m.user_id))),
+      memberCount,
       today,
       totalUploaded,
     },

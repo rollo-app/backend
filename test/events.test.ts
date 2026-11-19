@@ -256,6 +256,38 @@ describe("GET /events/{code}", () => {
   });
 });
 
+describe("GET /trips/{tripId} memberCount", () => {
+  it("is the whole rollo's active total even when a guest only sees part of the members", async () => {
+    const ev = await newEvent();
+    const join = async (name: string, groupId: string) => {
+      const u = await signUp(undefined, name);
+      await api("POST", "/trips/join", { token: u.token, body: { code: ev.code, groupIds: [groupId] } });
+      return u;
+    };
+    const guestA = await join("Invitado A", ev.a);
+    const guestB = await join("Invitado B", ev.b);
+    const leaver = await join("Se fue", ev.b);
+    const removed = await join("Sacado", ev.b);
+    const now = Date.now();
+    await env.DB.prepare("UPDATE members SET left_at = ? WHERE trip_id = ? AND user_id = ?").bind(now, ev.tripId, leaver.userId).run();
+    await env.DB.prepare("UPDATE members SET removed_at = ? WHERE trip_id = ? AND user_id = ?").bind(now, ev.tripId, removed.userId).run();
+
+    const res = await api("GET", `/trips/${ev.tripId}`, { token: guestA.token });
+    expect(res.status).toBe(200);
+    expect(res.body.memberCount).toBe(3); // organizer + A + B
+    expect(res.body.members.length).toBeLessThan(res.body.memberCount);
+    // Same number for everyone.
+    expect((await api("GET", `/trips/${ev.tripId}`, { token: guestB.token })).body.memberCount).toBe(3);
+    expect((await api("GET", `/trips/${ev.tripId}`, { token: ev.org.token })).body.memberCount).toBe(3);
+  });
+
+  it("also counts for a regular trip", async () => {
+    const { tripId, adminToken: token } = await newTrip();
+    const res = await api("GET", `/trips/${tripId}`, { token });
+    expect(res.body.memberCount).toBe(res.body.members.length);
+  });
+});
+
 describe("POST /trips/join (event)", () => {
   it("joining an event without groups asks to update", async () => {
     const ev = await newEvent();
