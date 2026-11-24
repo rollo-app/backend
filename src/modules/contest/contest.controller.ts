@@ -1,7 +1,8 @@
 import type { RouteHandler } from "@hono/zod-openapi";
 import type { AppEnv } from "../../types";
+import { deferPush } from "../../lib/push";
 import { serveMediaFile } from "../../lib/r2";
-import type { addFinalistRoute, finalistFileRoute, getContestRoute, removeFinalistRoute, unvoteRoute, voteRoute } from "./contest.router";
+import type { addFinalistRoute, finalistFileRoute, getContestRoute, pickWinnerRoute, removeFinalistRoute, unvoteRoute, voteRoute } from "./contest.router";
 import * as service from "./contest.service";
 
 export const get: RouteHandler<typeof getContestRoute, AppEnv> = async (c) => {
@@ -35,4 +36,11 @@ export const finalistFile: RouteHandler<typeof finalistFileRoute, AppEnv> = asyn
   const { mediaId, variant } = c.req.valid("param");
   const { key, fallbackKey } = await service.getFinalistFileKey(c.env.DB, c.get("trip"), c.get("member"), c.get("user").id, mediaId, variant);
   return serveMediaFile(c.env.MEDIA, key, fallbackKey, c.req.raw.headers);
+};
+
+export const pickWinner: RouteHandler<typeof pickWinnerRoute, AppEnv> = async (c) => {
+  const { mediaId } = c.req.valid("json");
+  const { notify } = await service.pickWinner(c.env, c.get("trip"), mediaId);
+  if (notify) deferPush(c, notify());
+  return c.body(null, 204);
 };

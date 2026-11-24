@@ -4,7 +4,7 @@ import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { TripParams } from "../../schemas";
 import * as controller from "./contest.controller";
 import { rateLimit } from "../../lib/rate-limit";
-import { ContestSchema, FinalistFileParams, FinalistParams, VoteBody } from "./contest.schemas";
+import { ContestSchema, FinalistFileParams, FinalistParams, VoteBody, WinnerBody } from "./contest.schemas";
 import { z } from "@hono/zod-openapi";
 
 const tags = ["Contest"];
@@ -94,6 +94,19 @@ export const finalistFileRoute = createRoute({
   },
 });
 
+export const pickWinnerRoute = createRoute({
+  method: "post",
+  path: "/{tripId}/contest/winner",
+  tags,
+  summary: "Break a tie: pick the winner (organizer)",
+  description:
+    "Only while `tied` (409 otherwise, also once closed) and only one of `tiedMediaIds` (400). Closes the contest and announces the winner by push, like the cron does at the close.",
+  security: bearerAuth,
+  middleware: [requireUser, requireTripMember, requireAdmin] as const,
+  request: { params: TripParams, body: { content: { "application/json": { schema: WinnerBody } }, required: true } },
+  responses: { 204: { description: "Closed with that winner" }, ...errors(400, 401, 403, 404, 409, 410, 428) },
+});
+
 const contest = createApp();
 
 
@@ -103,5 +116,6 @@ contest.openapi(removeFinalistRoute, controller.remove);
 contest.openapi(voteRoute, controller.vote);
 contest.openapi(unvoteRoute, controller.unvote);
 contest.openapi(finalistFileRoute, controller.finalistFile);
+contest.openapi(pickWinnerRoute, controller.pickWinner);
 
 export default contest;

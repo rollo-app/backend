@@ -5,6 +5,7 @@ import { globalRateLimit } from "./lib/rate-limit";
 import { checkPushReceipts } from "./lib/push";
 import { DEV_UPLOAD_PREFIX, devUploadsEnabled, verifyDevUpload } from "./lib/r2";
 import { runTripNotices } from "./modules/trips/notices.service";
+import { runContestNotices } from "./modules/contest/contest.service";
 import { runOriginalsNotices, runOriginalsPurge } from "./modules/trips/originals.service";
 import { snapshotDailyMetrics } from "./modules/metrics/metrics.service";
 import admin from "./modules/admin/admin.router";
@@ -124,7 +125,7 @@ app.onError((err, c) => {
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(
-    Promise.allSettled([runTripNotices(env, now), runOriginalsNotices(env, now), runOriginalsPurge(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), purgeIncompleteAccounts(env, now), sweepOrphanAvatars(env, now), (new Date(now).getUTCMinutes() < 5 ? sweepOrphanCovers(env, now) : Promise.resolve()), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
+    Promise.allSettled([runTripNotices(env, now), runContestNotices(env, now), runOriginalsNotices(env, now), runOriginalsPurge(env, now), checkPushReceipts(env, now), cleanupStalePending(env, now), purgeIncompleteAccounts(env, now), sweepOrphanAvatars(env, now), (new Date(now).getUTCMinutes() < 5 ? sweepOrphanCovers(env, now) : Promise.resolve()), checkStorage(env, now), sendModerationSummary(env, now), purgeOldEmailCounters(env, now), purgeDeletedFiles(env, now), snapshotDailyMetrics(env, now), pollUsage(env, now)]).then((results) => {
       for (const r of results) if (r.status === "rejected") console.error("cron failed", r.reason);
     }),
   );

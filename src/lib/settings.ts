@@ -11,6 +11,7 @@ export const NOTIFICATION_COLUMNS = {
   dailyMoment: "notify_daily_moment",
   momentPosted: "notify_moment_posted",
   originalsExpiring: "notify_originals_expiring",
+  contestResult: "notify_contest_result",
 } as const;
 
 export type NotificationKind = keyof typeof NOTIFICATION_COLUMNS;

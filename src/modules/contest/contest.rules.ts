@@ -12,6 +12,15 @@ export const CONTEST_VOTING_HOURS_DEFAULT = 72;
 export const CONTEST_GAP_MESSAGE =
   "Con concurso, el revelado tiene que ser al menos 2 horas después del fin, para que elijas las finalistas.";
 
+/** Manual reveal of a contest event before the end or with fewer than 2 countable finalists. */
+export const CONTEST_REVEAL_MESSAGE = "Elegí al menos 2 fotos para el concurso o apagalo.";
+
+/** The organizers get a reminder this long before the reveal if they still lack finalists. */
+export const CONTEST_REMINDER_LEAD_MS = 2 * 3_600_000;
+
+/** A tie nobody broke is reminded to the organizers this often. */
+export const CONTEST_TIE_REMINDER_MS = 24 * 3_600_000;
+
 /** True when `revealAt` leaves the organizers enough time after `endsAt` to pick the finalists. */
 export function hasContestGap(endsAt: number, revealAt: number): boolean {
   return revealAt - endsAt >= CONTEST_MIN_REVEAL_GAP_MS;

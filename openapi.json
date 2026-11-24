@@ -729,6 +729,10 @@
           "originalsExpiring": {
             "type": "boolean",
             "description": "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)"
+          },
+          "contestResult": {
+            "type": "boolean",
+            "description": "Photo contest of an event: the organizers can pick the finalists, a reminder, a tie or a cancelled contest (organizers), and the winner (everyone)"
           }
         },
         "required": [
@@ -742,7 +746,8 @@
           "friendRequest",
           "dailyMoment",
           "momentPosted",
-          "originalsExpiring"
+          "originalsExpiring",
+          "contestResult"
         ]
       },
       "PrivacySettings": {
@@ -806,6 +811,10 @@
               "originalsExpiring": {
                 "type": "boolean",
                 "description": "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)"
+              },
+              "contestResult": {
+                "type": "boolean",
+                "description": "Photo contest of an event: the organizers can pick the finalists, a reminder, a tie or a cancelled contest (organizers), and the winner (everyone)"
               }
             },
             "additionalProperties": false
@@ -2276,6 +2285,17 @@
         ]
       },
       "ContestVoteBody": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mediaId"
+        ]
+      },
+      "ContestWinnerBody": {
         "type": "object",
         "properties": {
           "mediaId": {
@@ -7779,6 +7799,115 @@
           },
           "429": {
             "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest/winner": {
+      "post": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Break a tie: pick the winner (organizer)",
+        "description": "Only while `tied` (409 otherwise, also once closed) and only one of `tiedMediaIds` (400). Closes the contest and announces the winner by push, like the cron does at the close.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContestWinnerBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Closed with that winner"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
             "content": {
               "application/json": {
                 "schema": {

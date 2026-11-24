@@ -63,8 +63,8 @@ type Scenario = {
   /** Daily moment mode sent when creating the trip (default band 9:00-23:00). */
   momentMode?: "off" | "photo" | "photo_selfie";
   shots?: () => Shot[];
-  /** Makes it an event (`type: "event"`): its groups, and the group indexes each member (aligned with `members`, then Juani if a member) joins; the admin joins none. */
-  event?: { groups: string[]; groupsOf: number[][] };
+  /** Makes it an event (`type: "event"`): its groups, and the group indexes each member (aligned with `members`, then Juani if a member) joins; the admin joins none. `contest` turns the photo contest on. */
+  event?: { groups: string[]; groupsOf: number[][]; contest?: boolean };
   /** Extra steps after uploading (`ids` is aligned with `shots`). */
   after?: (ctx: Ctx, shots: Shot[], ids: string[]) => Promise<void>;
 };
@@ -258,11 +258,12 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     name: "Casamiento de prueba",
-    tests: "EVENT (unrevealed, ongoing): Juani is the organizer (admin, no groups). Groups Familia (Cami, Tomi), Trabajo (Fede, Lu) and Amigos (Sofi, Bruno, Tomi: Tomi is in two groups). Photos per group; a guest only sees their groups' photos",
+    tests: "EVENT with photo contest (unrevealed, ongoing; reveal 1 day after the end): Juani is the organizer (admin, no groups). Groups Familia (Cami, Tomi), Trabajo (Fede, Lu) and Amigos (Sofi, Bruno, Tomi: Tomi is in two groups). Photos per group; a guest only sees their groups' photos",
     juani: "admin",
     members: ["Cami", "Tomi", "Fede", "Lu", "Sofi", "Bruno"],
-    event: { groups: ["Familia", "Trabajo", "Amigos"], groupsOf: [[0], [0, 2], [1], [1], [2], [2]] },
-    trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 2 * DAY, revealAt: Date.now() + 2 * DAY }),
+    event: { groups: ["Familia", "Trabajo", "Amigos"], groupsOf: [[0], [0, 2], [1], [1], [2], [2]], contest: true },
+    // With the contest on, the reveal comes at least 2 h after the end (the organizers pick the finalists in between).
+    trip: () => ({ startsAt: localMidnight(1), endsAt: Date.now() + 2 * DAY, revealAt: Date.now() + 3 * DAY }),
     shots() {
       const p = new Planner(lastDays(2), 5);
       // member index (Juani is 0): Cami 1 and Tomi 2 in Familia, Fede 3 and Lu 4 in Trabajo, Sofi 5, Bruno 6 and Tomi in Amigos.
@@ -344,11 +345,12 @@ export async function runScenario(s: Scenario): Promise<Row> {
     timezone: TZ,
     startsAt: now + HOUR,
     endsAt: now + 2 * HOUR,
-    revealAt: now + 3 * HOUR,
+    // An event with the contest needs the reveal at least 2 h after the end (the real dates are set right after).
+    revealAt: now + 4 * HOUR,
     dailyPhotoLimit: dates.dailyPhotoLimit,
     dailyVideoLimit: dates.dailyVideoLimit,
     ...(s.momentMode ? { momentMode: s.momentMode } : {}),
-    ...(s.event ? { type: "event", groups: s.event.groups, photoLimitMode: "total", totalPhotoLimit: 20, dailyPhotoLimit: undefined, dailyVideoLimit: undefined } : {}),
+    ...(s.event ? { type: "event", groups: s.event.groups, photoLimitMode: "total", totalPhotoLimit: 20, dailyPhotoLimit: undefined, dailyVideoLimit: undefined, ...(s.event.contest ? { contestEnabled: true } : {}) } : {}),
   };
   const juani = s.juani ?? "member";
   const names = juani === "admin" ? [JUANI, ...s.members] : juani === "absent" ? s.members : [...s.members, JUANI];

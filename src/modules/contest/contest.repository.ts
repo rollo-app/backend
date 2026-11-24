@@ -1,3 +1,5 @@
+import type { TripRow } from "../../types";
+import { CONTEST_TIE_REMINDER_MS } from "./contest.rules";
 import { hiddenMediaSql } from "../reports/reports.repository";
 
 /** Drops every finalist the organizers chose for the event (the contest was turned off). */
@@ -145,14 +147,126 @@ export function findWinner(db: D1Database, mediaId: string): Promise<WinnerRow |
     .first<WinnerRow>();
 }
 
-/** Casts or changes the viewer's vote (one row per user and event). */
+/** Epoch ms when the voting of trip `t` ends (same formula as `closesAt` in contest.rules). */
+const CLOSES_AT_SQL = (t: string) => `(COALESCE(${t}.revealed_at, ${t}.reveal_at) + ${t}.contest_voting_hours * 3600000)`;
+
+/**
+ * Casts or changes the viewer's vote (one row per user and event). Conditional: it writes nothing (`changes` = 0) once
+ * the contest was closed or cancelled or the voting window ended, so a vote racing the close cannot change the result.
+ */
 export function upsertVote(db: D1Database, tripId: string, userId: string, mediaId: string, now: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO contest_votes (trip_id, user_id, media_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)
+      `INSERT INTO contest_votes (trip_id, user_id, media_id, created_at, updated_at)
+       SELECT ?1, ?2, ?3, ?4, ?4
+       WHERE EXISTS (SELECT 1 FROM trips t WHERE t.id = ?1 AND t.contest_closed_at IS NULL AND t.contest_cancelled_at IS NULL
+                     AND ${CLOSES_AT_SQL("t")} > ?4)
        ON CONFLICT (trip_id, user_id) DO UPDATE SET media_id = excluded.media_id, updated_at = excluded.updated_at`,
     )
     .bind(tripId, userId, mediaId, now);
+}
+
+// ---------- Cron and close ----------
+
+const CRON_BATCH = 50;
+const CONTEST_ON = "t.type = 'event' AND t.contest_enabled = 1";
+
+/** Countable finalists of trip `t` (same rule as `countableFinalists`), as a SQL subquery. */
+const COUNTABLE_COUNT_SQL = `(SELECT COUNT(*) FROM contest_finalists f
+  JOIN media m ON m.id = f.media_id JOIN members a ON a.id = m.member_id
+  WHERE f.trip_id = t.id AND m.status = 'uploaded' AND m.deleted_at IS NULL AND m.archived_at IS NULL
+    AND a.removed_at IS NULL AND a.left_at IS NULL)`;
+
+export type ContestTrip = { id: string; name: string };
+
+/** Ended, unrevealed contests whose organizers were not told yet that they can pick the finalists. */
+export async function listToAnnounceSelection(db: D1Database, now: number): Promise<ContestTrip[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.id, t.name FROM trips t
+       WHERE ${CONTEST_ON} AND t.contest_select_notified_at IS NULL AND t.ends_at <= ?1 AND t.revealed_at IS NULL AND t.reveal_at > ?1
+       LIMIT ${CRON_BATCH}`,
+    )
+    .bind(now)
+    .all<ContestTrip>();
+  return results;
+}
+
+export function claimSelectionNotice(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET contest_select_notified_at = ? WHERE id = ? AND contest_select_notified_at IS NULL").bind(now, tripId);
+}
+
+/** Unrevealed contests within `leadMs` of the reveal, past the end, with fewer than 2 countable finalists and no reminder yet. */
+export async function listToRemind(db: D1Database, now: number, leadMs: number): Promise<ContestTrip[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.id, t.name FROM trips t
+       WHERE ${CONTEST_ON} AND t.contest_reminder_notified_at IS NULL AND t.ends_at <= ?1 AND t.revealed_at IS NULL
+         AND t.reveal_at > ?1 AND t.reveal_at - ?2 <= ?1 AND ${COUNTABLE_COUNT_SQL} < 2
+       LIMIT ${CRON_BATCH}`,
+    )
+    .bind(now, leadMs)
+    .all<ContestTrip>();
+  return results;
+}
+
+export function claimReminder(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db.prepare("UPDATE trips SET contest_reminder_notified_at = ? WHERE id = ? AND contest_reminder_notified_at IS NULL").bind(now, tripId);
+}
+
+/**
+ * Contests past their voting window, neither closed nor cancelled. A tied one already notified comes back only once its
+ * daily reminder is due, so stuck ties do not crowd out the rest of the batch.
+ */
+export async function listToClose(db: D1Database, now: number) {
+  const { results } = await db
+    .prepare(
+      `SELECT t.* FROM trips t
+       WHERE ${CONTEST_ON} AND t.contest_closed_at IS NULL AND t.contest_cancelled_at IS NULL AND ${CLOSES_AT_SQL("t")} <= ?1
+         AND (t.contest_tie_notified_at IS NULL OR t.contest_tie_notified_at <= ?1 - ${CONTEST_TIE_REMINDER_MS})
+       LIMIT ${CRON_BATCH}`,
+    )
+    .bind(now)
+    .all<TripRow>();
+  return results;
+}
+
+/** Closes the contest with its winner; changes a row only for the caller that closed it. */
+export function claimClose(db: D1Database, tripId: string, mediaId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      "UPDATE trips SET contest_closed_at = ?, contest_winner_media_id = ? WHERE id = ? AND contest_closed_at IS NULL AND contest_cancelled_at IS NULL",
+    )
+    .bind(now, mediaId, tripId);
+}
+
+/** Cancels the contest; changes a row only for the caller that cancelled it. */
+export function claimCancel(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare("UPDATE trips SET contest_cancelled_at = ? WHERE id = ? AND contest_cancelled_at IS NULL AND contest_closed_at IS NULL")
+    .bind(now, tripId);
+}
+
+/** Marks the tie as notified now, at most once every 24 h; changes a row only for the caller that may notify. */
+export function claimTieNotice(db: D1Database, tripId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE trips SET contest_tie_notified_at = ?1
+       WHERE id = ?2 AND contest_closed_at IS NULL AND contest_cancelled_at IS NULL
+         AND (contest_tie_notified_at IS NULL OR contest_tie_notified_at <= ?1 - ${CONTEST_TIE_REMINDER_MS})`,
+    )
+    .bind(now, tripId);
+}
+
+/** User ids of the event's active members; only the organizers (active admins) with `organizers`. */
+export async function activeMemberUserIds(db: D1Database, tripId: string, organizers = false): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT user_id FROM members WHERE trip_id = ? AND removed_at IS NULL AND left_at IS NULL ${organizers ? "AND role = 'admin'" : ""}`,
+    )
+    .bind(tripId)
+    .all<{ user_id: string }>();
+  return results.map((r) => r.user_id);
 }
 
 export function deleteVote(db: D1Database, tripId: string, userId: string): D1PreparedStatement {

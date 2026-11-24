@@ -9,7 +9,8 @@ import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/u
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import { deleteUntakenMomentsAfter, deleteUntakenMomentsOn } from "../moments/moments.repository";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
-import { CONTEST_GAP_MESSAGE, hasContestGap } from "../contest/contest.rules";
+import { CONTEST_GAP_MESSAGE, CONTEST_REVEAL_MESSAGE, hasContestGap } from "../contest/contest.rules";
+import { countableFinalistCount, settleContestAtReveal } from "../contest/contest.service";
 import { deleteFinalists } from "../contest/contest.repository";
 import { deleteFeaturedOfTrip } from "../featured/featured.repository";
 import * as repo from "./trips.repository";
@@ -309,12 +310,23 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
 /** Reveals now. Returns the revealed trip and, the first time, the "revealed" push to send after the response. */
 export async function revealTrip(env: Env, trip: TripRow, actorId: string): Promise<{ trip: TripRow; notify: AfterResponse }> {
   const now = Date.now();
+  // With the contest on, revealing opens the voting: not before the end, and only with at least 2 finalists that count.
+  // An already revealed event (automatically, by reveal_at) is not checked again.
+  if (trip.type === "event" && trip.contest_enabled === 1 && !isRevealed(trip, now)) {
+    if (now < trip.ends_at || (await countableFinalistCount(env.DB, trip.id)) < 2) throw conflict(CONTEST_REVEAL_MESSAGE);
+  }
   // Claim the notice and write revealed_at in one batch (a transaction), claim first: a cron run can never see
   // the trip revealed but unclaimed and notify the admin about their own reveal. Sent after the response.
   const [claim] = await env.DB.batch([repo.claimRevealedNotice(env.DB, trip.id, now), repo.markRevealed(env.DB, trip.id, now)]);
+  if (claim!.meta.changes === 0) return { trip: { ...trip, revealed_at: trip.revealed_at ?? now }, notify: null };
+  // Whoever claims the reveal decides whether the contest opens (here, normally yes) or is cancelled.
+  const contest = await settleContestAtReveal(env, trip, now);
   return {
     trip: { ...trip, revealed_at: trip.revealed_at ?? now },
-    notify: claim!.meta.changes > 0 ? () => sendTripRevealed(env, trip, actorId) : null,
+    notify: async () => {
+      await contest.notify?.();
+      await sendTripRevealed(env, trip, actorId, contest.open);
+    },
   };
 }
 

@@ -70,6 +70,7 @@ export const NotificationSettingsSchema = z
     dailyMoment: z.boolean().openapi({ description: "It is your moment of the day in a rollo with the daily moment on" }),
     momentPosted: z.boolean().openapi({ description: "Someone in a rollo you are in uploaded their daily moment" }),
     originalsExpiring: z.boolean().openapi({ description: "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)" }),
+    contestResult: z.boolean().openapi({ description: "Photo contest of an event: the organizers can pick the finalists, a reminder, a tie or a cancelled contest (organizers), and the winner (everyone)" }),
   })
   .openapi("NotificationSettings");
 

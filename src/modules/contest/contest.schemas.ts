@@ -5,6 +5,8 @@ export const FinalistParams = z.object({ tripId: pathParam("tripId"), mediaId: p
 
 export const VoteBody = z.object({ mediaId: pathParam("mediaId") }).openapi("ContestVoteBody");
 
+export const WinnerBody = z.object({ mediaId: pathParam("mediaId") }).openapi("ContestWinnerBody");
+
 export const FinalistFileParams = z.object({
   tripId: pathParam("tripId"),
   mediaId: pathParam("mediaId"),
