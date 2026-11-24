@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { flushPendingPushes } from "../src/lib/push";
+import { CRON_BATCH } from "../src/modules/contest/contest.repository";
 import { castVote, runContestNotices, settleContestAtReveal } from "../src/modules/contest/contest.service";
 import type { TripRow } from "../src/types";
 import { HOUR, addMediaDirect, api, createTrip, grantEvents, mockExpo, putFiles, registerToken, signUp } from "./helpers";
@@ -293,6 +294,19 @@ describe("contest cron: close", () => {
     expect((await tripRow(f.tripId)).contest_winner_media_id).toBe(f.ids[1]);
     expect(received(expo).filter((l) => l.includes("Ganó la foto de Gb"))).toHaveLength(3);
     expect(received(expo).some((l) => l.startsWith("Gb: ¡Tu foto ganó"))).toBe(true);
+  });
+
+  it("a full batch of notified ties does not starve a contest that is ready to close", async () => {
+    const f = await fixture({ stage: "over", finalists: 2 });
+    await addVote(f.tripId, f.gc.userId, f.ids[1]!);
+    const cols = (await env.DB.prepare("PRAGMA table_info(trips)").all<{ name: string }>()).results.map((c) => c.name);
+    const pick = cols.map((c) => (c === "id" ? "'stuck-' || ?1" : c === "join_code" ? "'S' || ?1" : c === "contest_tie_notified_at" ? "1" : c)).join(", ");
+    for (let i = 0; i < CRON_BATCH; i++) {
+      await env.DB.prepare(`INSERT INTO trips (${cols.join(", ")}) SELECT ${pick} FROM trips WHERE id = ?2`).bind(String(i).padStart(3, "0"), f.tripId).run();
+    }
+    mockExpo();
+    await runContestNotices(env, f.now);
+    expect((await tripRow(f.tripId)).contest_winner_media_id).toBe(f.ids[1]);
   });
 
   it("votes from removed or departed members do not count", async () => {

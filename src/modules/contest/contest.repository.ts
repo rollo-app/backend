@@ -172,7 +172,7 @@ export function upsertVote(db: D1Database, tripId: string, userId: string, media
 
 // ---------- Cron and close ----------
 
-const CRON_BATCH = 50;
+export const CRON_BATCH = 50;
 const CONTEST_ON = "t.type = 'event' AND t.contest_enabled = 1";
 
 /** Countable finalists of trip `t` (same rule as `countableFinalists`), as a SQL subquery. */
@@ -227,6 +227,7 @@ export async function listToClose(db: D1Database, now: number) {
     .prepare(
       `SELECT t.* FROM trips t
        WHERE ${CONTEST_ON} AND t.contest_closed_at IS NULL AND t.contest_cancelled_at IS NULL AND ${CLOSES_AT_SQL("t")} <= ?1
+       ORDER BY t.contest_tie_notified_at IS NOT NULL, t.contest_tie_notified_at ASC, t.id
        LIMIT ${CRON_BATCH}`,
     )
     .bind(now)
