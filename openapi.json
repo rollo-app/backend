@@ -263,6 +263,13 @@
             ],
             "description": "Path of the cover (prefix the API base URL), null if none"
           },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cover text set by the organizers; null if none"
+          },
           "revealed": {
             "type": "boolean"
           },
@@ -296,6 +303,7 @@
         "required": [
           "name",
           "coverUrl",
+          "description",
           "revealed",
           "memberCount",
           "groups"
@@ -1487,6 +1495,13 @@
               ]
             },
             "description": "Groups of an event, in order; [] for a regular trip"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cover text (up to 300 characters, 6 lines); null if none"
           }
         },
         "required": [
@@ -1511,7 +1526,8 @@
           "createdBy",
           "type",
           "coverUrl",
-          "groups"
+          "groups",
+          "description"
         ]
       },
       "Member": {
@@ -1668,6 +1684,10 @@
             "default": "trip",
             "description": "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment"
           },
+          "description": {
+            "type": "string",
+            "description": "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events"
+          },
           "groups": {
             "type": "array",
             "items": {
@@ -1804,6 +1824,10 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 60
+          },
+          "description": {
+            "type": "string",
+            "description": "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events Editable at any stage, even after the reveal"
           },
           "startsAt": {
             "type": "integer",
@@ -3398,7 +3422,7 @@
           "Events"
         ],
         "summary": "Preview an event by its invite code",
-        "description": "No token. The name, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. 404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
+        "description": "No token. The name, description, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. 404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
         "parameters": [
           {
             "schema": {
@@ -5682,7 +5706,7 @@
           "Trips"
         ],
         "summary": "Edit the trip (admin)",
-        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
+        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` and `description` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
         "security": [
           {
             "bearerAuth": []

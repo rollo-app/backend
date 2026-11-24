@@ -92,6 +92,18 @@ export type TripRow = {
   cover_key: string | null;
   /** Cover being uploaded, not yet confirmed. */
   pending_cover_key: string | null;
+  /** Event cover text (up to 300 characters, 6 lines); null if none. Any trip type may store one. */
+  description: string | null;
+  /** Photo contest (events only): 0/1, voting window in hours and the lifecycle timestamps the cron claims. */
+  contest_enabled: number;
+  contest_voting_hours: number;
+  contest_select_notified_at: number | null;
+  contest_reminder_notified_at: number | null;
+  contest_cancelled_at: number | null;
+  contest_tie_notified_at: number | null;
+  contest_closed_at: number | null;
+  /** Winning photo; no FK, so deleting the photo does not fail. */
+  contest_winner_media_id: string | null;
 };
 
 /** Global backoffice role (distinct from the per-rollo `Role`). */

@@ -14,6 +14,7 @@ export async function previewEvent(db: D1Database, code: string) {
   return {
     name: trip.name,
     coverUrl: coverUrl(trip),
+    description: trip.description,
     revealed: isRevealed(trip),
     memberCount: count >= PUBLIC_MEMBER_COUNT_MIN ? count : null,
     groups,

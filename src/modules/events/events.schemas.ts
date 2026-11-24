@@ -8,6 +8,7 @@ export const EventPreviewSchema = z
   .object({
     name: z.string(),
     coverUrl: z.string().nullable().openapi({ description: "Path of the cover (prefix the API base URL), null if none" }),
+    description: z.string().nullable().openapi({ description: "Cover text set by the organizers; null if none" }),
     revealed: z.boolean(),
     memberCount: z.number().int().nullable().openapi({
       description:

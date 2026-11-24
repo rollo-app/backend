@@ -74,6 +74,7 @@ export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId:
     type: trip.type,
     coverUrl: coverUrl(trip),
     groups,
+    description: trip.description,
   };
 }
 

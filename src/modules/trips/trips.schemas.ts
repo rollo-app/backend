@@ -8,6 +8,9 @@ export const MAX_TOTAL_PHOTOS = 200;
 export const MAX_TRIP_DURATION_MS = 31 * 86_400_000;
 export const TRIP_TOO_LONG = "El rollo puede durar hasta 31 días";
 
+const DESCRIPTION_DOC =
+  "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events";
+
 export const CreateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).openapi({ example: "Viaje al sur" }),
@@ -37,6 +40,7 @@ export const CreateTripSchema = z
     type: z.enum(["trip", "event"]).default("trip").openapi({
       description: "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment",
     }),
+    description: z.string().optional().openapi({ description: DESCRIPTION_DOC }),
     groups: z.array(z.string().trim().min(1).max(40)).max(30).optional().openapi({
       description: "Event only (required, 1 to 30 distinct names of 1 to 40 characters); rejected on a regular trip",
     }),
@@ -84,6 +88,7 @@ export const MyGroupsSchema = z.object({ groupIds: z.array(z.string().uuid()) })
 export const UpdateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
+    description: z.string().optional().openapi({ description: `${DESCRIPTION_DOC} Editable at any stage, even after the reveal` }),
     startsAt: z.number().int().positive().optional().openapi({ description: "Only before the rollo starts; never in the past" }),
     endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt, at most 31 days after it and <= the resulting revealAt. Not once the rollo ended" }),
     revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),

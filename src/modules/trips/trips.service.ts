@@ -4,6 +4,7 @@ import { CREATOR_ONLY, isCreator } from "../../lib/creator";
 import { blockedIdsFor } from "../blocks/blocks.service";
 import { sendTripRevealed } from "./notices.service";
 import { assertNotDegraded } from "../../lib/degraded";
+import { normalizeDescription } from "../../lib/description";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import { deleteUntakenMomentsAfter, deleteUntakenMomentsOn } from "../moments/moments.repository";
@@ -64,6 +65,7 @@ export async function createTrip(
   const now = Date.now();
   const limited = !user.unlimited_rollos;
   const isEvent = body.type === "event";
+  const description = body.description === undefined ? null : normalizeDescription(body.description);
   if (isEvent && !user.can_create_events) {
     throw forbidden("Por ahora crear eventos está habilitado solo para algunas cuentas. Escribinos a support@rolloproject.com.");
   }
@@ -91,6 +93,7 @@ export async function createTrip(
     repo.insertTrip(db, {
       id: tripId,
       name: body.name,
+      description,
       join_code: joinCode,
       timezone: body.timezone,
       starts_at: body.startsAt,
@@ -210,6 +213,7 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
   const totalPhotoLimit = photoLimitMode === "total" ? (b.totalPhotoLimit ?? trip.total_photo_limit) : null;
   const next = {
     name: b.name ?? trip.name,
+    description: b.description === undefined ? trip.description : normalizeDescription(b.description),
     starts_at: b.startsAt ?? trip.starts_at,
     ends_at: b.endsAt ?? trip.ends_at,
     reveal_at: b.revealAt ?? trip.reveal_at,
