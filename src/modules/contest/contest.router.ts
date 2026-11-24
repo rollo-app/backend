@@ -1,11 +1,10 @@
-import { createRoute } from "@hono/zod-openapi";
+import { createRoute, z } from "@hono/zod-openapi";
 import { requireAdmin, requireTripMember, requireUser } from "../../lib/auth";
 import { bearerAuth, createApp, errors, json } from "../../lib/openapi";
 import { TripParams } from "../../schemas";
 import * as controller from "./contest.controller";
 import { rateLimit } from "../../lib/rate-limit";
 import { ContestSchema, FinalistFileParams, FinalistParams, VoteBody, WinnerBody } from "./contest.schemas";
-import { z } from "@hono/zod-openapi";
 
 const tags = ["Contest"];
 

@@ -120,12 +120,16 @@ export async function getMyVote(db: D1Database, tripId: string, userId: string):
   return row?.media_id ?? null;
 }
 
-/** Votes per media for the given ids (media with none are absent). */
+/** Votes per media for the given ids (media with none are absent). Only voters still active in the trip count. */
 export async function voteCounts(db: D1Database, tripId: string, mediaIds: string[]): Promise<Map<string, number>> {
   if (mediaIds.length === 0) return new Map();
   const marks = mediaIds.map(() => "?").join(",");
   const { results } = await db
-    .prepare(`SELECT media_id, COUNT(*) AS n FROM contest_votes WHERE trip_id = ? AND media_id IN (${marks}) GROUP BY media_id`)
+    .prepare(
+      `SELECT v.media_id, COUNT(*) AS n FROM contest_votes v
+       JOIN members vm ON vm.trip_id = v.trip_id AND vm.user_id = v.user_id AND vm.removed_at IS NULL AND vm.left_at IS NULL
+       WHERE v.trip_id = ? AND v.media_id IN (${marks}) GROUP BY v.media_id`,
+    )
     .bind(tripId, ...mediaIds)
     .all<{ media_id: string; n: number }>();
   return new Map(results.map((r) => [r.media_id, r.n]));
@@ -215,15 +219,14 @@ export function claimReminder(db: D1Database, tripId: string, now: number): D1Pr
 }
 
 /**
- * Contests past their voting window, neither closed nor cancelled. A tied one already notified comes back only once its
- * daily reminder is due, so stuck ties do not crowd out the rest of the batch.
+ * Contests past their voting window, neither closed nor cancelled. Ties are not filtered: `claimTieNotice` rate-limits
+ * the tie push, and a tie that shrank to one leader must close on the next pass.
  */
 export async function listToClose(db: D1Database, now: number) {
   const { results } = await db
     .prepare(
       `SELECT t.* FROM trips t
        WHERE ${CONTEST_ON} AND t.contest_closed_at IS NULL AND t.contest_cancelled_at IS NULL AND ${CLOSES_AT_SQL("t")} <= ?1
-         AND (t.contest_tie_notified_at IS NULL OR t.contest_tie_notified_at <= ?1 - ${CONTEST_TIE_REMINDER_MS})
        LIMIT ${CRON_BATCH}`,
     )
     .bind(now)
@@ -243,7 +246,7 @@ export function claimClose(db: D1Database, tripId: string, mediaId: string, now:
 /** Cancels the contest; changes a row only for the caller that cancelled it. */
 export function claimCancel(db: D1Database, tripId: string, now: number): D1PreparedStatement {
   return db
-    .prepare("UPDATE trips SET contest_cancelled_at = ? WHERE id = ? AND contest_cancelled_at IS NULL AND contest_closed_at IS NULL")
+    .prepare("UPDATE trips SET contest_cancelled_at = ? WHERE id = ? AND contest_enabled = 1 AND contest_cancelled_at IS NULL AND contest_closed_at IS NULL")
     .bind(now, tripId);
 }
 

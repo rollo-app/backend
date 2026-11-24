@@ -168,7 +168,7 @@ describe("contest finalist files", () => {
     expect((await file(f, f.gb.token, f.ids[0]!)).status).toBe(200);
   });
 
-  it("404 for non-members and when the contest is cancelled", async () => {
+  it("403 for non-members and 404 when the contest is cancelled", async () => {
     const f = await fixture();
     const stranger = await signUp(undefined, "Str");
     expect((await file(f, stranger.token, f.ids[0]!)).status).toBe(403);

@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { flushPendingPushes } from "../src/lib/push";
-import { castVote, runContestNotices } from "../src/modules/contest/contest.service";
+import { castVote, runContestNotices, settleContestAtReveal } from "../src/modules/contest/contest.service";
 import type { TripRow } from "../src/types";
 import { HOUR, addMediaDirect, api, createTrip, grantEvents, mockExpo, putFiles, registerToken, signUp } from "./helpers";
 
@@ -159,6 +159,17 @@ describe("contest cron: before the reveal", () => {
   });
 });
 
+describe("settleContestAtReveal", () => {
+  it("does not push a cancel for a contest that was just disabled", async () => {
+    const f = await fixture({ stage: "selecting", finalists: 1 });
+    const stale = await tripRow(f.tripId);
+    await setTrip(f.tripId, "contest_enabled = 0");
+    const out = await settleContestAtReveal(env, stale, f.now);
+    expect(out.notify).toBeNull();
+    expect((await tripRow(f.tripId)).contest_cancelled_at).toBeNull();
+  });
+});
+
 describe("contest cron: automatic reveal", () => {
   it("with fewer than 2 finalists the contest is cancelled and the organizers are told", async () => {
     const f = await fixture({ stage: "selecting", finalists: 1 });
@@ -270,6 +281,30 @@ describe("contest cron: close", () => {
     expect(expo.sent).toHaveLength(1);
     await runContestNotices(env, f.now + 24 * HOUR);
     expect(received(expo)).toEqual([line, line]);
+  });
+
+  it("a tie that shrinks to one leader closes on the next pass, without waiting 24 hours", async () => {
+    const f = await fixture({ stage: "over", finalists: 2 });
+    const expo = mockExpo();
+    await runContestNotices(env, f.now);
+    expect(expo.sent).toHaveLength(1);
+    await env.DB.prepare("UPDATE media SET archived_at = 1 WHERE id = ?").bind(f.ids[0]).run();
+    await runContestNotices(env, f.now + 5 * 60_000);
+    expect((await tripRow(f.tripId)).contest_winner_media_id).toBe(f.ids[1]);
+    expect(received(expo).filter((l) => l.includes("Ganó la foto de Gb"))).toHaveLength(3);
+    expect(received(expo).some((l) => l.startsWith("Gb: ¡Tu foto ganó"))).toBe(true);
+  });
+
+  it("votes from removed or departed members do not count", async () => {
+    const f = await fixture({ stage: "over", finalists: 2 });
+    await addVote(f.tripId, f.gc.userId, f.ids[0]!);
+    await addVote(f.tripId, f.org.userId, f.ids[1]!);
+    await env.DB.prepare("UPDATE members SET removed_at = 1 WHERE id = ?").bind(f.gc.memberId).run();
+    mockExpo();
+    await runContestNotices(env, f.now);
+    expect((await tripRow(f.tripId)).contest_winner_media_id).toBe(f.ids[1]);
+    const res = await get(f, f.org.token);
+    expect(res.body.finalists.map((x: { votes: number }) => x.votes)).toEqual([0, 1]);
   });
 
   it("respects the contestResult preference", async () => {

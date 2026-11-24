@@ -2188,7 +2188,8 @@
               "mediaId",
               "author",
               "imageAvailable"
-            ]
+            ],
+            "description": "The winning photo. Null until closed, and also null in `closed` when the author's account was deleted."
           },
           "tiedMediaIds": {
             "type": "array",
@@ -2288,7 +2289,8 @@
         "type": "object",
         "properties": {
           "mediaId": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -2299,7 +2301,8 @@
         "type": "object",
         "properties": {
           "mediaId": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [

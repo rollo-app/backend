@@ -3,9 +3,9 @@ import { pathParam } from "../../schemas";
 
 export const FinalistParams = z.object({ tripId: pathParam("tripId"), mediaId: pathParam("mediaId") });
 
-export const VoteBody = z.object({ mediaId: pathParam("mediaId") }).openapi("ContestVoteBody");
+export const VoteBody = z.object({ mediaId: z.string().min(1) }).openapi("ContestVoteBody");
 
-export const WinnerBody = z.object({ mediaId: pathParam("mediaId") }).openapi("ContestWinnerBody");
+export const WinnerBody = z.object({ mediaId: z.string().min(1) }).openapi("ContestWinnerBody");
 
 export const FinalistFileParams = z.object({
   tripId: pathParam("tripId"),
@@ -37,7 +37,10 @@ export const ContestSchema = z
     closesAt: z.number().int().nullable().openapi({ description: "When voting ends (epoch ms); null if cancelled." }),
     finalists: z.array(FinalistSchema),
     myVote: z.string().nullable(),
-    winner: z.object({ mediaId: z.string(), author: AuthorSchema, imageAvailable: z.boolean() }).nullable(),
+    winner: z
+      .object({ mediaId: z.string(), author: AuthorSchema, imageAvailable: z.boolean() })
+      .nullable()
+      .openapi({ description: "The winning photo. Null until closed, and also null in `closed` when the author's account was deleted." }),
     tiedMediaIds: z.array(z.string()).openapi({ description: "Only for organizers while `tied`: the finalists sharing the top vote count. Empty otherwise." }),
   })
   .openapi("Contest");
