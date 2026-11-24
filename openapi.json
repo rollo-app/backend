@@ -263,6 +263,13 @@
             ],
             "description": "Path of the cover (prefix the API base URL), null if none"
           },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cover text set by the organizers; null if none"
+          },
           "revealed": {
             "type": "boolean"
           },
@@ -296,6 +303,7 @@
         "required": [
           "name",
           "coverUrl",
+          "description",
           "revealed",
           "memberCount",
           "groups"
@@ -721,6 +729,10 @@
           "originalsExpiring": {
             "type": "boolean",
             "description": "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)"
+          },
+          "contestResult": {
+            "type": "boolean",
+            "description": "Photo contest of an event: the organizers can pick the finalists, a reminder, a tie or a cancelled contest (organizers), and the winner (everyone)"
           }
         },
         "required": [
@@ -734,7 +746,8 @@
           "friendRequest",
           "dailyMoment",
           "momentPosted",
-          "originalsExpiring"
+          "originalsExpiring",
+          "contestResult"
         ]
       },
       "PrivacySettings": {
@@ -798,6 +811,10 @@
               "originalsExpiring": {
                 "type": "boolean",
                 "description": "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)"
+              },
+              "contestResult": {
+                "type": "boolean",
+                "description": "Photo contest of an event: the organizers can pick the finalists, a reminder, a tie or a cancelled contest (organizers), and the winner (everyone)"
               }
             },
             "additionalProperties": false
@@ -1487,6 +1504,32 @@
               ]
             },
             "description": "Groups of an event, in order; [] for a regular trip"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cover text (up to 300 characters, 6 lines); null if none"
+          },
+          "contest": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "votingHours": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "enabled",
+              "votingHours"
+            ],
+            "description": "Photo contest settings; null on a regular trip"
           }
         },
         "required": [
@@ -1511,7 +1554,9 @@
           "createdBy",
           "type",
           "coverUrl",
-          "groups"
+          "groups",
+          "description",
+          "contest"
         ]
       },
       "Member": {
@@ -1668,6 +1713,22 @@
             "default": "trip",
             "description": "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment"
           },
+          "description": {
+            "type": "string",
+            "description": "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events"
+          },
+          "contestEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Photo contest (events only; true on a regular trip is a 400). With it on, revealAt must be at least 2 hours after endsAt (409). Editable until the reveal"
+          },
+          "contestVotingHours": {
+            "type": "integer",
+            "minimum": 24,
+            "maximum": 336,
+            "default": 72,
+            "description": "How long the finalists are voted on after the reveal, in hours (24 to 336, default 72). Editable until the reveal"
+          },
           "groups": {
             "type": "array",
             "items": {
@@ -1804,6 +1865,20 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 60
+          },
+          "description": {
+            "type": "string",
+            "description": "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events Editable at any stage, even after the reveal"
+          },
+          "contestEnabled": {
+            "type": "boolean",
+            "description": "Photo contest (events only; true on a regular trip is a 400). With it on, revealAt must be at least 2 hours after endsAt (409). Editable until the reveal. Turning it off deletes the chosen finalists; 409 once revealed"
+          },
+          "contestVotingHours": {
+            "type": "integer",
+            "minimum": 24,
+            "maximum": 336,
+            "description": "How long the finalists are voted on after the reveal, in hours (24 to 336, default 72). Editable until the reveal; 409 once revealed"
           },
           "startsAt": {
             "type": "integer",
@@ -2054,6 +2129,191 @@
         },
         "required": [
           "coverUrl"
+        ]
+      },
+      "Contest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "selecting",
+              "voting",
+              "closing",
+              "tied",
+              "closed",
+              "cancelled"
+            ]
+          },
+          "votingHours": {
+            "type": "integer"
+          },
+          "closesAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "When voting ends (epoch ms); null if cancelled."
+          },
+          "finalists": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContestFinalist"
+            }
+          },
+          "myVote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "winner": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "mediaId": {
+                "type": "string"
+              },
+              "author": {
+                "$ref": "#/components/schemas/ContestAuthor"
+              },
+              "imageAvailable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "mediaId",
+              "author",
+              "imageAvailable"
+            ],
+            "description": "The winning photo. Null until closed, and also null in `closed` when the author's account was deleted."
+          },
+          "tiedMediaIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only for organizers while `tied`: the finalists sharing the top vote count. Empty otherwise."
+          }
+        },
+        "required": [
+          "status",
+          "votingHours",
+          "closesAt",
+          "finalists",
+          "myVote",
+          "winner",
+          "tiedMediaIds"
+        ]
+      },
+      "ContestFinalist": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string"
+          },
+          "author": {
+            "$ref": "#/components/schemas/ContestAuthor"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "thumbPath": {
+            "type": "string",
+            "description": "Path of the thumbnail, served by the contest's own route."
+          },
+          "displayPath": {
+            "type": "string",
+            "description": "Path of the display image, served by the contest's own route."
+          },
+          "votes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Null until the contest is closed; never shown while voting."
+          }
+        },
+        "required": [
+          "mediaId",
+          "author",
+          "thumbHash",
+          "width",
+          "height",
+          "thumbPath",
+          "displayPath",
+          "votes"
+        ]
+      },
+      "ContestAuthor": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "username",
+          "avatarUrl"
+        ]
+      },
+      "ContestVoteBody": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "mediaId"
+        ]
+      },
+      "ContestWinnerBody": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "mediaId"
         ]
       },
       "MediaRegistered": {
@@ -3398,7 +3658,7 @@
           "Events"
         ],
         "summary": "Preview an event by its invite code",
-        "description": "No token. The name, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. 404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
+        "description": "No token. The name, description, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. 404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
         "parameters": [
           {
             "schema": {
@@ -5682,7 +5942,7 @@
           "Trips"
         ],
         "summary": "Edit the trip (admin)",
-        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
+        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` and `description` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
         "security": [
           {
             "bearerAuth": []
@@ -6962,6 +7222,692 @@
           },
           "409": {
             "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest": {
+      "get": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Photo contest status",
+        "description": "Status (`pending` before the end, `selecting` until the reveal, `voting`, `closing` (voting over, the cron has not closed it), `tied`, `closed`, `cancelled`), `closesAt`, finalists, your vote and the winner. A guest gets no finalists before the reveal. `votes` is null unless `closed`. Finalists that are deleted, archived, from someone who left, or blocked/reported by you are left out. 404 if the event has no contest.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest/finalists/{mediaId}": {
+      "put": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Mark a photo as finalist (organizer)",
+        "description": "Only between the end of the event and the reveal (409 otherwise). The photo must be an uploaded, not deleted photo of the event that is not a moment selfie (400). Idempotent.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Marked"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Unmark a finalist (organizer)",
+        "description": "Same window as marking it (409 otherwise). Idempotent.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unmarked"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest/vote": {
+      "put": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Vote for a finalist",
+        "description": "Only while `voting` (409 \"La votación no está abierta.\" otherwise). One vote per person: voting again changes it. 404 if the photo is not a finalist that counts for you (also with a block with its author or a report); 400 for your own photo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContestVoteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Voted"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Remove your vote",
+        "description": "Idempotent: 204 also if you had not voted. Outside the voting window it changes nothing.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Not voting anymore"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest/finalists/{mediaId}/{variant}": {
+      "get": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Download a finalist's file",
+        "description": "Any active member, from the voting until after the contest closes (organizers also while choosing the finalists), even if they do not share a group with the author. Only for a finalist that counts for you (404 otherwise, also with a block or a report). `display` is the 2048px version (the original for uploads that have none). Streamed from R2 with the same Bearer token; supports `Range`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "thumb",
+                "display"
+              ]
+            },
+            "required": true,
+            "name": "variant",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Part of the file, for a single `Range: bytes=...` request"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "The requested range starts past the end of the file"
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Daily limit or rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest/winner": {
+      "post": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Break a tie: pick the winner (organizer)",
+        "description": "Only while `tied` (409 otherwise, also once closed) and only one of `tiedMediaIds` (400). Closes the contest and announces the winner by push, like the cron does at the close.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContestWinnerBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Closed with that winner"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
             "content": {
               "application/json": {
                 "schema": {

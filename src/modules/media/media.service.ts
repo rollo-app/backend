@@ -14,6 +14,7 @@ import { DEFAULT_FEED_PAGE, MAX_DISPLAY_SIZE, MAX_SIZE, MAX_THUMB_SIZE, type Reg
 import { deleteFeaturedOfMedia } from "../featured/featured.repository";
 import { deleteLikesOfMedia } from "../likes/likes.repository";
 import { softDeleteCommentsOfMedia } from "../comments/comments.repository";
+import { organizerPreviewOpen } from "../contest/contest.rules";
 import { rejectSelfie, resolveMoment } from "../moments/moments.service";
 import { recordMomentPhoto, recordMomentSelfie } from "../moments/moments.repository";
 import * as repo from "./media.repository";
@@ -269,38 +270,42 @@ export async function completeUpload(
 export async function getFeed(
   db: D1Database,
   trip: TripRow,
+  member: MemberRow,
   viewerId: string,
   opts: { cursor?: string; limit?: number; order?: "asc" | "desc" } = {},
-): Promise<{ revealed: boolean; rows: repo.FeedRow[]; nextCursor: string | null }> {
-  const revealed = isRevealed(trip);
+): Promise<{ revealed: boolean; filesVisible: boolean; rows: repo.FeedRow[]; nextCursor: string | null }> {
+  const now = Date.now();
+  const revealed = isRevealed(trip, now);
+  const filesVisible = revealed || organizerPreviewOpen(trip, member, now);
   const order = opts.order ?? "asc";
   // Older app builds send neither param and expect the whole feed.
   if (opts.cursor === undefined && opts.limit === undefined) {
-    return { revealed, rows: await repo.listFeed(db, trip.id, viewerId, null, order), nextCursor: null };
+    return { revealed, filesVisible, rows: await repo.listFeed(db, trip.id, viewerId, null, order), nextCursor: null };
   }
   const limit = opts.limit ?? DEFAULT_FEED_PAGE;
   const after = opts.cursor !== undefined ? decodeCursor(opts.cursor) : null;
   const fetched = await repo.listFeed(db, trip.id, viewerId, { limit: limit + 1, after: after && { takenAt: after.at, id: after.id } }, order);
   const rows = fetched.slice(0, limit);
   const last = rows[rows.length - 1];
-  return { revealed, rows, nextCursor: fetched.length > limit && last ? encodeCursor({ at: last.takenAt, id: last.id }) : null };
+  return { revealed, filesVisible, rows, nextCursor: fetched.length > limit && last ? encodeCursor({ at: last.takenAt, id: last.id }) : null };
 }
 
 /**
  * R2 key of the requested variant (and the one to try if its object is missing, see `resolveVariantKey`). Only after
- * the reveal, except for the two images of a daily moment, which any active member (the route already requires it)
+ * the reveal (or, for an organizer of an event with the contest on, from its end), except for the two images of a daily moment, which any active member (the route already requires it)
  * can fetch as soon as they are uploaded.
  */
 export async function getDownloadKey(
   db: D1Database,
   trip: TripRow,
+  member: MemberRow,
   viewerId: string,
   mediaId: string,
   variant: MediaVariant,
 ): Promise<{ key: string; fallbackKey: string | null }> {
-  const revealed = isRevealed(trip);
+  const filesVisible = isRevealed(trip) || organizerPreviewOpen(trip, member, Date.now());
   const row = await repo.findDownloadKeys(db, mediaId, trip.id, viewerId);
-  if (!revealed && !row?.isMoment) throw forbidden("Todavía no se reveló el rollo");
+  if (!filesVisible && !row?.isMoment) throw forbidden("Todavía no se reveló el rollo");
   if (!row) throw notFound();
   return resolveVariantKey(row, variant);
 }

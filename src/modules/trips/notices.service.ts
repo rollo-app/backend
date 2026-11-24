@@ -1,6 +1,7 @@
 import { sendPush, type PushMessage } from "../../lib/push";
 import { isRevealed } from "../../lib/util";
 import type { Env, TripRow } from "../../types";
+import { settleContestAtReveal } from "../contest/contest.service";
 import * as repo from "./trips.repository";
 
 /**
@@ -15,8 +16,10 @@ export function tripStartedMessage(trip: Pick<TripRow, "id" | "name" | "daily_ph
   return { body: `Arrancó ${trip.name}. Tenés ${n} ${n === 1 ? "foto" : "fotos"} ${when}.`, url: `/roll?trip=${trip.id}` };
 }
 
-export function tripRevealedMessage(trip: Pick<TripRow, "id" | "name">): PushMessage {
-  return { body: `Se reveló ${trip.name}`, url: `/reveal?trip=${trip.id}` };
+/** With `contestOpen` (an event whose reveal opened the photo contest's voting) it also invites to vote. */
+export function tripRevealedMessage(trip: Pick<TripRow, "id" | "name">, contestOpen = false): PushMessage {
+  const body = contestOpen ? `Se reveló ${trip.name}. ¡Ya podés votar la mejor foto!` : `Se reveló ${trip.name}`;
+  return { body, url: `/reveal?trip=${trip.id}` };
 }
 
 /**
@@ -38,8 +41,13 @@ async function claimRevealed(db: D1Database, tripId: string, now: number): Promi
 }
 
 /** Sends "Se reveló" to the active members (except the actor, when the admin revealed it). Call after claimRevealed. */
-export async function sendTripRevealed(env: Pick<Env, "DB">, trip: Pick<TripRow, "id" | "name">, actorId?: string): Promise<void> {
-  await sendPush(env, await repo.listActiveMemberUserIds(env.DB, trip.id), "tripRevealed", tripRevealedMessage(trip), { actorId });
+export async function sendTripRevealed(
+  env: Pick<Env, "DB">,
+  trip: Pick<TripRow, "id" | "name">,
+  actorId?: string,
+  contestOpen = false,
+): Promise<void> {
+  await sendPush(env, await repo.listActiveMemberUserIds(env.DB, trip.id), "tripRevealed", tripRevealedMessage(trip, contestOpen), { actorId });
 }
 
 /** Cron: announces the trips that started or revealed since the last run. Idempotent. */
@@ -55,6 +63,9 @@ export async function runTripNotices(env: Pick<Env, "DB">, now = Date.now()): Pr
 
   for (const trip of await repo.listTripsToAnnounceReveal(db, now)) {
     if (!(await claimRevealed(db, trip.id, now))) continue;
-    await sendTripRevealed(env, trip);
+    // The claim makes this the one place that decides whether an automatic reveal opens the contest or cancels it.
+    const contest = await settleContestAtReveal(env, trip, now);
+    await contest.notify?.();
+    await sendTripRevealed(env, trip, undefined, contest.open);
   }
 }

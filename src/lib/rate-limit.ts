@@ -87,7 +87,7 @@ export const previewMissGuard = createMiddleware<AppEnv>(async (c, next) => {
 const SKIPPED = new Set(["/openapi.json", "/docs"]);
 
 /**
- * File downloads: `GET /trips/{tripId}/media/{mediaId}/{thumb|original}` and `GET /featured/{userId}/{mediaId}/{variant}`.
+ * File downloads: `GET /trips/{tripId}/media/{mediaId}/{thumb|original}` and `GET /featured/{userId}/{mediaId}/{variant}` and `GET /trips/{tripId}/contest/finalists/{mediaId}/{thumb|display}`.
  * They have their own per-user limiter (`RL_FILES`) and a gallery loads hundreds of thumbnails at once, so counting them
  * against `RL_GLOBAL` (120/min per session) cut the scroll short and then blocked the feed and everything else too.
  * With a Bearer token they skip `RL_IP` too: at an event many guests share one IP (venue Wi-Fi, carrier NAT), and browsing a
@@ -96,7 +96,7 @@ const SKIPPED = new Set(["/openapi.json", "/docs"]);
  * only for files, so files never cut the feed and the rest, and invented tokens on these paths are capped per IP again (each
  * costs a session lookup that fails with 401). Every other route keeps `RL_IP`. Without a token they keep `RL_GLOBAL` by IP.
  */
-const FILE_DOWNLOAD = /^\/(?:trips\/[^/]+\/media\/[^/]+\/(?:thumb|original)|featured\/[^/]+\/[^/]+\/[^/]+)$/;
+const FILE_DOWNLOAD = /^\/(?:trips\/[^/]+\/media\/[^/]+\/(?:thumb|original)|featured\/[^/]+\/[^/]+\/[^/]+|trips\/[^/]+\/contest\/finalists\/[^/]+\/(?:thumb|display))$/;
 
 /**
  * `GET /events/{code}` (only GET; other methods keep `RL_GLOBAL`): the public event preview the website loads for every guest who opens the invite link.

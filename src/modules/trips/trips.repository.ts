@@ -12,13 +12,15 @@ export type ActiveMemberRow = {
 export type NewTrip = Pick<
   TripRow,
   "id" | "name" | "join_code" | "timezone" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit" | "created_at"
-  | "moment_mode" | "moment_window_start" | "moment_window_end" | "type" | "max_members"
+  | "moment_mode" | "moment_window_start" | "moment_window_end" | "type" | "max_members" | "description"
+  | "contest_enabled" | "contest_voting_hours"
 > & { started_notified_at: number | null; featuring_disabled: number };
 
 export type TripEdit = Pick<
   TripRow,
-  | "name" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit"
+  | "name" | "description" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit"
   | "featuring_disabled" | "moment_mode" | "moment_window_start" | "moment_window_end" | "moment_from_day"
+  | "contest_enabled" | "contest_voting_hours"
 >;
 
 export async function joinCodeExists(db: D1Database, joinCode: string): Promise<boolean> {
@@ -49,8 +51,9 @@ export function insertTrip(
     .prepare(
       `INSERT INTO trips (id, name, join_code, timezone, starts_at, ends_at, reveal_at,
                           daily_photo_limit, daily_video_limit, photo_limit_mode, total_photo_limit, created_at, started_notified_at, featuring_disabled,
-                          moment_mode, moment_window_start, moment_window_end, created_by_user_id, type, max_members)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                          moment_mode, moment_window_start, moment_window_end, created_by_user_id, type, max_members, description,
+                          contest_enabled, contest_voting_hours)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        WHERE (? = 0 OR (
          (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND revealed_at IS NULL AND reveal_at > ?) < ?
          AND (SELECT COUNT(*) FROM trips WHERE created_by_user_id = ? AND created_at > ?) < ?
@@ -60,7 +63,8 @@ export function insertTrip(
     .bind(
       t.id, t.name, t.join_code, t.timezone, t.starts_at, t.ends_at, t.reveal_at,
       t.daily_photo_limit, t.daily_video_limit, t.photo_limit_mode, t.total_photo_limit, t.created_at, t.started_notified_at, t.featuring_disabled,
-      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId, t.type, t.max_members,
+      t.moment_mode, t.moment_window_start, t.moment_window_end, creator.userId, t.type, t.max_members, t.description,
+      t.contest_enabled, t.contest_voting_hours,
       creator.limited ? 1 : 0,
       creator.userId, t.created_at, creator.unrevealedMax,
       creator.userId, creator.windowSince, creator.windowMax,
@@ -291,13 +295,15 @@ export function countUploadedMedia(db: D1Database, tripId: string, viewerMemberI
 export function updateTrip(db: D1Database, tripId: string, next: TripEdit): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE trips SET name = ?, starts_at = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, photo_limit_mode = ?,
-                        total_photo_limit = ?, featuring_disabled = ?, moment_mode = ?, moment_window_start = ?, moment_window_end = ?, moment_from_day = ?
+      `UPDATE trips SET name = ?, description = ?, starts_at = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, photo_limit_mode = ?,
+                        total_photo_limit = ?, featuring_disabled = ?, moment_mode = ?, moment_window_start = ?, moment_window_end = ?, moment_from_day = ?,
+                        contest_enabled = ?, contest_voting_hours = ?
      WHERE id = ?`,
     )
     .bind(
-      next.name, next.starts_at, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.photo_limit_mode,
-      next.total_photo_limit, next.featuring_disabled, next.moment_mode, next.moment_window_start, next.moment_window_end, next.moment_from_day, tripId,
+      next.name, next.description, next.starts_at, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.photo_limit_mode,
+      next.total_photo_limit, next.featuring_disabled, next.moment_mode, next.moment_window_start, next.moment_window_end, next.moment_from_day,
+      next.contest_enabled, next.contest_voting_hours, tripId,
     );
 }
 

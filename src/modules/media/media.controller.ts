@@ -39,7 +39,7 @@ function filePaths(tripId: string, id: string, hasDisplay: boolean) {
   return { thumb: `${base}/thumb`, original: `${base}/original`, ...(hasDisplay && { display: `${base}/display` }) };
 }
 
-function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPrivate: boolean, viewerId: string) {
+function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, filesVisible: boolean, rolloPrivate: boolean, viewerId: string) {
   return {
     id: r.id,
     type: r.type,
@@ -60,7 +60,7 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
     },
     // The daily moment is the exception to "nothing before the reveal": its two images (main and linked) come with
     // files and dimensions to any active member (the route requires it). Reveal-only fields stay out.
-    ...(!revealed && r.momentDay !== null && {
+    ...(!revealed && (filesVisible || r.momentDay !== null) && {
       width: r.width,
       height: r.height,
       files: filePaths(tripId, r.id, r.hasDisplay),
@@ -109,14 +109,14 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, rolloPri
 export const feed: RouteHandler<typeof feedRoute, AppEnv> = async (c) => {
   const trip = c.get("trip");
   const { cursor, limit, order } = c.req.valid("query");
-  const { revealed, rows, nextCursor } = await service.getFeed(c.env.DB, trip, c.get("user").id, { cursor, limit, order });
-  const items = rows.map((r) => presentFeedItem(r, trip.id, revealed, trip.featuring_disabled !== 0, c.get("user").id));
+  const { revealed, filesVisible, rows, nextCursor } = await service.getFeed(c.env.DB, trip, c.get("member"), c.get("user").id, { cursor, limit, order });
+  const items = rows.map((r) => presentFeedItem(r, trip.id, revealed, filesVisible, trip.featuring_disabled !== 0, c.get("user").id));
   return c.json({ revealed, revealAt: trip.reveal_at, items, nextCursor }, 200);
 };
 
 export const download: RouteHandler<typeof downloadRoute, AppEnv> = async (c) => {
   const { mediaId, variant } = c.req.valid("param");
-  const { key, fallbackKey } = await service.getDownloadKey(c.env.DB, c.get("trip"), c.get("user").id, mediaId, variant);
+  const { key, fallbackKey } = await service.getDownloadKey(c.env.DB, c.get("trip"), c.get("member"), c.get("user").id, mediaId, variant);
   return serveMediaFile(c.env.MEDIA, key, fallbackKey, c.req.raw.headers);
 };
 

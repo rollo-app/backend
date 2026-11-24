@@ -33,6 +33,15 @@ const baseTrip: TripRow = {
   type: "trip",
   cover_key: null,
   pending_cover_key: null,
+  description: null,
+  contest_enabled: 0,
+  contest_voting_hours: 72,
+  contest_select_notified_at: null,
+  contest_reminder_notified_at: null,
+  contest_cancelled_at: null,
+  contest_tie_notified_at: null,
+  contest_closed_at: null,
+  contest_winner_media_id: null,
 };
 
 describe("localDate", () => {
@@ -109,6 +118,8 @@ describe("publicTrip", () => {
       type: "trip",
       coverUrl: null,
       groups: [],
+      description: null,
+      contest: null,
     });
   });
 });

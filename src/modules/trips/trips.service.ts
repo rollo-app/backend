@@ -4,10 +4,14 @@ import { CREATOR_ONLY, isCreator } from "../../lib/creator";
 import { blockedIdsFor } from "../blocks/blocks.service";
 import { sendTripRevealed } from "./notices.service";
 import { assertNotDegraded } from "../../lib/degraded";
+import { normalizeDescription } from "../../lib/description";
 import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/util";
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import { deleteUntakenMomentsAfter, deleteUntakenMomentsOn } from "../moments/moments.repository";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
+import { CONTEST_GAP_MESSAGE, CONTEST_REVEAL_MESSAGE, CONTEST_VOTING_HOURS_DEFAULT, hasContestGap } from "../contest/contest.rules";
+import { countableFinalistCount, settleContestAtReveal } from "../contest/contest.service";
+import { deleteFinalists } from "../contest/contest.repository";
 import { deleteFeaturedOfTrip } from "../featured/featured.repository";
 import * as repo from "./trips.repository";
 import type { ActiveMemberRow } from "./trips.repository";
@@ -64,9 +68,11 @@ export async function createTrip(
   const now = Date.now();
   const limited = !user.unlimited_rollos;
   const isEvent = body.type === "event";
+  const description = body.description === undefined ? null : normalizeDescription(body.description);
   if (isEvent && !user.can_create_events) {
     throw forbidden("Por ahora crear eventos está habilitado solo para algunas cuentas. Escribinos a support@rolloproject.com.");
   }
+  if (isEvent && body.contestEnabled && !hasContestGap(body.endsAt, body.revealAt)) throw conflict(CONTEST_GAP_MESSAGE);
   // Early check for a clear error; the INSERT below re-checks atomically.
   if (isEvent) await enforceEventRules(db, user.id, now);
   if (limited) await enforceCreateLimits(db, user.id, body.timezone, now);
@@ -91,6 +97,7 @@ export async function createTrip(
     repo.insertTrip(db, {
       id: tripId,
       name: body.name,
+      description,
       join_code: joinCode,
       timezone: body.timezone,
       starts_at: body.startsAt,
@@ -109,6 +116,9 @@ export async function createTrip(
       max_members: isEvent ? EVENT_MAX_MEMBERS : TRIP_MAX_MEMBERS,
       moment_window_start: body.momentWindowStart,
       moment_window_end: body.momentWindowEnd,
+      contest_enabled: isEvent && body.contestEnabled ? 1 : 0,
+      // The API fills the default, but the service can be called without it (tests, scripts): never bind undefined.
+      contest_voting_hours: body.contestVotingHours ?? CONTEST_VOTING_HOURS_DEFAULT,
     }, {
       userId: user.id,
       limited,
@@ -210,6 +220,7 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
   const totalPhotoLimit = photoLimitMode === "total" ? (b.totalPhotoLimit ?? trip.total_photo_limit) : null;
   const next = {
     name: b.name ?? trip.name,
+    description: b.description === undefined ? trip.description : normalizeDescription(b.description),
     starts_at: b.startsAt ?? trip.starts_at,
     ends_at: b.endsAt ?? trip.ends_at,
     reveal_at: b.revealAt ?? trip.reveal_at,
@@ -222,7 +233,13 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
     moment_window_start: b.momentWindowStart ?? trip.moment_window_start,
     moment_window_end: b.momentWindowEnd ?? trip.moment_window_end,
     moment_from_day: trip.moment_from_day,
+    contest_enabled: b.contestEnabled === undefined ? trip.contest_enabled : b.contestEnabled ? 1 : 0,
+    contest_voting_hours: b.contestVotingHours ?? trip.contest_voting_hours,
   };
+  const contestEdited = next.contest_enabled !== trip.contest_enabled || next.contest_voting_hours !== trip.contest_voting_hours;
+  if (trip.type !== "event" && (b.contestEnabled || b.contestVotingHours !== undefined)) throw badRequest("Solo los eventos tienen concurso");
+  // The contest settings stay editable after the end (the organizers pick finalists then), but not once revealed.
+  if (contestEdited && isRevealed(trip, now)) throw conflict("Este evento ya se reveló.");
   // An event's quota is the whole rollo's and it has no daily moment (they are forced at creation).
   if (trip.type === "event" && (next.moment_mode !== "off" || next.photo_limit_mode !== "total")) {
     throw conflict("En un evento el cupo es de todo el rollo y no hay momento del día.");
@@ -242,6 +259,9 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
 
   if (stage === "ended" && (startChanged || endChanged || revealChanged || modeChanged || quotaChanged || momentChanged)) {
     throw conflict("El rollo ya terminó: no se puede editar");
+  }
+  if (next.contest_enabled !== 0 && (next.contest_enabled !== trip.contest_enabled || endChanged || revealChanged) && !hasContestGap(next.ends_at, next.reveal_at)) {
+    throw conflict(CONTEST_GAP_MESSAGE);
   }
   if (stage === "active" && startChanged) throw conflict("El rollo ya empezó: el inicio no se cambia");
   if (stage === "active" && modeChanged) throw conflict("El rollo ya empezó: el tipo de cupo no se cambia");
@@ -265,6 +285,8 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
   if (next.photo_limit_mode === "total" && next.total_photo_limit === null) throw badRequest("Elegí cuántas fotos por persona tiene el rollo");
 
   const statements: D1PreparedStatement[] = [repo.updateTrip(db, trip.id, next)];
+  // Turning the contest off drops the finalists the organizers already chose.
+  if (next.contest_enabled === 0 && trip.contest_enabled !== 0) statements.push(deleteFinalists(db, trip.id));
   // A private rollo takes its photos off every profile (the authors' own too); turning it off restores nothing.
   if (next.featuring_disabled !== 0 && trip.featuring_disabled === 0) statements.push(deleteFeaturedOfTrip(db, trip.id));
   // New dates or moment config. A new start or moment config draws every future moment nobody took again. A new end alone
@@ -289,12 +311,23 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
 /** Reveals now. Returns the revealed trip and, the first time, the "revealed" push to send after the response. */
 export async function revealTrip(env: Env, trip: TripRow, actorId: string): Promise<{ trip: TripRow; notify: AfterResponse }> {
   const now = Date.now();
+  // With the contest on, revealing opens the voting: not before the end, and only with at least 2 finalists that count.
+  // An already revealed event (automatically, by reveal_at) is not checked again.
+  if (trip.type === "event" && trip.contest_enabled === 1 && !isRevealed(trip, now)) {
+    if (now < trip.ends_at || (await countableFinalistCount(env.DB, trip.id)) < 2) throw conflict(CONTEST_REVEAL_MESSAGE);
+  }
   // Claim the notice and write revealed_at in one batch (a transaction), claim first: a cron run can never see
   // the trip revealed but unclaimed and notify the admin about their own reveal. Sent after the response.
   const [claim] = await env.DB.batch([repo.claimRevealedNotice(env.DB, trip.id, now), repo.markRevealed(env.DB, trip.id, now)]);
+  if (claim!.meta.changes === 0) return { trip: { ...trip, revealed_at: trip.revealed_at ?? now }, notify: null };
+  // Whoever claims the reveal decides whether the contest opens (here, normally yes) or is cancelled.
+  const contest = await settleContestAtReveal(env, trip, now);
   return {
     trip: { ...trip, revealed_at: trip.revealed_at ?? now },
-    notify: claim!.meta.changes > 0 ? () => sendTripRevealed(env, trip, actorId) : null,
+    notify: async () => {
+      await contest.notify?.();
+      await sendTripRevealed(env, trip, actorId, contest.open);
+    },
   };
 }
 

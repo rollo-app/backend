@@ -145,6 +145,7 @@ const ALL_ON = {
   dailyMoment: true,
   momentPosted: true,
   originalsExpiring: true,
+  contestResult: true,
 };
 
 describe("GET /me/settings", () => {
