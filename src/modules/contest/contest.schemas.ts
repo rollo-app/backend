@@ -22,12 +22,12 @@ export const FinalistSchema = z
 
 export const ContestSchema = z
   .object({
-    status: z.enum(["pending", "selecting", "voting", "tied", "closed", "cancelled"]),
+    status: z.enum(["pending", "selecting", "voting", "closing", "tied", "closed", "cancelled"]),
     votingHours: z.number().int(),
     closesAt: z.number().int().nullable().openapi({ description: "When voting ends (epoch ms); null if cancelled." }),
     finalists: z.array(FinalistSchema),
     myVote: z.string().nullable(),
     winner: z.object({ mediaId: z.string(), author: AuthorSchema, imageAvailable: z.boolean() }).nullable(),
-    tiedMediaIds: z.array(z.string()),
+    tiedMediaIds: z.array(z.string()).openapi({ description: "Only for organizers while `tied`: the finalists sharing the top vote count. Empty otherwise." }),
   })
   .openapi("Contest");

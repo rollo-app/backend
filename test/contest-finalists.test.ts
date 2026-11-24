@@ -155,7 +155,39 @@ describe("GET /contest", () => {
     expect(res.body.finalists[0].author).toEqual({ userId: f.g1.userId, name: "Ga", avatarUrl: null });
   });
 
-  it("tied once the window passes without a close, listing the leaders", async () => {
+  const vote = (tripId: string, u: string, m: string) =>
+    env.DB.prepare("INSERT INTO contest_votes (trip_id, user_id, media_id, created_at, updated_at) VALUES (?, ?, ?, 1, 1)").bind(tripId, u, m).run();
+
+  it("closing with a single leader past closesAt: nobody gets tiedMediaIds", async () => {
+    const f = await fixture();
+    await put(f, f.ids[0]!);
+    await put(f, f.ids[1]!);
+    await setTrip(f.tripId, "revealed_at = ?", Date.now() - 100 * HOUR);
+    await vote(f.tripId, f.g1.userId, f.ids[1]!);
+    for (const token of [f.org.token, f.g1.token]) {
+      const res = await get(f.tripId, token);
+      expect(res.body.status).toBe("closing");
+      expect(res.body.tiedMediaIds).toEqual([]);
+      for (const x of res.body.finalists) expect(x.votes).toBeNull();
+    }
+  });
+
+  it("tied with a 2-way tie: organizer gets both ids, a guest none", async () => {
+    const f = await fixture();
+    for (const id of f.ids) await put(f, id);
+    await setTrip(f.tripId, "revealed_at = ?", Date.now() - 100 * HOUR);
+    await vote(f.tripId, f.g1.userId, f.ids[0]!);
+    await vote(f.tripId, f.g2.userId, f.ids[1]!);
+    const org = await get(f.tripId, f.org.token);
+    expect(org.body.status).toBe("tied");
+    expect(org.body.tiedMediaIds.sort()).toEqual([f.ids[0], f.ids[1]].sort());
+    for (const x of org.body.finalists) expect(x.votes).toBeNull();
+    const guest = await get(f.tripId, f.g1.token);
+    expect(guest.body.status).toBe("tied");
+    expect(guest.body.tiedMediaIds).toEqual([]);
+  });
+
+  it("tied when every finalist has 0 votes", async () => {
     const f = await fixture();
     await put(f, f.ids[0]!);
     await put(f, f.ids[1]!);
@@ -163,7 +195,18 @@ describe("GET /contest", () => {
     const res = await get(f.tripId, f.org.token);
     expect(res.body.status).toBe("tied");
     expect(res.body.tiedMediaIds.sort()).toEqual([f.ids[0], f.ids[1]].sort());
-    for (const x of res.body.finalists) expect(x.votes).toBeNull();
+  });
+
+  it("the tie set ignores the organizer's own blocks", async () => {
+    const f = await fixture();
+    for (const id of f.ids) await put(f, id); // ids: g1, g2, g1
+    await setTrip(f.tripId, "revealed_at = ?", Date.now() - 100 * HOUR);
+    await vote(f.tripId, f.g1.userId, f.ids[1]!);
+    await vote(f.tripId, f.g2.userId, f.ids[2]!);
+    await env.DB.prepare("INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, 1)").bind(f.org.userId, f.g1.userId).run();
+    const res = await get(f.tripId, f.org.token);
+    expect(res.body.status).toBe("tied");
+    expect(res.body.tiedMediaIds.sort()).toEqual([f.ids[1], f.ids[2]].sort());
   });
 
   it("closed: counts votes and returns the winner", async () => {

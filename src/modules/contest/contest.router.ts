@@ -13,7 +13,7 @@ export const getContestRoute = createRoute({
   tags,
   summary: "Photo contest status",
   description:
-    "Status (`pending` before the end, `selecting` until the reveal, `voting`, `tied`, `closed`, `cancelled`), `closesAt`, finalists, your vote and the winner. " +
+    "Status (`pending` before the end, `selecting` until the reveal, `voting`, `closing` (voting over, the cron has not closed it), `tied`, `closed`, `cancelled`), `closesAt`, finalists, your vote and the winner. " +
     "A guest gets no finalists before the reveal. `votes` is null unless `closed`. Finalists that are deleted, archived, from someone who left, or blocked/reported by you are left out. 404 if the event has no contest.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,

@@ -93,6 +93,23 @@ export async function validFinalists(db: D1Database, tripId: string, viewerUserI
   return results;
 }
 
+/** Finalists that count for the tie and the close, the same for everybody: no viewer blocks or reports. */
+export async function countableFinalists(db: D1Database, tripId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT f.media_id AS mediaId
+       FROM contest_finalists f
+       JOIN media m ON m.id = f.media_id
+       JOIN members a ON a.id = m.member_id
+       WHERE f.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND m.archived_at IS NULL
+         AND a.removed_at IS NULL AND a.left_at IS NULL
+       ORDER BY f.position`,
+    )
+    .bind(tripId)
+    .all<{ mediaId: string }>();
+  return results.map((r) => r.mediaId);
+}
+
 export async function getMyVote(db: D1Database, tripId: string, userId: string): Promise<string | null> {
   const row = await db
     .prepare("SELECT media_id FROM contest_votes WHERE trip_id = ? AND user_id = ?")

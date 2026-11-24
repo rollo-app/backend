@@ -19,8 +19,8 @@ export async function addFinalist(db: D1Database, trip: TripRow, member: MemberR
     throw badRequest("Esa foto no puede ser finalista.");
   }
   if (await repo.isFinalist(db, trip.id, mediaId)) return;
-  const [result] = await db.batch([repo.insertFinalist(db, trip.id, mediaId, now)]);
-  if (result!.meta.changes === 0 && !(await repo.isFinalist(db, trip.id, mediaId))) throw conflict("Ya hay 10 finalistas.");
+  const result = await repo.insertFinalist(db, trip.id, mediaId, now).run();
+  if (result.meta.changes === 0 && !(await repo.isFinalist(db, trip.id, mediaId))) throw conflict("Ya hay 10 finalistas.");
 }
 
 export async function removeFinalist(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string, now = Date.now()) {
@@ -30,18 +30,23 @@ export async function removeFinalist(db: D1Database, trip: TripRow, member: Memb
 
 export async function getContest(db: D1Database, trip: TripRow, member: MemberRow, viewerUserId: string, now = Date.now()) {
   if (trip.type !== "event" || trip.contest_enabled !== 1) throw notFound(NO_CONTEST);
-  const status = contestStatus(trip, now);
+  let status = contestStatus(trip, now);
+  // Past the voting window: the tie is decided over the countable set, the same for every viewer.
+  let tiedLeaders: string[] = [];
+  if (status === "closing") {
+    const countable = await repo.countableFinalists(db, trip.id);
+    const tally = await repo.voteCounts(db, trip.id, countable);
+    const top = Math.max(0, ...countable.map((id) => tally.get(id) ?? 0));
+    tiedLeaders = countable.filter((id) => (tally.get(id) ?? 0) === top);
+    status = contestStatus(trip, now, tiedLeaders.length);
+  }
   // Guests only see the finalists once the event is revealed; organizers see them while choosing.
   const visible = isRevealed(trip, now) || member.role === "admin";
   const finalists = visible && status !== "cancelled" ? await repo.validFinalists(db, trip.id, viewerUserId) : [];
   const ids = finalists.map((f) => f.mediaId);
 
-  const counts = status === "closed" || status === "tied" ? await repo.voteCounts(db, trip.id, ids) : new Map<string, number>();
-  let tiedMediaIds: string[] = [];
-  if (status === "tied" && ids.length > 0) {
-    const top = Math.max(...ids.map((id) => counts.get(id) ?? 0));
-    tiedMediaIds = ids.filter((id) => (counts.get(id) ?? 0) === top);
-  }
+  const counts = status === "closed" ? await repo.voteCounts(db, trip.id, ids) : new Map<string, number>();
+  const tiedMediaIds = status === "tied" && member.role === "admin" ? tiedLeaders : [];
 
   const mine = await repo.getMyVote(db, trip.id, viewerUserId);
   const base = (id: string) => `/trips/${trip.id}/contest/finalists/${id}`;

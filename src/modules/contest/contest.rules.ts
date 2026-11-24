@@ -35,7 +35,7 @@ export function organizerPreviewOpen(
   );
 }
 
-export type ContestStatus = "pending" | "selecting" | "voting" | "tied" | "closed" | "cancelled";
+export type ContestStatus = "pending" | "selecting" | "voting" | "closing" | "tied" | "closed" | "cancelled";
 
 type ClosingFields = Pick<TripRow, "revealed_at" | "reveal_at" | "contest_voting_hours">;
 
@@ -44,15 +44,19 @@ export function closesAt(trip: ClosingFields): number {
   return (trip.revealed_at ?? trip.reveal_at) + trip.contest_voting_hours * 3_600_000;
 }
 
-/** Stage of the contest at `now`. `tied` also covers "the cron has not closed it yet". */
+/**
+ * Stage of the contest at `now`. After the voting window it is `tied` when two or more countable finalists share the
+ * top vote count (`topTied`, viewer-independent, 0-0 included) and `closing` otherwise (the cron has not closed it yet).
+ */
 export function contestStatus(
   trip: ClosingFields & Pick<TripRow, "ends_at" | "contest_cancelled_at" | "contest_closed_at">,
   now: number,
+  topTied = 0,
 ): ContestStatus {
   if (trip.contest_cancelled_at !== null) return "cancelled";
   if (trip.contest_closed_at !== null) return "closed";
   if (now < trip.ends_at) return "pending";
   if (!isRevealed(trip, now)) return "selecting";
   if (now < closesAt(trip)) return "voting";
-  return "tied";
+  return topTied >= 2 ? "tied" : "closing";
 }
