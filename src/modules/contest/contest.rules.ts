@@ -34,3 +34,25 @@ export function organizerPreviewOpen(
     !isRevealed(trip, now)
   );
 }
+
+export type ContestStatus = "pending" | "selecting" | "voting" | "tied" | "closed" | "cancelled";
+
+type ClosingFields = Pick<TripRow, "revealed_at" | "reveal_at" | "contest_voting_hours">;
+
+/** When the voting ends: the reveal (manual or scheduled) plus the voting window. Computed, never stored. */
+export function closesAt(trip: ClosingFields): number {
+  return (trip.revealed_at ?? trip.reveal_at) + trip.contest_voting_hours * 3_600_000;
+}
+
+/** Stage of the contest at `now`. `tied` also covers "the cron has not closed it yet". */
+export function contestStatus(
+  trip: ClosingFields & Pick<TripRow, "ends_at" | "contest_cancelled_at" | "contest_closed_at">,
+  now: number,
+): ContestStatus {
+  if (trip.contest_cancelled_at !== null) return "cancelled";
+  if (trip.contest_closed_at !== null) return "closed";
+  if (now < trip.ends_at) return "pending";
+  if (!isRevealed(trip, now)) return "selecting";
+  if (now < closesAt(trip)) return "voting";
+  return "tied";
+}

@@ -2122,6 +2122,157 @@
           "coverUrl"
         ]
       },
+      "Contest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "selecting",
+              "voting",
+              "tied",
+              "closed",
+              "cancelled"
+            ]
+          },
+          "votingHours": {
+            "type": "integer"
+          },
+          "closesAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "When voting ends (epoch ms); null if cancelled."
+          },
+          "finalists": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContestFinalist"
+            }
+          },
+          "myVote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "winner": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "mediaId": {
+                "type": "string"
+              },
+              "author": {
+                "$ref": "#/components/schemas/ContestAuthor"
+              },
+              "imageAvailable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "mediaId",
+              "author",
+              "imageAvailable"
+            ]
+          },
+          "tiedMediaIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "votingHours",
+          "closesAt",
+          "finalists",
+          "myVote",
+          "winner",
+          "tiedMediaIds"
+        ]
+      },
+      "ContestFinalist": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string"
+          },
+          "author": {
+            "$ref": "#/components/schemas/ContestAuthor"
+          },
+          "thumbHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "thumbPath": {
+            "type": "string",
+            "description": "Path of the thumbnail, served by the contest's own route."
+          },
+          "displayPath": {
+            "type": "string",
+            "description": "Path of the display image, served by the contest's own route."
+          },
+          "votes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Null until the contest is closed; never shown while voting."
+          }
+        },
+        "required": [
+          "mediaId",
+          "author",
+          "thumbHash",
+          "width",
+          "height",
+          "thumbPath",
+          "displayPath",
+          "votes"
+        ]
+      },
+      "ContestAuthor": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "avatarUrl"
+        ]
+      },
       "MediaRegistered": {
         "type": "object",
         "properties": {
@@ -7028,6 +7179,274 @@
           },
           "409": {
             "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest": {
+      "get": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Photo contest status",
+        "description": "Status (`pending` before the end, `selecting` until the reveal, `voting`, `tied`, `closed`, `cancelled`), `closesAt`, finalists, your vote and the winner. A guest gets no finalists before the reveal. `votes` is null unless `closed`. Finalists that are deleted, archived, from someone who left, or blocked/reported by you are left out. 404 if the event has no contest.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{tripId}/contest/finalists/{mediaId}": {
+      "put": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Mark a photo as finalist (organizer)",
+        "description": "Only between the end of the event and the reveal (409 otherwise). The photo must be an uploaded, not deleted photo of the event that is not a moment selfie (400). At most 10 (409). Idempotent.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Marked"
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Profile incomplete: set a name and a username first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contest"
+        ],
+        "summary": "Unmark a finalist (organizer)",
+        "description": "Same window as marking it (409 otherwise). Idempotent.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tripId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unmarked"
+          },
+          "401": {
+            "description": "Missing or invalid session token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The rollo was deleted",
             "content": {
               "application/json": {
                 "schema": {
