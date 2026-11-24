@@ -43,7 +43,7 @@ export async function getContest(db: D1Database, trip: TripRow, member: MemberRo
   const finalists = visible && status !== "cancelled" ? await repo.validFinalists(db, trip.id, viewerUserId) : [];
   const ids = finalists.map((f) => f.mediaId);
 
-  const counts = status === "closed" ? await repo.voteCounts(db, trip.id, ids) : new Map<string, number>();
+  const counts = status === "closed" ? await repo.voteCounts(db, trip.id, viewerUserId) : new Map<string, number>();
   const tiedMediaIds = status === "tied" && member.role === "admin" ? tiedLeaders : [];
 
   const mine = await repo.getMyVote(db, trip.id, viewerUserId);
@@ -135,8 +135,8 @@ export async function getFinalistFileKey(
 /** The countable finalists (viewer-independent) and the ones sharing the top vote count (0-0 included). */
 async function leaders(db: D1Database, tripId: string): Promise<{ countable: string[]; leaders: string[] }> {
   const countable = await repo.countableFinalists(db, tripId);
-  const tally = await repo.voteCounts(db, tripId, countable);
-  const top = Math.max(0, ...countable.map((id) => tally.get(id) ?? 0));
+  const tally = await repo.voteCounts(db, tripId);
+  const top = countable.reduce((max, id) => Math.max(max, tally.get(id) ?? 0), 0);
   return { countable, leaders: countable.filter((id) => (tally.get(id) ?? 0) === top) };
 }
 
@@ -215,15 +215,27 @@ async function closeContest(env: Pick<Env, "DB">, trip: TripRow, now: number): P
  */
 export async function runContestNotices(env: Pick<Env, "DB">, now = Date.now()): Promise<void> {
   const db = env.DB;
+  // One trip failing must not block the others: each step of each trip is isolated and logs once.
+  const step = async (name: string, tripId: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      console.error(`contest ${name} failed for trip ${tripId}`, err);
+    }
+  };
   for (const trip of await repo.listToAnnounceSelection(db, now)) {
-    if ((await repo.claimSelectionNotice(db, trip.id, now).run()).meta.changes === 0) continue;
-    await notifyOrganizers(env, trip, "Ya podés elegir las finalistas", picksUrl(trip));
+    await step("select notice", trip.id, async () => {
+      if ((await repo.claimSelectionNotice(db, trip.id, now).run()).meta.changes === 0) return;
+      await notifyOrganizers(env, trip, "Ya podés elegir las finalistas", picksUrl(trip));
+    });
   }
   for (const trip of await repo.listToRemind(db, now, CONTEST_REMINDER_LEAD_MS)) {
-    if ((await repo.claimReminder(db, trip.id, now).run()).meta.changes === 0) continue;
-    await notifyOrganizers(env, trip, "Elegí las finalistas del concurso antes del revelado", picksUrl(trip));
+    await step("reminder", trip.id, async () => {
+      if ((await repo.claimReminder(db, trip.id, now).run()).meta.changes === 0) return;
+      await notifyOrganizers(env, trip, "Elegí las finalistas del concurso antes del revelado", picksUrl(trip));
+    });
   }
-  for (const trip of await repo.listToClose(db, now)) await closeContest(env, trip, now);
+  for (const trip of await repo.listToClose(db, now)) await step("close", trip.id, () => closeContest(env, trip, now));
 }
 
 /** An organizer breaks the tie: only while `tied` (409) and only among the tied finalists (400). Closes and announces. */

@@ -108,7 +108,6 @@ export const pickWinnerRoute = createRoute({
 
 const contest = createApp();
 
-
 contest.openapi(getContestRoute, controller.get);
 contest.openapi(addFinalistRoute, controller.add);
 contest.openapi(removeFinalistRoute, controller.remove);

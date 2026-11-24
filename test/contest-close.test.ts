@@ -397,3 +397,60 @@ describe("after the close", () => {
     expect(votes!.n).toBe(0);
   });
 });
+
+describe("contest cron: robustness", () => {
+  it("closes with the right winner when there are 120 finalists (no per-id bound parameters)", async () => {
+    const f = await fixture({ stage: "over" });
+    const many = await addMediaDirect(f.tripId, [f.ga, f.gb], 120, { from: f.now - 3 * HOUR, to: f.now - 2 * HOUR, display: true });
+    await env.DB.batch(
+      many.map((id, i) =>
+        env.DB.prepare("INSERT INTO contest_finalists (trip_id, media_id, position, created_at) VALUES (?, ?, ?, 1)").bind(f.tripId, id, i + 1),
+      ),
+    );
+    const winner = many[100]!;
+    await addVote(f.tripId, f.gc.userId, winner);
+    await addVote(f.tripId, f.org.userId, winner);
+    await addVote(f.tripId, f.gb.userId, many[7]!);
+    mockExpo();
+    await runContestNotices(env, f.now);
+    const row = await tripRow(f.tripId);
+    expect(row.contest_closed_at).toBe(f.now);
+    expect(row.contest_winner_media_id).toBe(winner);
+    const res = await get(f, f.gc.token);
+    expect(res.body.status).toBe("closed");
+    expect(res.body.finalists).toHaveLength(120);
+    expect(res.body.finalists[100].votes).toBe(2);
+    expect(res.body.finalists[7].votes).toBe(1);
+  });
+
+  it("a trip that throws does not stop another one from closing", async () => {
+    const bad = await fixture({ stage: "over", finalists: 2 });
+    const good = await fixture({ stage: "over", finalists: 2 });
+    await addVote(bad.tripId, bad.gb.userId, bad.ids[0]!);
+    await addVote(good.tripId, good.gb.userId, good.ids[0]!);
+    // A DB whose write that closes `bad` blows up, like a broken row would.
+    const flaky = {
+      prepare: (sql: string) => {
+        const stmt = env.DB.prepare(sql);
+        return {
+          ...stmt,
+          bind: (...args: unknown[]) => {
+            if (sql.startsWith("UPDATE trips SET contest_closed_at") && args.includes(bad.tripId)) throw new Error("boom");
+            return stmt.bind(...args);
+          },
+        };
+      },
+      batch: (stmts: D1PreparedStatement[]) => env.DB.batch(stmts),
+    } as unknown as D1Database;
+    mockExpo();
+    const spy = console.error;
+    console.error = () => {};
+    try {
+      await runContestNotices({ DB: flaky }, bad.now);
+    } finally {
+      console.error = spy;
+    }
+    expect((await tripRow(bad.tripId)).contest_closed_at).toBeNull();
+    expect((await tripRow(good.tripId)).contest_winner_media_id).toBe(good.ids[0]);
+  });
+});

@@ -7,7 +7,6 @@ export function deleteFinalists(db: D1Database, tripId: string): D1PreparedState
   return db.prepare("DELETE FROM contest_finalists WHERE trip_id = ?").bind(tripId);
 }
 
-
 export type MediaCheckRow = {
   type: string;
   status: string;
@@ -22,22 +21,6 @@ export function findMediaForFinalist(db: D1Database, mediaId: string): Promise<M
     .prepare("SELECT type, status, deleted_at, paired_media_id, trip_id FROM media WHERE id = ?")
     .bind(mediaId)
     .first<MediaCheckRow>();
-}
-
-export async function isFinalist(db: D1Database, tripId: string, mediaId: string): Promise<boolean> {
-  const row = await db
-    .prepare("SELECT 1 AS one FROM contest_finalists WHERE trip_id = ? AND media_id = ?")
-    .bind(tripId, mediaId)
-    .first();
-  return row !== null;
-}
-
-export async function countFinalists(db: D1Database, tripId: string): Promise<number> {
-  const row = await db
-    .prepare("SELECT COUNT(*) AS n FROM contest_finalists WHERE trip_id = ?")
-    .bind(tripId)
-    .first<{ n: number }>();
-  return row?.n ?? 0;
 }
 
 /**
@@ -118,17 +101,29 @@ export async function getMyVote(db: D1Database, tripId: string, userId: string):
   return row?.media_id ?? null;
 }
 
-/** Votes per media for the given ids (media with none are absent). Only voters still active in the trip count. */
-export async function voteCounts(db: D1Database, tripId: string, mediaIds: string[]): Promise<Map<string, number>> {
-  if (mediaIds.length === 0) return new Map();
-  const marks = mediaIds.map(() => "?").join(",");
+/**
+ * Votes per finalist, computed in SQL (no per-id bound parameters: D1 caps a statement at 100, and finalists have no
+ * cap). Media with none are absent. Only voters still active in the trip count. Without `viewerUserId` the finalists
+ * are the viewer-independent countable ones; with it, the ones `validFinalists` returns for that viewer.
+ */
+export async function voteCounts(db: D1Database, tripId: string, viewerUserId?: string): Promise<Map<string, number>> {
+  const viewer = viewerUserId !== undefined;
   const { results } = await db
     .prepare(
       `SELECT v.media_id, COUNT(*) AS n FROM contest_votes v
        JOIN members vm ON vm.trip_id = v.trip_id AND vm.user_id = v.user_id AND vm.removed_at IS NULL AND vm.left_at IS NULL
-       WHERE v.trip_id = ? AND v.media_id IN (${marks}) GROUP BY v.media_id`,
+       JOIN contest_finalists f ON f.trip_id = v.trip_id AND f.media_id = v.media_id
+       JOIN media m ON m.id = f.media_id
+       JOIN members a ON a.id = m.member_id
+       WHERE v.trip_id = ? AND m.status = 'uploaded' AND m.deleted_at IS NULL AND m.archived_at IS NULL
+         AND a.removed_at IS NULL AND a.left_at IS NULL${
+           viewer ? `
+         AND ${hiddenMediaSql("m", "a")}
+         AND a.user_id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)` : ""
+         }
+       GROUP BY v.media_id`,
     )
-    .bind(tripId, ...mediaIds)
+    .bind(...(viewer ? [tripId, viewerUserId, viewerUserId, viewerUserId] : [tripId]))
     .all<{ media_id: string; n: number }>();
   return new Map(results.map((r) => [r.media_id, r.n]));
 }
