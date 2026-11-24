@@ -3,6 +3,14 @@ import { pathParam } from "../../schemas";
 
 export const FinalistParams = z.object({ tripId: pathParam("tripId"), mediaId: pathParam("mediaId") });
 
+export const VoteBody = z.object({ mediaId: pathParam("mediaId") }).openapi("ContestVoteBody");
+
+export const FinalistFileParams = z.object({
+  tripId: pathParam("tripId"),
+  mediaId: pathParam("mediaId"),
+  variant: z.enum(["thumb", "display"]).openapi({ param: { name: "variant", in: "path" } }),
+});
+
 const AuthorSchema = z
   .object({ userId: z.string(), name: z.string(), avatarUrl: z.string().nullable() })
   .openapi("ContestAuthor");

@@ -144,3 +144,30 @@ export function findWinner(db: D1Database, mediaId: string): Promise<WinnerRow |
     .bind(mediaId)
     .first<WinnerRow>();
 }
+
+/** Casts or changes the viewer's vote (one row per user and event). */
+export function upsertVote(db: D1Database, tripId: string, userId: string, mediaId: string, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO contest_votes (trip_id, user_id, media_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)
+       ON CONFLICT (trip_id, user_id) DO UPDATE SET media_id = excluded.media_id, updated_at = excluded.updated_at`,
+    )
+    .bind(tripId, userId, mediaId, now);
+}
+
+export function deleteVote(db: D1Database, tripId: string, userId: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM contest_votes WHERE trip_id = ? AND user_id = ?").bind(tripId, userId);
+}
+
+export type FinalistKeys = { originalKey: string; thumbKey: string; displayKey: string | null; originalPurgedAt: number | null };
+
+/** Storage keys of a finalist's files (the caller already checked it is a valid finalist for the viewer). */
+export function findFinalistKeys(db: D1Database, tripId: string, mediaId: string): Promise<FinalistKeys | null> {
+  return db
+    .prepare(
+      `SELECT m.original_key AS originalKey, m.thumb_key AS thumbKey, m.display_key AS displayKey, m.original_purged_at AS originalPurgedAt
+       FROM contest_finalists f JOIN media m ON m.id = f.media_id WHERE f.trip_id = ? AND f.media_id = ?`,
+    )
+    .bind(tripId, mediaId)
+    .first<FinalistKeys>();
+}

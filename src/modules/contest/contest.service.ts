@@ -1,4 +1,5 @@
 import { badRequest, conflict, notFound } from "../../shared/errors";
+import { resolveVariantKey, type MediaVariant } from "../../lib/media-variant";
 import { avatarUrl, isRevealed } from "../../lib/util";
 import type { MemberRow, TripRow } from "../../types";
 import { contestStatus, closesAt, organizerPreviewOpen } from "./contest.rules";
@@ -58,7 +59,8 @@ export async function getContest(db: D1Database, trip: TripRow, member: MemberRo
       winner = {
         mediaId: row.mediaId,
         author: { userId: row.authorUserId, name: row.authorName ?? "", avatarUrl: avatarUrl(row.authorUserId, row.authorAvatarKey) },
-        imageAvailable: row.available === 1,
+        // Not shown if it was deleted/archived, or hidden for this viewer (blocked either way, reported).
+        imageAvailable: row.available === 1 && ids.includes(row.mediaId),
       };
     }
   }
@@ -81,4 +83,50 @@ export async function getContest(db: D1Database, trip: TripRow, member: MemberRo
     winner,
     tiedMediaIds,
   };
+}
+
+const VOTING_CLOSED = "La votación no está abierta.";
+
+function contestOr404(trip: TripRow) {
+  if (trip.type !== "event" || trip.contest_enabled !== 1) throw notFound(NO_CONTEST);
+}
+
+/** Casts or changes the vote: only while voting, for a finalist that counts for this viewer, never your own. */
+export async function castVote(db: D1Database, trip: TripRow, userId: string, mediaId: string, now = Date.now()) {
+  contestOr404(trip);
+  if (contestStatus(trip, now) !== "voting") throw conflict(VOTING_CLOSED);
+  const finalist = (await repo.validFinalists(db, trip.id, userId)).find((f) => f.mediaId === mediaId);
+  if (!finalist) throw notFound("Esa foto no es finalista.");
+  if (finalist.authorUserId === userId) throw badRequest("No podés votar tu propia foto.");
+  await repo.upsertVote(db, trip.id, userId, mediaId, now).run();
+}
+
+/** Removes the vote. Always succeeds, but outside the voting window it changes nothing (the tally is frozen). */
+export async function removeVote(db: D1Database, trip: TripRow, userId: string, now = Date.now()) {
+  if (trip.type !== "event" || trip.contest_enabled !== 1 || contestStatus(trip, now) !== "voting") return;
+  await repo.deleteVote(db, trip.id, userId).run();
+}
+
+/**
+ * R2 key of a finalist's file, served by the contest's own route (the normal media route stays group-scoped).
+ * Active members, while voting, after it (closing, tied, closed); organizers also while choosing. 404 unless the photo is
+ * a valid finalist for this viewer.
+ */
+export async function getFinalistFileKey(
+  db: D1Database,
+  trip: TripRow,
+  member: MemberRow,
+  viewerId: string,
+  mediaId: string,
+  variant: MediaVariant,
+  now = Date.now(),
+): Promise<{ key: string; fallbackKey: string | null }> {
+  contestOr404(trip);
+  const status = contestStatus(trip, now);
+  const open = status === "voting" || status === "closing" || status === "tied" || status === "closed" || (status === "selecting" && member.role === "admin");
+  if (!open) throw notFound();
+  const valid = (await repo.validFinalists(db, trip.id, viewerId)).some((f) => f.mediaId === mediaId);
+  const row = valid ? await repo.findFinalistKeys(db, trip.id, mediaId) : null;
+  if (!row) throw notFound();
+  return resolveVariantKey(row, variant);
 }
