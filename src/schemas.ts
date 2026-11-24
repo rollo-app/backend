@@ -58,6 +58,9 @@ export const TripSchema = z
     coverUrl: z.string().nullable().openapi({ description: "Public path of the event cover (the app prefixes the API base URL); null if none" }),
     groups: z.array(z.object({ id: z.string().uuid(), name: z.string() })).openapi({ description: "Groups of an event, in order; [] for a regular trip" }),
     description: z.string().nullable().openapi({ description: "Cover text (up to 300 characters, 6 lines); null if none" }),
+    contest: z.object({ enabled: z.boolean(), votingHours: z.number().int() }).nullable().openapi({
+      description: "Photo contest settings; null on a regular trip",
+    }),
   })
   .openapi("Trip");
 

@@ -1502,6 +1502,25 @@
               "null"
             ],
             "description": "Cover text (up to 300 characters, 6 lines); null if none"
+          },
+          "contest": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "votingHours": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "enabled",
+              "votingHours"
+            ],
+            "description": "Photo contest settings; null on a regular trip"
           }
         },
         "required": [
@@ -1527,7 +1546,8 @@
           "type",
           "coverUrl",
           "groups",
-          "description"
+          "description",
+          "contest"
         ]
       },
       "Member": {
@@ -1688,6 +1708,18 @@
             "type": "string",
             "description": "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events"
           },
+          "contestEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Photo contest (events only; true on a regular trip is a 400). With it on, revealAt must be at least 2 hours after endsAt (409). Editable until the reveal"
+          },
+          "contestVotingHours": {
+            "type": "integer",
+            "minimum": 24,
+            "maximum": 336,
+            "default": 72,
+            "description": "How long the finalists are voted on after the reveal, in hours (24 to 336, default 72). Editable until the reveal"
+          },
           "groups": {
             "type": "array",
             "items": {
@@ -1828,6 +1860,16 @@
           "description": {
             "type": "string",
             "description": "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events Editable at any stage, even after the reveal"
+          },
+          "contestEnabled": {
+            "type": "boolean",
+            "description": "Photo contest (events only; true on a regular trip is a 400). With it on, revealAt must be at least 2 hours after endsAt (409). Editable until the reveal. Turning it off deletes the chosen finalists; 409 once revealed"
+          },
+          "contestVotingHours": {
+            "type": "integer",
+            "minimum": 24,
+            "maximum": 336,
+            "description": "How long the finalists are voted on after the reveal, in hours (24 to 336, default 72). Editable until the reveal; 409 once revealed"
           },
           "startsAt": {
             "type": "integer",
