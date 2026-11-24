@@ -28,7 +28,7 @@ export const addFinalistRoute = createRoute({
   tags,
   summary: "Mark a photo as finalist (organizer)",
   description:
-    "Only between the end of the event and the reveal (409 otherwise). The photo must be an uploaded, not deleted photo of the event that is not a moment selfie (400). At most 10 (409). Idempotent.",
+    "Only between the end of the event and the reveal (409 otherwise). The photo must be an uploaded, not deleted photo of the event that is not a moment selfie (400). Idempotent.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: { params: FinalistParams },

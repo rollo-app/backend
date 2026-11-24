@@ -21,13 +21,16 @@ async function fixture(opts: { n?: number; endsAt?: number } = {}) {
   await env.DB.prepare("UPDATE trips SET contest_enabled = 1 WHERE id = ?").bind(tripId).run();
   const detail = await api("GET", `/trips/${tripId}`, { token: org.token });
   const groupId = (detail.body.trip.groups as { id: string }[])[0]!.id;
-  const guest = async (name: string) => {
+  const guest = async (name: string, withUsername = true) => {
     const user = await signUp(undefined, name);
     const res = await api("POST", "/trips/join", { token: user.token, body: { code, groupIds: [groupId] } });
-    return { token: user.token, userId: user.userId, memberId: res.body.member.id as string };
+    const me = await api("GET", "/me", { token: user.token });
+    if (!withUsername) await env.DB.prepare("UPDATE users SET username = NULL WHERE id = ?").bind(user.userId).run();
+    const username: string | null = withUsername ? (me.body.user?.username ?? me.body.username) : null;
+    return { token: user.token, userId: user.userId, username, memberId: res.body.member.id as string };
   };
   const g1 = await guest("Ga");
-  const g2 = await guest("Gb");
+  const g2 = await guest("Gb", false);
   const ids = await addMediaDirect(tripId, [g1, g2], opts.n ?? 3, { from: now - 3 * HOUR, to: now - 2 * HOUR });
   return { org, tripId, g1, g2, ids };
 }
@@ -64,13 +67,12 @@ describe("contest finalists", () => {
     expect(res.body.finalists.map((x: any) => x.mediaId)).toEqual([f.ids[1], f.ids[2], f.ids[0]]);
   });
 
-  it("the 11th is a 409, re-marking one of the 10 still works", async () => {
-    const f = await fixture({ n: 11 });
-    for (const id of f.ids.slice(0, 10)) expect((await put(f, id)).status).toBe(204);
-    const res = await put(f, f.ids[10]!);
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe("Ya hay 10 finalistas.");
+  it("allows more than 10 finalists", async () => {
+    const f = await fixture({ n: 12 });
+    for (const id of f.ids) expect((await put(f, id)).status).toBe(204);
     expect((await put(f, f.ids[0]!)).status).toBe(204);
+    const res = await get(f.tripId, f.org.token);
+    expect(res.body.finalists.map((x: any) => x.mediaId)).toEqual(f.ids);
   });
 
   it("rejects videos, linked selfies, unuploaded, deleted and foreign media with 400", async () => {
@@ -152,7 +154,7 @@ describe("GET /contest", () => {
     expect(res.body.finalists).toHaveLength(2);
     for (const x of res.body.finalists) expect(x.votes).toBeNull();
     expect(res.body.myVote).toBe(f.ids[1]);
-    expect(res.body.finalists[0].author).toEqual({ userId: f.g1.userId, name: "Ga", avatarUrl: null });
+    expect(res.body.finalists[0].author).toEqual({ userId: f.g1.userId, name: "Ga", username: f.g1.username, avatarUrl: null });
   });
 
   const vote = (tripId: string, u: string, m: string) =>
@@ -223,7 +225,19 @@ describe("GET /contest", () => {
     expect(res.body.status).toBe("closed");
     const votes = Object.fromEntries(res.body.finalists.map((x: any) => [x.mediaId, x.votes]));
     expect(votes).toEqual({ [f.ids[0]!]: 1, [f.ids[1]!]: 2 });
-    expect(res.body.winner).toEqual({ mediaId: f.ids[1], author: { userId: f.g2.userId, name: "Gb", avatarUrl: null }, imageAvailable: true });
+    expect(res.body.winner).toEqual({ mediaId: f.ids[1], author: { userId: f.g2.userId, name: "Gb", username: null, avatarUrl: null }, imageAvailable: true });
+  });
+
+  it("finalist and winner authors carry username, null for an account without one", async () => {
+    const f = await fixture();
+    await put(f, f.ids[0]!);
+    await put(f, f.ids[1]!);
+    const sel = await get(f.tripId, f.org.token);
+    expect(sel.body.finalists.map((x: any) => x.author.username)).toEqual([f.g1.username, null]);
+    await setTrip(f.tripId, "revealed_at = ?, contest_closed_at = ?, contest_winner_media_id = ?", Date.now() - 100 * HOUR, Date.now(), f.ids[0]);
+    expect((await get(f.tripId, f.org.token)).body.winner.author.username).toBe(f.g1.username);
+    await setTrip(f.tripId, "contest_winner_media_id = ?", f.ids[1]);
+    expect((await get(f.tripId, f.org.token)).body.winner.author.username).toBeNull();
   });
 
   it("cancelled has no closesAt", async () => {

@@ -2272,6 +2272,12 @@
           "name": {
             "type": "string"
           },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "avatarUrl": {
             "type": [
               "string",
@@ -2282,6 +2288,7 @@
         "required": [
           "userId",
           "name",
+          "username",
           "avatarUrl"
         ]
       },
@@ -7328,7 +7335,7 @@
           "Contest"
         ],
         "summary": "Mark a photo as finalist (organizer)",
-        "description": "Only between the end of the event and the reveal (409 otherwise). The photo must be an uploaded, not deleted photo of the event that is not a moment selfie (400). At most 10 (409). Idempotent.",
+        "description": "Only between the end of the event and the reveal (409 otherwise). The photo must be an uploaded, not deleted photo of the event that is not a moment selfie (400). Idempotent.",
         "security": [
           {
             "bearerAuth": []

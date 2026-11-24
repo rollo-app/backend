@@ -21,9 +21,7 @@ export async function addFinalist(db: D1Database, trip: TripRow, member: MemberR
   if (!media || media.trip_id !== trip.id || media.type !== "photo" || media.status !== "uploaded" || media.deleted_at !== null || media.paired_media_id !== null) {
     throw badRequest("Esa foto no puede ser finalista.");
   }
-  if (await repo.isFinalist(db, trip.id, mediaId)) return;
-  const result = await repo.insertFinalist(db, trip.id, mediaId, now).run();
-  if (result.meta.changes === 0 && !(await repo.isFinalist(db, trip.id, mediaId))) throw conflict("Ya hay 10 finalistas.");
+  await repo.insertFinalist(db, trip.id, mediaId, now).run();
 }
 
 export async function removeFinalist(db: D1Database, trip: TripRow, member: MemberRow, mediaId: string, now = Date.now()) {
@@ -57,7 +55,7 @@ export async function getContest(db: D1Database, trip: TripRow, member: MemberRo
     if (row) {
       winner = {
         mediaId: row.mediaId,
-        author: { userId: row.authorUserId, name: row.authorName ?? "", avatarUrl: avatarUrl(row.authorUserId, row.authorAvatarKey) },
+        author: { userId: row.authorUserId, name: row.authorName ?? "", username: row.authorUsername, avatarUrl: avatarUrl(row.authorUserId, row.authorAvatarKey) },
         // Not shown if it was deleted/archived, or hidden for this viewer (blocked either way, reported).
         imageAvailable: row.available === 1 && ids.includes(row.mediaId),
       };
@@ -70,7 +68,7 @@ export async function getContest(db: D1Database, trip: TripRow, member: MemberRo
     closesAt: status === "cancelled" ? null : closesAt(trip),
     finalists: finalists.map((f) => ({
       mediaId: f.mediaId,
-      author: { userId: f.authorUserId, name: f.authorName ?? "", avatarUrl: avatarUrl(f.authorUserId, f.authorAvatarKey) },
+      author: { userId: f.authorUserId, name: f.authorName ?? "", username: f.authorUsername, avatarUrl: avatarUrl(f.authorUserId, f.authorAvatarKey) },
       thumbHash: f.thumbhash,
       width: f.width,
       height: f.height,

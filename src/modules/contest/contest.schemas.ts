@@ -14,7 +14,7 @@ export const FinalistFileParams = z.object({
 });
 
 const AuthorSchema = z
-  .object({ userId: z.string(), name: z.string(), avatarUrl: z.string().nullable() })
+  .object({ userId: z.string(), name: z.string(), username: z.string().nullable(), avatarUrl: z.string().nullable() })
   .openapi("ContestAuthor");
 
 export const FinalistSchema = z

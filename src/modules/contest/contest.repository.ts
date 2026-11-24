@@ -7,7 +7,6 @@ export function deleteFinalists(db: D1Database, tripId: string): D1PreparedState
   return db.prepare("DELETE FROM contest_finalists WHERE trip_id = ?").bind(tripId);
 }
 
-export const MAX_FINALISTS = 10;
 
 export type MediaCheckRow = {
   type: string;
@@ -42,15 +41,13 @@ export async function countFinalists(db: D1Database, tripId: string): Promise<nu
 }
 
 /**
- * Adds a finalist at the end of the list (`position` = 1 + current max). Atomic: the 10-finalist cap is part of the
- * statement, so two organizers adding at once cannot exceed it. Re-adding is a no-op (PK conflict).
+ * Adds a finalist at the end of the list (`position` = 1 + current max). There is no cap. Re-adding is a no-op (PK conflict).
  */
 export function insertFinalist(db: D1Database, tripId: string, mediaId: string, now: number): D1PreparedStatement {
   return db
     .prepare(
       `INSERT OR IGNORE INTO contest_finalists (trip_id, media_id, position, created_at)
-       SELECT ?1, ?2, COALESCE((SELECT MAX(position) FROM contest_finalists WHERE trip_id = ?1), 0) + 1, ?3
-       WHERE (SELECT COUNT(*) FROM contest_finalists WHERE trip_id = ?1) < ${MAX_FINALISTS}`,
+       SELECT ?1, ?2, COALESCE((SELECT MAX(position) FROM contest_finalists WHERE trip_id = ?1), 0) + 1, ?3`,
     )
     .bind(tripId, mediaId, now);
 }
@@ -67,6 +64,7 @@ export type FinalistRow = {
   height: number | null;
   authorUserId: string;
   authorName: string | null;
+  authorUsername: string | null;
   authorAvatarKey: string | null;
 };
 
@@ -79,7 +77,7 @@ export async function validFinalists(db: D1Database, tripId: string, viewerUserI
   const { results } = await db
     .prepare(
       `SELECT f.media_id AS mediaId, f.position AS position, m.thumbhash AS thumbhash, m.width AS width, m.height AS height,
-              u.id AS authorUserId, u.name AS authorName, u.avatar_key AS authorAvatarKey
+              u.id AS authorUserId, u.name AS authorName, u.username AS authorUsername, u.avatar_key AS authorAvatarKey
        FROM contest_finalists f
        JOIN media m ON m.id = f.media_id
        JOIN members a ON a.id = m.member_id
@@ -135,13 +133,13 @@ export async function voteCounts(db: D1Database, tripId: string, mediaIds: strin
   return new Map(results.map((r) => [r.media_id, r.n]));
 }
 
-export type WinnerRow = { mediaId: string; authorUserId: string; authorName: string | null; authorAvatarKey: string | null; available: number };
+export type WinnerRow = { mediaId: string; authorUserId: string; authorName: string | null; authorUsername: string | null; authorAvatarKey: string | null; available: number };
 
 /** The winning media with its author, regardless of viewer; `available` = 1 while the image can still be shown. */
 export function findWinner(db: D1Database, mediaId: string): Promise<WinnerRow | null> {
   return db
     .prepare(
-      `SELECT m.id AS mediaId, u.id AS authorUserId, u.name AS authorName, u.avatar_key AS authorAvatarKey,
+      `SELECT m.id AS mediaId, u.id AS authorUserId, u.name AS authorName, u.username AS authorUsername, u.avatar_key AS authorAvatarKey,
               CASE WHEN m.deleted_at IS NULL AND m.archived_at IS NULL AND m.status = 'uploaded'
                     AND a.removed_at IS NULL AND a.left_at IS NULL THEN 1 ELSE 0 END AS available
        FROM media m JOIN members a ON a.id = m.member_id JOIN users u ON u.id = a.user_id
