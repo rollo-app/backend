@@ -119,6 +119,7 @@ describe("publicTrip", () => {
       coverUrl: null,
       groups: [],
       description: null,
+      contest: null,
     });
   });
 });

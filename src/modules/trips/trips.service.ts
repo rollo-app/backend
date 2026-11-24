@@ -9,7 +9,7 @@ import { generateJoinCode, isRevealed, localDate, publicTrip } from "../../lib/u
 import { PAST_TOLERANCE_MS } from "../../schemas";
 import { deleteUntakenMomentsAfter, deleteUntakenMomentsOn } from "../moments/moments.repository";
 import type { Env, MemberRow, Role, TripRow, UserRow } from "../../types";
-import { CONTEST_GAP_MESSAGE, CONTEST_REVEAL_MESSAGE, hasContestGap } from "../contest/contest.rules";
+import { CONTEST_GAP_MESSAGE, CONTEST_REVEAL_MESSAGE, CONTEST_VOTING_HOURS_DEFAULT, hasContestGap } from "../contest/contest.rules";
 import { countableFinalistCount, settleContestAtReveal } from "../contest/contest.service";
 import { deleteFinalists } from "../contest/contest.repository";
 import { deleteFeaturedOfTrip } from "../featured/featured.repository";
@@ -117,7 +117,8 @@ export async function createTrip(
       moment_window_start: body.momentWindowStart,
       moment_window_end: body.momentWindowEnd,
       contest_enabled: isEvent && body.contestEnabled ? 1 : 0,
-      contest_voting_hours: body.contestVotingHours,
+      // The API fills the default, but the service can be called without it (tests, scripts): never bind undefined.
+      contest_voting_hours: body.contestVotingHours ?? CONTEST_VOTING_HOURS_DEFAULT,
     }, {
       userId: user.id,
       limited,
