@@ -16,6 +16,7 @@ export async function previewEvent(db: D1Database, code: string, includeTrips = 
     type: trip.type,
     name: trip.name,
     coverUrl: coverUrl(trip),
+    coverFocusY: trip.cover_focus_y,
     description: trip.description,
     startsAt: trip.starts_at,
     endsAt: trip.ends_at,
