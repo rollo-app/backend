@@ -152,7 +152,7 @@ describe("GET /events/{code}", () => {
     const { code, tripId } = await newTrip();
     await env.DB.prepare("UPDATE trips SET description = ? WHERE id = ?").bind("Un viaje", tripId).run();
     const row = await env.DB.prepare("SELECT name, starts_at, ends_at, timezone FROM trips WHERE id = ?").bind(tripId).first<{ name: string; starts_at: number; ends_at: number; timezone: string }>();
-    const res = await api("GET", `/events/${code}`);
+    const res = await api("GET", `/events/${code}?any=1`);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       type: "trip",
@@ -169,16 +169,42 @@ describe("GET /events/{code}", () => {
 
   it("a regular trip with fewer than 5 members hides the count", async () => {
     const { code } = await newTrip();
-    const res = await api("GET", `/events/${code}`);
+    const res = await api("GET", `/events/${code}?any=1`);
     expect(res.body.memberCount).toBeNull();
   });
 
   it("a revealed regular trip previews as revealed", async () => {
     const { code, tripId } = await newTrip();
     await env.DB.prepare("UPDATE trips SET reveal_at = ? WHERE id = ?").bind(Date.now() - DAY, tripId).run();
-    const res = await api("GET", `/events/${code}`);
+    const res = await api("GET", `/events/${code}?any=1`);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ type: "trip", revealed: true });
+  });
+
+  it("without any=1 a regular trip is still 404 (old builds)", async () => {
+    const { code } = await newTrip();
+    const res = await api("GET", `/events/${code}`);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "Código inválido" });
+    expect((await api("GET", `/events/${code}?any=0`)).status).toBe(404);
+  });
+
+  it("with any=1 a regular trip previews, and an event answers the same with or without it", async () => {
+    const { code } = await newTrip();
+    expect((await api("GET", `/events/${code}?any=1`)).body.type).toBe("trip");
+    const ev = await newEvent();
+    const plain = await api("GET", `/events/${ev.code}`);
+    const wide = await api("GET", `/events/${ev.code}?any=1`);
+    expect(plain.status).toBe(200);
+    expect(wide.body).toEqual(plain.body);
+  });
+
+  it("pins the exact keys of the public preview (privacy decision)", async () => {
+    const keys = ["coverUrl", "description", "endsAt", "groups", "memberCount", "name", "revealed", "startsAt", "timezone", "type"];
+    const { code } = await newTrip();
+    expect(Object.keys((await api("GET", `/events/${code}?any=1`)).body).sort()).toEqual(keys);
+    const ev = await newEvent();
+    expect(Object.keys((await api("GET", `/events/${ev.code}`)).body).sort()).toEqual(keys);
   });
 
   it("answers 404 only for an unknown code", async () => {

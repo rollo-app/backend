@@ -136,7 +136,7 @@ export const setMyGroupsRoute = createRoute({
   tags,
   summary: "Set your groups in an event",
   description:
-    "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.').",
+    "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip ('Solo los eventos tienen grupos.') and once the event is revealed ('Este evento ya se reveló.').",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams, body: { content: { "application/json": { schema: SetMyGroupsSchema } }, required: true } },
@@ -211,7 +211,7 @@ export const removeAdminRoute = createRoute({
   responses: { 200: json(MemberSchema, "The member, now a regular member"), ...errors(400, 401, 403, 404, 409, 428) },
 });
 
-const FROZEN = "409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.'). ";
+const FROZEN = "409 for a regular trip ('Solo los eventos tienen grupos.') and once the event is revealed ('Este evento ya se reveló.'). ";
 
 export const createGroupRoute = createRoute({
   method: "post",

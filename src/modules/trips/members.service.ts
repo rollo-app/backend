@@ -126,7 +126,7 @@ export async function joinTrip(
     return { created: false, trip, member: current };
   }
 
-  if (isRevealed(trip, now)) throw conflict(trip.type === "event" ? "Este evento ya se reveló." : "Este rollo ya se reveló");
+  if (isRevealed(trip, now)) throw conflict(trip.type === "event" ? "Este evento ya se reveló." : "Este rollo ya se reveló.");
 
   const added = await addMember(db, trip.id, user.id, null, now, false, chosen);
   // The joiner is not a member yet: the message must not reveal how many people the rollo holds.

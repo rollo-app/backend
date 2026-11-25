@@ -4,6 +4,17 @@ export const EventCodeParams = z.object({
   code: z.string().trim().toUpperCase().openapi({ param: { name: "code", in: "path" }, example: "HUB5FT" }),
 });
 
+export const EventPreviewQuery = z.object({
+  any: z
+    .enum(["1"])
+    .optional()
+    .openapi({
+      param: { name: "any", in: "query" },
+      description:
+        "Send `1` to also preview a regular trip. Without it a regular trip answers 404 'Código inválido' like before, so installed builds that treat any 200 as an event keep working.",
+    }),
+});
+
 export const EventPreviewSchema = z
   .object({
     type: z.enum(["trip", "event"]).openapi({ description: "Kind of rollo; a regular trip has no groups" }),
