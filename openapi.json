@@ -6373,7 +6373,7 @@
           "Trips"
         ],
         "summary": "Set your groups in an event",
-        "description": "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.').",
+        "description": "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.').",
         "security": [
           {
             "bearerAuth": []
@@ -6469,7 +6469,7 @@
           "Trips"
         ],
         "summary": "Create a group in an event (admin)",
-        "description": "The name is trimmed (1 to 40 characters) and unique in the event (409). At most 30 groups (409). 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ",
+        "description": "The name is trimmed (1 to 40 characters) and unique in the event (409). At most 30 groups (409). 409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.'). ",
         "security": [
           {
             "bearerAuth": []
@@ -6565,7 +6565,7 @@
           "Trips"
         ],
         "summary": "Rename a group of an event (admin)",
-        "description": "Same name rules as creating one (409 if taken). 404 if the group is not in this event. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ",
+        "description": "Same name rules as creating one (409 if taken). 404 if the group is not in this event. 409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.'). ",
         "security": [
           {
             "bearerAuth": []
@@ -6677,7 +6677,7 @@
           "Trips"
         ],
         "summary": "Delete a group of an event (admin)",
-        "description": "409 ('Este grupo tiene gente o fotos.') while anyone is in the group or any photo was sent to it; 409 ('Un evento necesita al menos un grupo.') for the last group. 404 if the group is not in this event. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ",
+        "description": "409 ('Este grupo tiene gente o fotos.') while anyone is in the group or any photo was sent to it; 409 ('Un evento necesita al menos un grupo.') for the last group. 404 if the group is not in this event. 409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.'). ",
         "security": [
           {
             "bearerAuth": []
@@ -6763,8 +6763,8 @@
         "tags": [
           "Trips"
         ],
-        "summary": "Get a URL to upload the event cover (admin)",
-        "description": "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /trips/{tripId}/cover/complete. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). 503 when the storage limit is reached. A previous upload that was never completed is discarded.",
+        "summary": "Get a URL to upload the cover of a rollo or event (admin)",
+        "description": "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /trips/{tripId}/cover/complete. 409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.'). 503 when the storage limit is reached. A previous upload that was never completed is discarded.",
         "security": [
           {
             "bearerAuth": []
@@ -6879,8 +6879,8 @@
         "tags": [
           "Trips"
         ],
-        "summary": "Confirm the event cover upload (admin)",
-        "description": "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it the event's cover and deletes the previous one. Otherwise the upload is discarded and the response is a 400. 409 once the event is revealed (the pending upload is discarded). The cover is served publicly at `coverUrl` (GET /covers/{tripId}/{file}).",
+        "summary": "Confirm the cover upload of a rollo or event (admin)",
+        "description": "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it the cover and deletes the previous one. Otherwise the upload is discarded and the response is a 400. 409 once the rollo or event is revealed (the pending upload is discarded). The cover is served publicly at `coverUrl` (GET /covers/{tripId}/{file}).",
         "security": [
           {
             "bearerAuth": []

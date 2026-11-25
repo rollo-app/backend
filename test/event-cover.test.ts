@@ -113,9 +113,25 @@ describe("event cover", () => {
     expect((await api("POST", `/trips/${ev.tripId}/cover/complete`, { token: ev.guest.token })).status).toBe(403);
   });
 
-  it("a regular trip has no cover", async () => {
+  it("a regular trip can have a cover", async () => {
     const t = await newTrip();
-    expect((await api("POST", `/trips/${t.tripId}/cover`, { token: t.adminToken, body: { sizeBytes: 10 } })).status).toBe(409);
+    const req = await api("POST", `/trips/${t.tripId}/cover`, { token: t.adminToken, body: { sizeBytes: jpeg().length } });
+    expect(req.status).toBe(200);
+    await env.MEDIA.put((await keys(t.tripId))!.p!, jpeg());
+    const done = await api("POST", `/trips/${t.tripId}/cover/complete`, { token: t.adminToken });
+    expect(done.status).toBe(200);
+    expect(done.body.coverUrl).toMatch(new RegExp(`^/covers/${t.tripId}/[0-9a-f-]+\\.jpg$`));
+    const file = await api("GET", done.body.coverUrl);
+    expect(file.status).toBe(200);
+    expect(file.headers.get("content-type")).toBe("image/jpeg");
+  });
+
+  it("a revealed regular trip refuses the cover with its own message", async () => {
+    const t = await newTrip();
+    await env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(Date.now() - 1000, t.tripId).run();
+    const req = await api("POST", `/trips/${t.tripId}/cover`, { token: t.adminToken, body: { sizeBytes: jpeg().length } });
+    expect(req.status).toBe(409);
+    expect(req.body.error).toBe("Este rollo ya se reveló.");
   });
 
   it("an unknown event or file is a 404", async () => {

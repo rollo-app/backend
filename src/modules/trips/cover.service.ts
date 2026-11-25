@@ -13,13 +13,9 @@ const COVER_URL_TTL = 15 * 60;
 
 const coverKey = (tripId: string) => `trips/${tripId}/cover/${crypto.randomUUID()}.jpg`;
 
-function assertEvent(trip: TripRow): void {
-  if (trip.type !== "event") throw conflict("Solo los eventos tienen portada.");
-}
-
-/** The cover is frozen once the event is revealed (like the groups). */
+/** The cover is frozen once the rollo or event is revealed (like the groups). */
 function assertNotRevealed(trip: TripRow): void {
-  if (isRevealed(trip)) throw conflict("Este evento ya se reveló.");
+  if (isRevealed(trip)) throw conflict(trip.type === "event" ? "Este evento ya se reveló." : "Este rollo ya se reveló.");
 }
 
 /** Same flow as the avatar: a presigned PUT to a pending key, then `completeCoverUpload` validates and promotes it. */
@@ -29,7 +25,6 @@ export async function requestCoverUpload(
   trip: TripRow,
   sizeBytes: number,
 ): Promise<{ upload: string; expiresIn: number }> {
-  assertEvent(trip);
   assertNotRevealed(trip);
   await assertNotDegraded(env);
   await assertStorageAvailable(env, sizeBytes);
@@ -41,9 +36,8 @@ export async function requestCoverUpload(
   return { upload, expiresIn: COVER_URL_TTL };
 }
 
-/** Validates the uploaded cover, makes it the event's cover and deletes the previous one. */
+/** Validates the uploaded cover, makes it the cover and deletes the previous one. */
 export async function completeCoverUpload(env: Env, trip: TripRow): Promise<{ coverUrl: string }> {
-  assertEvent(trip);
   const pending = trip.pending_cover_key;
   if (isRevealed(trip)) {
     // Revealed between the request and now: discard the upload so nothing is left behind.
