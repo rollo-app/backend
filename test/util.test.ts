@@ -118,6 +118,7 @@ describe("publicTrip", () => {
       createdBy: null,
       type: "trip",
       coverUrl: null,
+      coverFocusY: null,
       groups: [],
       description: null,
       contest: null,
