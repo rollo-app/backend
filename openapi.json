@@ -271,6 +271,13 @@
             ],
             "description": "Path of the cover (prefix the API base URL), null if none"
           },
+          "coverFocusY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Which vertical part of the cover to show when it is cropped wider (0 = top, 1 = bottom); null = middle. The website's link image uses it"
+          },
           "description": {
             "type": [
               "string",
@@ -325,6 +332,7 @@
           "type",
           "name",
           "coverUrl",
+          "coverFocusY",
           "description",
           "startsAt",
           "endsAt",

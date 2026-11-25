@@ -71,12 +71,10 @@ describe("cover focus (coverFocusY)", () => {
     expect(await focusInList(t.adminToken, t.tripId)).toBeNull();
   });
 
-  it("the public preview does not expose it", async () => {
+  it("the public preview carries it, so the join link's image frames the cover like the app", async () => {
     const t = await newTrip();
-    await patch(t.adminToken, t.tripId, { coverFocusY: 0.5 });
-    const body = (await api("GET", `/events/${t.code}?any=1`)).body;
-    expect(Object.keys(body).sort()).toEqual(
-      ["coverUrl", "description", "endsAt", "groups", "memberCount", "name", "revealed", "startsAt", "timezone", "type"],
-    );
+    expect((await api("GET", `/events/${t.code}?any=1`)).body.coverFocusY).toBeNull();
+    await patch(t.adminToken, t.tripId, { coverFocusY: 0.25 });
+    expect((await api("GET", `/events/${t.code}?any=1`)).body.coverFocusY).toBe(0.25);
   });
 });
