@@ -33,6 +33,7 @@ const baseTrip: TripRow = {
   type: "trip",
   cover_key: null,
   pending_cover_key: null,
+  cover_focus_y: null,
   description: null,
   contest_enabled: 0,
   contest_voting_hours: 72,

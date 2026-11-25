@@ -56,6 +56,7 @@ export const TripSchema = z
       .openapi({ description: "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown" }),
     type: z.enum(["trip", "event"]).openapi({ description: "event: guests join groups; trip: a regular rollo" }),
     coverUrl: z.string().nullable().openapi({ description: "Public path of the cover (the app prefixes the API base URL); null if none" }),
+    coverFocusY: z.number().nullable().openapi({ description: "Which vertical part of the cover shows in the rollos list: 0 = top, 1 = bottom; null = middle" }),
     groups: z.array(z.object({ id: z.string().uuid(), name: z.string() })).openapi({ description: "Groups of an event, in order; [] for a regular trip" }),
     description: z.string().nullable().openapi({ description: "Cover text (up to 300 characters, 6 lines); null if none" }),
     contest: z.object({ enabled: z.boolean(), votingHours: z.number().int() }).nullable().openapi({

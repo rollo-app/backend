@@ -36,6 +36,7 @@ export const trips = sqliteTable("trips", {
   type: text("type", { enum: ["trip", "event"] }).notNull().default("trip"),
   coverKey: text("cover_key"),
   pendingCoverKey: text("pending_cover_key"),
+  coverFocusY: real("cover_focus_y"),
   description: text("description"),
   contestEnabled: integer("contest_enabled").notNull().default(0),
   contestVotingHours: integer("contest_voting_hours").notNull().default(72),

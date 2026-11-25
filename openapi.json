@@ -660,6 +660,13 @@
             ],
             "description": "Public path of the cover; null if none"
           },
+          "coverFocusY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Which vertical part of the cover shows in the wide card: 0 = top, 1 = bottom; null = middle"
+          },
           "coverThumbhash": {
             "type": [
               "string",
@@ -683,6 +690,7 @@
           "momentMode",
           "type",
           "coverUrl",
+          "coverFocusY",
           "coverThumbhash"
         ]
       },
@@ -1510,6 +1518,13 @@
             ],
             "description": "Public path of the cover (the app prefixes the API base URL); null if none"
           },
+          "coverFocusY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Which vertical part of the cover shows in the rollos list: 0 = top, 1 = bottom; null = middle"
+          },
           "groups": {
             "type": "array",
             "items": {
@@ -1579,6 +1594,7 @@
           "createdBy",
           "type",
           "coverUrl",
+          "coverFocusY",
           "groups",
           "description",
           "contest"
@@ -1904,6 +1920,15 @@
             "minimum": 24,
             "maximum": 336,
             "description": "How long the finalists are voted on after the reveal, in hours (24 to 336, default 72). Editable until the reveal; 409 once revealed"
+          },
+          "coverFocusY": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Which vertical part of the cover shows in the rollos list: 0 = top, 0.5 = middle, 1 = bottom; null resets it. Any admin; 409 once revealed"
           },
           "startsAt": {
             "type": "integer",
@@ -5977,7 +6002,7 @@
           "Trips"
         ],
         "summary": "Edit the trip (admin)",
-        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` and `description` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
+        "description": "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` and `description` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise). `coverFocusY` (0..1, null resets; 400 outside) picks which vertical part of the cover shows in the rollos list; any admin, until the reveal (409 'Este rollo ya se reveló.' / 'Este evento ya se reveló.'); a new cover resets it.",
         "security": [
           {
             "bearerAuth": []
