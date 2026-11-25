@@ -633,7 +633,7 @@
               "string",
               "null"
             ],
-            "description": "Public path of the event cover; null if none"
+            "description": "Public path of the cover; null if none"
           },
           "coverThumbhash": {
             "type": [
@@ -1483,7 +1483,7 @@
               "string",
               "null"
             ],
-            "description": "Public path of the event cover (the app prefixes the API base URL); null if none"
+            "description": "Public path of the cover (the app prefixes the API base URL); null if none"
           },
           "groups": {
             "type": "array",
@@ -4527,8 +4527,8 @@
         "tags": [
           "Trips"
         ],
-        "summary": "Download an event's cover",
-        "description": "Public (no token) so it can be used directly as an image URL, also by the event preview and the website. Only the event's current cover is served; file names are random, so older or guessed ones return 404.",
+        "summary": "Download the cover of a rollo or event",
+        "description": "Public (no token) so it can be used directly as an image URL, also by the event preview and the website. Only the current cover is served; file names are random, so older or guessed ones return 404.",
         "parameters": [
           {
             "schema": {

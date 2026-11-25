@@ -134,6 +134,14 @@ describe("event cover", () => {
     expect(req.body.error).toBe("Este rollo ya se reveló.");
   });
 
+  it("deleting a regular trip queues its cover for removal", async () => {
+    const t = await newTrip();
+    expect((await setCover(t.adminToken, t.tripId)).status).toBe(200);
+    const key = (await keys(t.tripId))!.c!;
+    expect((await api("DELETE", `/trips/${t.tripId}`, { token: t.adminToken })).status).toBe(204);
+    expect(await env.DB.prepare("SELECT 1 FROM r2_purge WHERE key = ?").bind(key).first()).not.toBeNull();
+  });
+
   it("an unknown event or file is a 404", async () => {
     const ev = await eventFixture();
     expect((await api("GET", `/covers/${ev.tripId}/nope.jpg`)).status).toBe(404);
