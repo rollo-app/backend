@@ -3697,13 +3697,10 @@
           {
             "schema": {
               "type": "string",
-              "enum": [
-                "1"
-              ],
-              "description": "Send `1` to also preview a regular trip. Without it a regular trip answers 404 'Código inválido' like before, so installed builds that treat any 200 as an event keep working."
+              "description": "Send `1` to also preview a regular trip (any other value is ignored). Without it a regular trip answers 404 'Código inválido' like before, so installed builds that treat any 200 as an event keep working."
             },
             "required": false,
-            "description": "Send `1` to also preview a regular trip. Without it a regular trip answers 404 'Código inválido' like before, so installed builds that treat any 200 as an event keep working.",
+            "description": "Send `1` to also preview a regular trip (any other value is ignored). Without it a regular trip answers 404 'Código inválido' like before, so installed builds that treat any 200 as an event keep working.",
             "name": "any",
             "in": "query"
           }

@@ -6,12 +6,12 @@ export const EventCodeParams = z.object({
 
 export const EventPreviewQuery = z.object({
   any: z
-    .enum(["1"])
+    .string()
     .optional()
     .openapi({
       param: { name: "any", in: "query" },
       description:
-        "Send `1` to also preview a regular trip. Without it a regular trip answers 404 'Código inválido' like before, so installed builds that treat any 200 as an event keep working.",
+        "Send `1` to also preview a regular trip (any other value is ignored). Without it a regular trip answers 404 'Código inválido' like before, so installed builds that treat any 200 as an event keep working.",
     }),
 });
 
