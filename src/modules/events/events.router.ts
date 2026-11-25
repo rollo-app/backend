@@ -9,13 +9,13 @@ export const previewEventRoute = createRoute({
   method: "get",
   path: "/{code}",
   tags: ["Events"],
-  summary: "Preview an event by its invite code",
+  summary: "Preview a rollo (event or regular trip) by its invite code",
   description:
-    "No token. The name, description, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. " +
-    "404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
+    "No token. The type (`trip` | `event`), name, description, cover, dates, timezone and groups (empty for a regular trip) the guest sees before joining (`POST /trips/join`), and whether the rollo was already revealed. " +
+    "404 'Código inválido' if the code does not exist. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
   middleware: [rateLimitByIp("RL_IP_PUBLIC"), previewMissGuard] as const,
   request: { params: EventCodeParams },
-  responses: { 200: json(EventPreviewSchema, "Event preview"), ...errors(404, 429) },
+  responses: { 200: json(EventPreviewSchema, "Rollo preview"), ...errors(404, 429) },
 });
 
 const events = createApp();

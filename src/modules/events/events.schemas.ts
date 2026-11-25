@@ -6,14 +6,18 @@ export const EventCodeParams = z.object({
 
 export const EventPreviewSchema = z
   .object({
+    type: z.enum(["trip", "event"]).openapi({ description: "Kind of rollo; a regular trip has no groups" }),
     name: z.string(),
     coverUrl: z.string().nullable().openapi({ description: "Path of the cover (prefix the API base URL), null if none" }),
     description: z.string().nullable().openapi({ description: "Cover text set by the organizers; null if none" }),
+    startsAt: z.number().int().openapi({ description: "Start of the rollo, ms since epoch" }),
+    endsAt: z.number().int().openapi({ description: "End of the rollo, ms since epoch" }),
+    timezone: z.string().openapi({ description: "IANA timezone of the rollo" }),
     revealed: z.boolean(),
     memberCount: z.number().int().nullable().openapi({
       description:
-        "People already in the event: active members (not left, not removed), organizers included — the accounts that will be able to download the photos after the reveal. null below 5, so a near-empty event does not show a tiny number to strangers",
+        "People already in the rollo: active members (not left, not removed), organizers included — the accounts that will be able to download the photos after the reveal. null below 5, so a near-empty rollo does not show a tiny number to strangers",
     }),
-    groups: z.array(z.object({ id: z.string().uuid(), name: z.string() })),
+    groups: z.array(z.object({ id: z.string().uuid(), name: z.string() })).openapi({ description: "Groups the guest picks from; empty for a regular trip" }),
   })
   .openapi("EventPreview");

@@ -253,6 +253,14 @@
       "EventPreview": {
         "type": "object",
         "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "trip",
+              "event"
+            ],
+            "description": "Kind of rollo; a regular trip has no groups"
+          },
           "name": {
             "type": "string"
           },
@@ -270,6 +278,18 @@
             ],
             "description": "Cover text set by the organizers; null if none"
           },
+          "startsAt": {
+            "type": "integer",
+            "description": "Start of the rollo, ms since epoch"
+          },
+          "endsAt": {
+            "type": "integer",
+            "description": "End of the rollo, ms since epoch"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone of the rollo"
+          },
           "revealed": {
             "type": "boolean"
           },
@@ -278,7 +298,7 @@
               "integer",
               "null"
             ],
-            "description": "People already in the event: active members (not left, not removed), organizers included — the accounts that will be able to download the photos after the reveal. null below 5, so a near-empty event does not show a tiny number to strangers"
+            "description": "People already in the rollo: active members (not left, not removed), organizers included — the accounts that will be able to download the photos after the reveal. null below 5, so a near-empty rollo does not show a tiny number to strangers"
           },
           "groups": {
             "type": "array",
@@ -297,13 +317,18 @@
                 "id",
                 "name"
               ]
-            }
+            },
+            "description": "Groups the guest picks from; empty for a regular trip"
           }
         },
         "required": [
+          "type",
           "name",
           "coverUrl",
           "description",
+          "startsAt",
+          "endsAt",
+          "timezone",
           "revealed",
           "memberCount",
           "groups"
@@ -3657,8 +3682,8 @@
         "tags": [
           "Events"
         ],
-        "summary": "Preview an event by its invite code",
-        "description": "No token. The name, description, cover and groups the guest picks from before joining (`POST /trips/join`), and whether the event was already revealed. 404 'Código inválido' if the code does not exist or belongs to a regular trip. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
+        "summary": "Preview a rollo (event or regular trip) by its invite code",
+        "description": "No token. The type (`trip` | `event`), name, description, cover, dates, timezone and groups (empty for a regular trip) the guest sees before joining (`POST /trips/join`), and whether the rollo was already revealed. 404 'Código inválido' if the code does not exist. Limited per IP (429, 300/min: a venue shares one IP; more than 20 misses (404) a minute block the IP for 60 s, valid codes included). CORS: open to the website (`https://rolloproject.com`, `https://www.rolloproject.com`), GET only.",
         "parameters": [
           {
             "schema": {
@@ -3672,7 +3697,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Event preview",
+            "description": "Rollo preview",
             "content": {
               "application/json": {
                 "schema": {

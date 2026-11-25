@@ -139,12 +139,52 @@ describe("GET /events/{code}", () => {
     expect((await api("GET", `/events/${ev.code.toLowerCase()}`)).status).toBe(200);
   });
 
-  it("answers 404 for a trip code and for an unknown code", async () => {
+  it("the event preview now also carries type and dates", async () => {
+    const ev = await newEvent();
+    const res = await api("GET", `/events/${ev.code}`);
+    expect(res.body.type).toBe("event");
+    expect(res.body.timezone).toBe(TZ);
+    expect(typeof res.body.startsAt).toBe("number");
+    expect(typeof res.body.endsAt).toBe("number");
+  });
+
+  it("previews a regular trip by code without a session", async () => {
+    const { code, tripId } = await newTrip();
+    await env.DB.prepare("UPDATE trips SET description = ? WHERE id = ?").bind("Un viaje", tripId).run();
+    const row = await env.DB.prepare("SELECT name, starts_at, ends_at, timezone FROM trips WHERE id = ?").bind(tripId).first<{ name: string; starts_at: number; ends_at: number; timezone: string }>();
+    const res = await api("GET", `/events/${code}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      type: "trip",
+      groups: [],
+      name: row!.name,
+      coverUrl: null,
+      description: "Un viaje",
+      revealed: false,
+      startsAt: row!.starts_at,
+      endsAt: row!.ends_at,
+      timezone: row!.timezone,
+    });
+  });
+
+  it("a regular trip with fewer than 5 members hides the count", async () => {
     const { code } = await newTrip();
     const res = await api("GET", `/events/${code}`);
+    expect(res.body.memberCount).toBeNull();
+  });
+
+  it("a revealed regular trip previews as revealed", async () => {
+    const { code, tripId } = await newTrip();
+    await env.DB.prepare("UPDATE trips SET reveal_at = ? WHERE id = ?").bind(Date.now() - DAY, tripId).run();
+    const res = await api("GET", `/events/${code}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ type: "trip", revealed: true });
+  });
+
+  it("answers 404 only for an unknown code", async () => {
+    const res = await api("GET", "/events/ZZZZZZ");
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: "Código inválido" });
-    expect((await api("GET", "/events/ZZZZZZ")).status).toBe(404);
   });
 
   it("is limited by IP with its own roomy budget, not RL_SEARCH nor RL_GLOBAL", async () => {
