@@ -86,7 +86,7 @@ export const downloadRoute = createRoute({
   path: "/trips/{tripId}/media/{mediaId}/{variant}",
   tags,
   summary: "Download a file (only after the reveal, except daily moment photos)",
-  description: "Streamed from R2 with the same Bearer token. `display` is the 2048px version (the original for uploads that have none); `original` serves the display once the original was purged 30 days after the reveal. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
+  description: "Streamed from R2 with the same Bearer token. `display` is the 2048px version (the original for uploads that have none); `original` serves the display once the original was purged 14 days after the reveal. Before the reveal only the two images of a daily moment (main and linked) can be fetched, by active members; anything else is 403.",
   security: bearerAuth,
   middleware: [requireUser, rateLimit("RL_FILES"), requireTripMember] as const,
   request: { params: MediaFileParams },

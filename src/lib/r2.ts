@@ -72,7 +72,7 @@ export function mediaKeys(tripId: string, mediaId: string, type: MediaType) {
   return {
     original: `${base}/original.${type === "video" ? "mp4" : "jpg"}`,
     thumb: `${base}/thumb.jpg`,
-    /** 2048 px compressed JPEG of a photo, kept forever (the original is deleted 30 days after the reveal). */
+    /** 2048 px compressed JPEG of a photo, kept forever (the original is deleted 14 days after the reveal). */
     display: `${base}/display.jpg`,
   };
 }

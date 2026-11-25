@@ -143,7 +143,7 @@ export const FeedItemSchema = z
       .object({
         thumb: z.string(),
         original: z.string().openapi({
-          description: "Always present. Once the original was purged (30 days after the reveal) the same path serves the display file instead; see `originalAvailable`",
+          description: "Always present. Once the original was purged (14 days after the reveal) the same path serves the display file instead; see `originalAvailable`",
         }),
         display: z.string().optional().openapi({ description: "2048px version, kept forever; absent for uploads from builds that predate it (they keep their original)" }),
       })

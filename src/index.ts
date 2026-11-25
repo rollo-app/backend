@@ -121,7 +121,7 @@ app.onError((err, c) => {
   return c.json({ error: "Error interno" }, 500);
 });
 
-/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the purge of abandoned incomplete accounts, the sweep of orphan avatar files, the hourly sweep of orphan cover files (any rollo), the purge of the files of deleted rollos, the "originals expire in 5 days" push and the queueing of expired originals (30 days after the reveal), the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
+/** Cron Trigger (every 5 min, `wrangler.jsonc`): "Arrancó" / "Se reveló" pushes, the Expo receipts check and the cleanup of stale pending uploads, the purge of abandoned incomplete accounts, the sweep of orphan avatar files, the hourly sweep of orphan cover files (any rollo), the purge of the files of deleted rollos, the "originals expire in 5 days" push and the queueing of expired originals (14 days after the reveal), the storage check, the moderation summary, the daily metrics snapshot and the Cloudflare usage poll (with its 80% alert). */
 async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
   const now = controller.scheduledTime;
   ctx.waitUntil(

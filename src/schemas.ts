@@ -46,7 +46,7 @@ export const TripSchema = z
     originals: z
       .object({
         keep: z.boolean().openapi({ description: "The rollo keeps its full-quality originals forever (rollos that existed before the policy, and later the paid pass)" }),
-        expiresAt: z.number().int().nullable().openapi({ description: "When the originals are deleted: 30 days after the reveal; null when `keep`" }),
+        expiresAt: z.number().int().nullable().openapi({ description: "When the originals are deleted: 14 days after the reveal; null when `keep`" }),
         purged: z.boolean().openapi({ description: "The cron already deleted every purgeable original (the display versions stay)" }),
       })
       .openapi({ description: "Retention of the full-quality originals; the 2048px display version of every photo is kept forever" }),

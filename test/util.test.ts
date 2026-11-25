@@ -114,7 +114,7 @@ describe("publicTrip", () => {
       momentWindowStart: 540,
       momentWindowEnd: 1380,
       maxMembers: 15,
-      originals: { keep: false, expiresAt: 3_000 + 30 * 24 * 60 * 60 * 1000, purged: false },
+      originals: { keep: false, expiresAt: 3_000 + 14 * 24 * 60 * 60 * 1000, purged: false },
       createdBy: null,
       type: "trip",
       coverUrl: null,
