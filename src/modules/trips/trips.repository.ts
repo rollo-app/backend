@@ -20,7 +20,7 @@ export type TripEdit = Pick<
   TripRow,
   | "name" | "description" | "starts_at" | "ends_at" | "reveal_at" | "daily_photo_limit" | "daily_video_limit" | "photo_limit_mode" | "total_photo_limit"
   | "featuring_disabled" | "moment_mode" | "moment_window_start" | "moment_window_end" | "moment_from_day"
-  | "contest_enabled" | "contest_voting_hours"
+  | "contest_enabled" | "contest_voting_hours" | "cover_focus_y"
 >;
 
 export async function joinCodeExists(db: D1Database, joinCode: string): Promise<boolean> {
@@ -134,7 +134,7 @@ export function clearPendingCoverKey(db: D1Database, tripId: string): D1Prepared
 }
 
 export function promoteCover(db: D1Database, tripId: string, key: string): D1PreparedStatement {
-  return db.prepare("UPDATE trips SET cover_key = ?, pending_cover_key = NULL WHERE id = ?").bind(key, tripId);
+  return db.prepare("UPDATE trips SET cover_key = ?, pending_cover_key = NULL, cover_focus_y = NULL WHERE id = ?").bind(key, tripId);
 }
 
 export async function listGroups(db: D1Database, tripId: string): Promise<{ id: string; name: string; position: number }[]> {
@@ -297,13 +297,13 @@ export function updateTrip(db: D1Database, tripId: string, next: TripEdit): D1Pr
     .prepare(
       `UPDATE trips SET name = ?, description = ?, starts_at = ?, ends_at = ?, reveal_at = ?, daily_photo_limit = ?, daily_video_limit = ?, photo_limit_mode = ?,
                         total_photo_limit = ?, featuring_disabled = ?, moment_mode = ?, moment_window_start = ?, moment_window_end = ?, moment_from_day = ?,
-                        contest_enabled = ?, contest_voting_hours = ?
+                        contest_enabled = ?, contest_voting_hours = ?, cover_focus_y = ?
      WHERE id = ?`,
     )
     .bind(
       next.name, next.description, next.starts_at, next.ends_at, next.reveal_at, next.daily_photo_limit, next.daily_video_limit, next.photo_limit_mode,
       next.total_photo_limit, next.featuring_disabled, next.moment_mode, next.moment_window_start, next.moment_window_end, next.moment_from_day,
-      next.contest_enabled, next.contest_voting_hours, tripId,
+      next.contest_enabled, next.contest_voting_hours, next.cover_focus_y, tripId,
     );
 }
 

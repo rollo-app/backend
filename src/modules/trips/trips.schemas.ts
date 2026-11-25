@@ -99,6 +99,9 @@ export const UpdateTripSchema = z
     description: z.string().optional().openapi({ description: `${DESCRIPTION_DOC} Editable at any stage, even after the reveal` }),
     contestEnabled: z.boolean().optional().openapi({ description: `${CONTEST_ENABLED_DOC}. Turning it off deletes the chosen finalists; 409 once revealed` }),
     contestVotingHours: z.number().int().min(CONTEST_VOTING_HOURS_MIN).max(CONTEST_VOTING_HOURS_MAX).optional().openapi({ description: `${CONTEST_HOURS_DOC}; 409 once revealed` }),
+    coverFocusY: z.number().min(0).max(1).nullable().optional().openapi({
+      description: "Which vertical part of the cover shows in the rollos list: 0 = top, 0.5 = middle, 1 = bottom; null resets it. Any admin; 409 once revealed",
+    }),
     startsAt: z.number().int().positive().optional().openapi({ description: "Only before the rollo starts; never in the past" }),
     endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt, at most 31 days after it and <= the resulting revealAt. Not once the rollo ended" }),
     revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),

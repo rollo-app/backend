@@ -6,10 +6,10 @@ const REVEALED_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const STATE_KEY = "cover_sweep_after";
 
 /**
- * Cron: deletes event cover files in R2 (`trips/{tripId}/cover/*`) that are neither the trip's `cover_key` nor its
+ * Cron: deletes cover files (any rollo or event) in R2 (`trips/{tripId}/cover/*`) that are neither the trip's `cover_key` nor its
  * `pending_cover_key` and were uploaded over 1 hour ago, so an upload that is about to be completed is never touched.
  * They appear from abandoned pending uploads, a presigned URL reused after `complete`, or concurrent completes.
- * Covers only exist under events, so it walks the event trips (ordered by id, `TRIPS_PER_RUN` per run) instead of
+ * It walks the trips (ordered by id, `TRIPS_PER_RUN` per run) instead of
  * listing every media object, and only those not revealed or revealed less than 7 days ago (the cover is frozen after the
  * reveal: `cover.service.ts` refuses uploads then), to keep R2 list operations low. The cron calls it once an hour (`scheduled`); the last trip id it saw is kept in `cron_state` so the next run resumes after it, and the
  * position is cleared once the walk reaches the end.
@@ -21,7 +21,7 @@ export async function sweepOrphanCovers(
 ): Promise<void> {
   const state = await env.DB.prepare("SELECT value FROM cron_state WHERE key = ?").bind(STATE_KEY).first<{ value: string }>();
   const { results: trips } = await env.DB
-    .prepare("SELECT id, cover_key, pending_cover_key FROM trips WHERE type = 'event' AND id > ? AND COALESCE(revealed_at, reveal_at) > ? ORDER BY id LIMIT ?")
+    .prepare("SELECT id, cover_key, pending_cover_key FROM trips WHERE id > ? AND COALESCE(revealed_at, reveal_at) > ? ORDER BY id LIMIT ?")
     .bind(state?.value ?? "", now - REVEALED_GRACE_MS, tripsPerRun)
     .all<{ id: string; cover_key: string | null; pending_cover_key: string | null }>();
 

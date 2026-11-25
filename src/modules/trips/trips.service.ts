@@ -235,7 +235,12 @@ export async function updateTrip(db: D1Database, trip: TripRow, actorUserId: str
     moment_from_day: trip.moment_from_day,
     contest_enabled: b.contestEnabled === undefined ? trip.contest_enabled : b.contestEnabled ? 1 : 0,
     contest_voting_hours: b.contestVotingHours ?? trip.contest_voting_hours,
+    cover_focus_y: b.coverFocusY === undefined ? trip.cover_focus_y : b.coverFocusY,
   };
+  // Like the cover itself, the focus is frozen once revealed (a re-sent stored value is untouched).
+  if (next.cover_focus_y !== trip.cover_focus_y && isRevealed(trip, now)) {
+    throw conflict(trip.type === "event" ? "Este evento ya se reveló." : "Este rollo ya se reveló.");
+  }
   const contestEdited = next.contest_enabled !== trip.contest_enabled || next.contest_voting_hours !== trip.contest_voting_hours;
   if (trip.type !== "event" && (b.contestEnabled || b.contestVotingHours !== undefined)) throw badRequest("Solo los eventos tienen concurso");
   // The contest settings stay editable after the end (the organizers pick finalists then), but not once revealed.

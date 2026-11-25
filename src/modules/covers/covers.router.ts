@@ -7,9 +7,9 @@ export const getCoverRoute = createRoute({
   method: "get",
   path: "/{tripId}/{file}",
   tags: ["Trips"],
-  summary: "Download an event's cover",
+  summary: "Download the cover of a rollo or event",
   description:
-    "Public (no token) so it can be used directly as an image URL, also by the event preview and the website. Only the event's current cover is served; " +
+    "Public (no token) so it can be used directly as an image URL, also by the event preview and the website. Only the current cover is served; " +
     "file names are random, so older or guessed ones return 404.",
   request: { params: CoverParams },
   responses: {

@@ -57,6 +57,7 @@ export const myTrips: RouteHandler<typeof myTripsRoute, AppEnv> = async (c) => {
         momentMode: t.moment_mode,
         type: t.type,
         coverUrl: coverUrl(t),
+        coverFocusY: t.cover_focus_y,
         coverThumbhash: t.cover_thumbhash,
       })),
     },
