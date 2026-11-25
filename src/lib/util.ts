@@ -40,9 +40,9 @@ export function generateJoinCode(length = 6): string {
 }
 
 /** Originals are deleted this long after the reveal unless the rollo keeps them. */
-export const ORIGINALS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const ORIGINALS_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
-/** When a rollo's originals expire: 30 days after the reveal (manual or scheduled); null if it keeps them. */
+/** When a rollo's originals expire: 14 days after the reveal (manual or scheduled); null if it keeps them. */
 export function originalsExpireAt(trip: Pick<TripRow, "keep_originals" | "revealed_at" | "reveal_at">): number | null {
   return trip.keep_originals !== 0 ? null : (trip.revealed_at ?? trip.reveal_at) + ORIGINALS_TTL_MS;
 }

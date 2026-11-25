@@ -264,10 +264,10 @@ describe("GET /featured/{userId}/{mediaId}/{variant}", () => {
 // ---------- Trip.originals ----------
 
 describe("Trip.originals", () => {
-  it("a new rollo expires its originals 30 days after the reveal", async () => {
+  it("a new rollo expires its originals 14 days after the reveal", async () => {
     const t = await newTrip();
     const trip = (await api("GET", `/trips/${t.tripId}`, { token: t.adminToken })).body.trip;
-    expect(trip.originals).toEqual({ keep: false, expiresAt: trip.revealAt + 30 * DAY, purged: false });
+    expect(trip.originals).toEqual({ keep: false, expiresAt: trip.revealAt + 14 * DAY, purged: false });
   });
 
   it("after a manual reveal the expiry counts from revealedAt", async () => {
@@ -275,7 +275,7 @@ describe("Trip.originals", () => {
     const at = Date.now() - HOUR;
     await env.DB.prepare("UPDATE trips SET revealed_at = ? WHERE id = ?").bind(at, t.tripId).run();
     const trip = (await api("GET", `/trips/${t.tripId}`, { token: t.adminToken })).body.trip;
-    expect(trip.originals.expiresAt).toBe(at + 30 * DAY);
+    expect(trip.originals.expiresAt).toBe(at + 14 * DAY);
   });
 
   it("a rollo that keeps its originals has no expiry; purged shows once the cron finished", async () => {
@@ -351,8 +351,8 @@ describe("runOriginalsNotices", () => {
     return { ...t, fede, adminPush, fedePush, gonePush };
   }
 
-  it("does nothing before day 25", async () => {
-    const f = await fixture(24);
+  it("does nothing before day 9", async () => {
+    const f = await fixture(8);
     const expo = mockExpo();
     await runOriginalsNotices(env, Date.now());
     await flushPendingPushes();
@@ -360,8 +360,8 @@ describe("runOriginalsNotices", () => {
     expect((await tripRow(f.tripId))!.originals_notice_at).toBeNull();
   });
 
-  it("at day 25 sends once to every active member, opening the rollo, and claims the rollo", async () => {
-    const f = await fixture(25);
+  it("at day 9 sends once to every active member, opening the rollo, and claims the rollo", async () => {
+    const f = await fixture(9);
     const expo = mockExpo();
     const now = Date.now();
     await runOriginalsNotices(env, now);
@@ -379,14 +379,14 @@ describe("runOriginalsNotices", () => {
   });
 
   it("two simultaneous runs send once", async () => {
-    await fixture(26);
+    await fixture(10);
     const expo = mockExpo();
     await Promise.all([runOriginalsNotices(env, Date.now()), runOriginalsNotices(env, Date.now())]);
     expect(expo.sent).toHaveLength(2);
   });
 
   it("respects the originalsExpiring preference", async () => {
-    const f = await fixture(25);
+    const f = await fixture(9);
     await api("PATCH", "/me/settings", { token: f.fede.token, body: { notifications: { originalsExpiring: false } } });
     const expo = mockExpo();
     await runOriginalsNotices(env, Date.now());
@@ -394,11 +394,11 @@ describe("runOriginalsNotices", () => {
   });
 
   it("skips rollos that keep their originals, are already purged, or past the expiry", async () => {
-    const keep = await fixture(26);
+    const keep = await fixture(10);
     await env.DB.prepare("UPDATE trips SET keep_originals = 1 WHERE id = ?").bind(keep.tripId).run();
-    const purged = await fixture(26);
+    const purged = await fixture(10);
     await env.DB.prepare("UPDATE trips SET originals_purged_at = 1 WHERE id = ?").bind(purged.tripId).run();
-    const late = await fixture(31);
+    const late = await fixture(15);
     const expo = mockExpo();
     await runOriginalsNotices(env, Date.now());
     expect(expo.sent).toEqual([]);
@@ -408,7 +408,7 @@ describe("runOriginalsNotices", () => {
   it("skips a rollo with no photo whose original could still be purged", async () => {
     const t = await newTrip();
     await uploadMedia(t.tripId, t.adminToken); // old build: no display, never purged
-    await revealedDaysAgo(t.tripId, 26);
+    await revealedDaysAgo(t.tripId, 10);
     await registerToken(t.adminToken);
     const expo = mockExpo();
     await runOriginalsNotices(env, Date.now());
@@ -418,7 +418,7 @@ describe("runOriginalsNotices", () => {
   it("counts from revealedAt when the admin revealed manually", async () => {
     const f = await fixture(0);
     await env.DB.prepare("UPDATE trips SET reveal_at = ?, revealed_at = ? WHERE id = ?")
-      .bind(Date.now() + 5 * DAY, Date.now() - 26 * DAY, f.tripId)
+      .bind(Date.now() + 5 * DAY, Date.now() - 10 * DAY, f.tripId)
       .run();
     const expo = mockExpo();
     await runOriginalsNotices(env, Date.now());
@@ -434,7 +434,7 @@ describe("runOriginalsPurge", () => {
   it("before 30 days nothing is purged", async () => {
     const t = await newTrip();
     const id = await uploadMedia(t.tripId, t.adminToken, {}, { display: true });
-    await revealedDaysAgo(t.tripId, 29);
+    await revealedDaysAgo(t.tripId, 13);
     await runOriginalsPurge(env, Date.now());
     expect(await purgeQueue()).toEqual([]);
     expect((await mediaRow(id))!.original_purged_at).toBeNull();
@@ -445,7 +445,7 @@ describe("runOriginalsPurge", () => {
     const withDisplay = await uploadMedia(t.tripId, t.adminToken, {}, { display: true });
     const old = await uploadMedia(t.tripId, t.adminToken);
     const video = await uploadMedia(t.tripId, t.adminToken, { type: "video" });
-    await revealedDaysAgo(t.tripId, 31);
+    await revealedDaysAgo(t.tripId, 15);
     const now = Date.now();
     await runOriginalsPurge(env, now);
     expect(await purgeQueue()).toEqual([key(t.tripId, withDisplay)]);
@@ -460,7 +460,7 @@ describe("runOriginalsPurge", () => {
   it("the R2 purge then deletes the original after the grace period, and the display keeps being served", async () => {
     const t = await newTrip();
     const id = await uploadMedia(t.tripId, t.adminToken, {}, { display: true });
-    await revealedDaysAgo(t.tripId, 31);
+    await revealedDaysAgo(t.tripId, 15);
     const now = Date.now();
     await runOriginalsPurge(env, now);
     await purgeDeletedFiles(env, now + 2 * HOUR);
@@ -485,7 +485,7 @@ describe("runOriginalsPurge", () => {
     const a = await uploadMedia(t.tripId, t.adminToken, {}, { display: true });
     const b = await uploadMedia(t.tripId, t.adminToken, {}, { display: true });
     await env.DB.prepare("UPDATE media SET deleted_at = 1 WHERE id = ?").bind(b).run();
-    await revealedDaysAgo(t.tripId, 31);
+    await revealedDaysAgo(t.tripId, 15);
     const now = Date.now();
     await runOriginalsPurge(env, now);
     await runOriginalsPurge(env, now + 5 * MINUTE);
@@ -496,7 +496,7 @@ describe("runOriginalsPurge", () => {
 
   it("works in bounded batches and marks the rollo only when none are left", async () => {
     const t = await newTrip();
-    await revealedDaysAgo(t.tripId, 31);
+    await revealedDaysAgo(t.tripId, 15);
     const trip = (await tripRow(t.tripId))!;
     expect(trip.keep_originals).toBe(0);
     const ids = await addMediaDirect(t.tripId, [{ userId: t.adminUserId, memberId: t.adminId }], 1050, { display: true, from: Date.now() - 40 * DAY, to: Date.now() - 35 * DAY });
@@ -520,7 +520,7 @@ describe("PATCH /admin/trips/{tripId} keepOriginals", () => {
     const su = await makeSuperadmin();
     const t = await newTrip();
     const before = (await api("GET", `/admin/trips/${t.tripId}`, { token: su.token })).body;
-    expect(before).toMatchObject({ keepOriginals: false, originalsExpireAt: before.revealAt + 30 * DAY, originalsPurgedAt: null });
+    expect(before).toMatchObject({ keepOriginals: false, originalsExpireAt: before.revealAt + 14 * DAY, originalsPurgedAt: null });
     const res = await patch(t.tripId, su.token, { keepOriginals: true });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ keepOriginals: true, originalsExpireAt: null });
@@ -568,7 +568,7 @@ describe("PATCH /admin/trips/{tripId} keepOriginals", () => {
     const su = await makeSuperadmin();
     const t = await newTrip();
     const id = await uploadMedia(t.tripId, t.adminToken, {}, { display: true });
-    await revealedDaysAgo(t.tripId, 31);
+    await revealedDaysAgo(t.tripId, 15);
     await runOriginalsPurge(env, Date.now());
     await patch(t.tripId, su.token, { keepOriginals: true });
     expect((await mediaRow(id))!.original_purged_at).not.toBeNull();
