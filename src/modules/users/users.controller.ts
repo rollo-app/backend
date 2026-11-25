@@ -5,7 +5,7 @@ import type { friendsRoute, profileRoute, searchRoute } from "./users.router";
 import * as service from "./users.service";
 
 export const profile: RouteHandler<typeof profileRoute, AppEnv> = async (c) => {
-  const { owner, isFriend, blockedByMe, reportedByMe, canSee, friendCount, mutualCount, friendRequest } = await service.getProfile(
+  const { owner, isFriend, blockedByMe, reportedByMe, canSee, friendCount, rollCount, featuredCount, mutualCount, friendRequest } = await service.getProfile(
     c.env.DB,
     c.get("user").id,
     c.req.valid("param").userId,
@@ -26,6 +26,8 @@ export const profile: RouteHandler<typeof profileRoute, AppEnv> = async (c) => {
       profileVisibility: owner.profile_visibility,
       canSee,
       friendCount,
+      rollCount,
+      featuredCount,
       mutualCount,
       friendRequest,
     },

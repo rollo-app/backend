@@ -26,6 +26,8 @@ export const UserProfileSchema = z
       description: "Whether you can see the featured photos and the full friend list: it is you, a friend, or the profile is public, and neither of you blocked the other",
     }),
     friendCount: z.number().int().openapi({ description: "How many friends this user has (always public)" }),
+    rollCount: z.number().int().nullable().openapi({ description: "Revealed rolls where this user is an active member; null without canSee" }),
+    featuredCount: z.number().int().nullable().openapi({ description: "Featured photos you can see on this profile; null without canSee" }),
     mutualCount: z.number().int().openapi({ description: "How many of your friends are also this user's friends (0 for yourself)" }),
     friendRequest: z.enum(["none", "sent", "received"]).openapi({
       description:
