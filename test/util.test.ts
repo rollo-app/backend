@@ -33,6 +33,16 @@ const baseTrip: TripRow = {
   type: "trip",
   cover_key: null,
   pending_cover_key: null,
+  cover_focus_y: null,
+  description: null,
+  contest_enabled: 0,
+  contest_voting_hours: 72,
+  contest_select_notified_at: null,
+  contest_reminder_notified_at: null,
+  contest_cancelled_at: null,
+  contest_tie_notified_at: null,
+  contest_closed_at: null,
+  contest_winner_media_id: null,
 };
 
 describe("localDate", () => {
@@ -104,11 +114,14 @@ describe("publicTrip", () => {
       momentWindowStart: 540,
       momentWindowEnd: 1380,
       maxMembers: 15,
-      originals: { keep: false, expiresAt: 3_000 + 30 * 24 * 60 * 60 * 1000, purged: false },
+      originals: { keep: false, expiresAt: 3_000 + 14 * 24 * 60 * 60 * 1000, purged: false },
       createdBy: null,
       type: "trip",
       coverUrl: null,
+      coverFocusY: null,
       groups: [],
+      description: null,
+      contest: null,
     });
   });
 });

@@ -74,7 +74,7 @@ export const updateTripRoute = createRoute({
   path: "/{tripId}",
   tags,
   summary: "Edit the trip (admin)",
-  description: "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise).",
+  description: "Any admin edits the name, dates, quota and daily moment, depending on the stage: before the start everything; while running not `startsAt` nor `photoLimitMode` (409); once ended or revealed only `name` and `description` (409 'El rollo ya terminó: no se puede editar'). A field re-sent with its stored value counts as untouched. Changing dates or moment config deletes the future moments nobody took (they are drawn again; today's stays). `featuringDisabled` (private rollo) is only for the creator: 403 without applying anything. An event stays `photoLimitMode: total` with `momentMode: off` (409 otherwise). `coverFocusY` (0..1, null resets; 400 outside) picks which vertical part of the cover shows in the rollos list; any admin, until the reveal (409 'Este rollo ya se reveló.' / 'Este evento ya se reveló.'); a new cover resets it.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin] as const,
   request: {
@@ -136,7 +136,7 @@ export const setMyGroupsRoute = createRoute({
   tags,
   summary: "Set your groups in an event",
   description:
-    "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip and once the event is revealed ('Este evento ya se reveló.').",
+    "Replaces the groups you are in (all must belong to the event, else 400). A guest needs at least one (400 with `[]`); an organizer (admin) may have none. 409 for a regular trip ('Solo los eventos tienen grupos.') and once the event is revealed ('Este evento ya se reveló.').",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember] as const,
   request: { params: TripParams, body: { content: { "application/json": { schema: SetMyGroupsSchema } }, required: true } },
@@ -211,7 +211,7 @@ export const removeAdminRoute = createRoute({
   responses: { 200: json(MemberSchema, "The member, now a regular member"), ...errors(400, 401, 403, 404, 409, 428) },
 });
 
-const FROZEN = "409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). ";
+const FROZEN = "409 for a regular trip ('Solo los eventos tienen grupos.') and once the event is revealed ('Este evento ya se reveló.'). ";
 
 export const createGroupRoute = createRoute({
   method: "post",
@@ -253,10 +253,10 @@ export const requestCoverRoute = createRoute({
   method: "post",
   path: "/{tripId}/cover",
   tags,
-  summary: "Get a URL to upload the event cover (admin)",
+  summary: "Get a URL to upload the cover of a rollo or event (admin)",
   description:
     "Send the exact byte size of the JPEG (`sizeBytes`, max 2 MB; 400 otherwise). Returns a URL signed for exactly that Content-Length to PUT the JPEG straight to R2. Then call POST /trips/{tripId}/cover/complete. " +
-    "409 for a regular trip and once the event is revealed ('Este evento ya se reveló.'). 503 when the storage limit is reached. A previous upload that was never completed is discarded.",
+    "409 once the rollo or event is revealed ('Este rollo ya se reveló.' / 'Este evento ya se reveló.'). 503 when the storage limit is reached. A previous upload that was never completed is discarded.",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: TripParams, body: { content: { "application/json": { schema: CoverUploadRequestSchema } }, required: true } },
@@ -267,10 +267,10 @@ export const completeCoverRoute = createRoute({
   method: "post",
   path: "/{tripId}/cover/complete",
   tags,
-  summary: "Confirm the event cover upload (admin)",
+  summary: "Confirm the cover upload of a rollo or event (admin)",
   description:
-    "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it the event's cover and deletes the previous one. " +
-    "Otherwise the upload is discarded and the response is a 400. 409 once the event is revealed (the pending upload is discarded). The cover is served publicly at `coverUrl` (GET /covers/{tripId}/{file}).",
+    "Checks that the file is in R2, is a JPEG (verified by its magic bytes) and is at most 2 MB, makes it the cover and deletes the previous one. " +
+    "Otherwise the upload is discarded and the response is a 400. 409 once the rollo or event is revealed (the pending upload is discarded). The cover is served publicly at `coverUrl` (GET /covers/{tripId}/{file}).",
   security: bearerAuth,
   middleware: [requireUser, requireTripMember, requireAdmin, rateLimit("RL_EXPENSIVE")] as const,
   request: { params: TripParams },

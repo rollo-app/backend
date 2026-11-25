@@ -45,6 +45,21 @@ export async function friendCounts(db: D1Database, viewerId: string, ownerId: st
   return { friendCount: row!.friendCount, mutualCount: row!.mutualCount };
 }
 
+/**
+ * Revealed rollos where `userId` is an active member (not removed, not left). Archived ones count (archiving is a personal
+ * choice); deleting a rollo deletes its `trips` and `members` rows, so deleted ones never match.
+ */
+export async function rollCount(db: D1Database, userId: string, now: number): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM members mb JOIN trips t ON t.id = mb.trip_id
+       WHERE mb.user_id = ? AND mb.removed_at IS NULL AND mb.left_at IS NULL AND (t.revealed_at IS NOT NULL OR t.reveal_at <= ?)`,
+    )
+    .bind(userId, now)
+    .first<{ n: number }>();
+  return row!.n;
+}
+
 /** Friends of `ownerId` sorted by name; with `mutualWith` only the ones that are also friends of that user. */
 export async function listFriendsOf(db: D1Database, ownerId: string, mutualWith?: string): Promise<UserFriendRow[]> {
   const { results } = await db

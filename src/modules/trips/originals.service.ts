@@ -5,7 +5,7 @@ import * as repo from "./trips.repository";
 
 /**
  * Original retention. Every photo is stored as original (<= 4000 px), display (2048 px, kept forever) and thumb.
- * A rollo's originals are deleted 30 days after its reveal unless `keep_originals` is set (rollos that existed before
+ * A rollo's originals are deleted 14 days after its reveal unless `keep_originals` is set (rollos that existed before
  * the policy, and later the paid pass). Photos without a display (old app builds) and videos are never purged: the
  * original is all there is. Both jobs run from the cron (every 5 min) and are bounded and idempotent.
  */
@@ -28,7 +28,7 @@ export function originalsExpiringMessage(trip: Pick<TripRow, "id" | "name">): Pu
 }
 
 /**
- * Cron: from day 25 after the reveal, tells the active members once that the originals go in 5 days. The rollo is
+ * Cron: from day 9 after the reveal, tells the active members once that the originals go in 5 days. The rollo is
  * claimed first (`originals_notice_at` set only while null, one statement), so concurrent runs send once.
  */
 export async function runOriginalsNotices(env: Pick<Env, "DB">, now = Date.now()): Promise<void> {

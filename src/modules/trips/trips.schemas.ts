@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { isValidTimeZone } from "../../lib/util";
+import { CONTEST_VOTING_HOURS_DEFAULT, CONTEST_VOTING_HOURS_MAX, CONTEST_VOTING_HOURS_MIN } from "../contest/contest.rules";
 import { epochMs, pathParam, PAST_TOLERANCE_MS } from "../../schemas";
 
 export const COVER_MAX_BYTES = 2 * 1024 * 1024;
@@ -7,6 +8,13 @@ export const MAX_DAILY_PHOTOS = 30;
 export const MAX_TOTAL_PHOTOS = 200;
 export const MAX_TRIP_DURATION_MS = 31 * 86_400_000;
 export const TRIP_TOO_LONG = "El rollo puede durar hasta 31 días";
+
+const DESCRIPTION_DOC =
+  "Cover text, trimmed; an empty string clears it (null). Up to 300 characters and 6 lines (400 otherwise). Stored on any trip type; the app shows it for events";
+
+const CONTEST_ENABLED_DOC =
+  "Photo contest (events only; true on a regular trip is a 400). With it on, revealAt must be at least 2 hours after endsAt (409). Editable until the reveal";
+const CONTEST_HOURS_DOC = `How long the finalists are voted on after the reveal, in hours (${CONTEST_VOTING_HOURS_MIN} to ${CONTEST_VOTING_HOURS_MAX}, default ${CONTEST_VOTING_HOURS_DEFAULT}). Editable until the reveal`;
 
 export const CreateTripSchema = z
   .object({
@@ -37,6 +45,9 @@ export const CreateTripSchema = z
     type: z.enum(["trip", "event"]).default("trip").openapi({
       description: "event: guests join one or more groups. Events always use the total photo limit (20 if omitted) and no daily moment",
     }),
+    description: z.string().optional().openapi({ description: DESCRIPTION_DOC }),
+    contestEnabled: z.boolean().default(false).openapi({ description: CONTEST_ENABLED_DOC }),
+    contestVotingHours: z.number().int().min(CONTEST_VOTING_HOURS_MIN).max(CONTEST_VOTING_HOURS_MAX).default(CONTEST_VOTING_HOURS_DEFAULT).openapi({ description: CONTEST_HOURS_DOC }),
     groups: z.array(z.string().trim().min(1).max(40)).max(30).optional().openapi({
       description: "Event only (required, 1 to 30 distinct names of 1 to 40 characters); rejected on a regular trip",
     }),
@@ -44,6 +55,7 @@ export const CreateTripSchema = z
   .superRefine((d, ctx) => {
     if (d.type === "trip") {
       if (d.groups !== undefined) ctx.addIssue({ code: "custom", message: "Solo los eventos tienen grupos", path: ["groups"] });
+      if (d.contestEnabled) ctx.addIssue({ code: "custom", message: "Solo los eventos tienen concurso", path: ["contestEnabled"] });
       return;
     }
     if (!d.groups || d.groups.length < 1) {
@@ -84,6 +96,12 @@ export const MyGroupsSchema = z.object({ groupIds: z.array(z.string().uuid()) })
 export const UpdateTripSchema = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
+    description: z.string().optional().openapi({ description: `${DESCRIPTION_DOC} Editable at any stage, even after the reveal` }),
+    contestEnabled: z.boolean().optional().openapi({ description: `${CONTEST_ENABLED_DOC}. Turning it off deletes the chosen finalists; 409 once revealed` }),
+    contestVotingHours: z.number().int().min(CONTEST_VOTING_HOURS_MIN).max(CONTEST_VOTING_HOURS_MAX).optional().openapi({ description: `${CONTEST_HOURS_DOC}; 409 once revealed` }),
+    coverFocusY: z.number().min(0).max(1).nullable().optional().openapi({
+      description: "Which vertical part of the cover shows in the rollos list: 0 = top, 0.5 = middle, 1 = bottom; null resets it. Any admin; 409 once revealed",
+    }),
     startsAt: z.number().int().positive().optional().openapi({ description: "Only before the rollo starts; never in the past" }),
     endsAt: z.number().int().positive().optional().openapi({ description: "Trip end; must be after startsAt, at most 31 days after it and <= the resulting revealAt. Not once the rollo ended" }),
     revealAt: z.number().int().positive().optional().openapi({ description: "Must be >= the resulting endsAt" }),

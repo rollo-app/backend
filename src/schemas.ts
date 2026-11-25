@@ -46,7 +46,7 @@ export const TripSchema = z
     originals: z
       .object({
         keep: z.boolean().openapi({ description: "The rollo keeps its full-quality originals forever (rollos that existed before the policy, and later the paid pass)" }),
-        expiresAt: z.number().int().nullable().openapi({ description: "When the originals are deleted: 30 days after the reveal; null when `keep`" }),
+        expiresAt: z.number().int().nullable().openapi({ description: "When the originals are deleted: 14 days after the reveal; null when `keep`" }),
         purged: z.boolean().openapi({ description: "The cron already deleted every purgeable original (the display versions stay)" }),
       })
       .openapi({ description: "Retention of the full-quality originals; the 2048px display version of every photo is kept forever" }),
@@ -55,8 +55,13 @@ export const TripSchema = z
       .nullable()
       .openapi({ description: "Who created the rollo (always an admin). Only filled in by GET /trips/{tripId}, create, join and the edit routes; null if unknown" }),
     type: z.enum(["trip", "event"]).openapi({ description: "event: guests join groups; trip: a regular rollo" }),
-    coverUrl: z.string().nullable().openapi({ description: "Public path of the event cover (the app prefixes the API base URL); null if none" }),
+    coverUrl: z.string().nullable().openapi({ description: "Public path of the cover (the app prefixes the API base URL); null if none" }),
+    coverFocusY: z.number().nullable().openapi({ description: "Which vertical part of the cover shows in the rollos list: 0 = top, 1 = bottom; null = middle" }),
     groups: z.array(z.object({ id: z.string().uuid(), name: z.string() })).openapi({ description: "Groups of an event, in order; [] for a regular trip" }),
+    description: z.string().nullable().openapi({ description: "Cover text (up to 300 characters, 6 lines); null if none" }),
+    contest: z.object({ enabled: z.boolean(), votingHours: z.number().int() }).nullable().openapi({
+      description: "Photo contest settings; null on a regular trip",
+    }),
   })
   .openapi("Trip");
 
@@ -171,6 +176,9 @@ export const TripDetailSchema = z
       groupIds: z.array(z.string().uuid()).openapi({ description: "Ids of the event groups the member is in; [] for a regular trip and for organizers without groups" }),
     }),
     members: z.array(MemberSchema),
+    memberCount: z.number().int().openapi({
+      description: "Active members of the whole rollo (organizers included). In an event `members` only lists who you can see; this is the total",
+    }),
     today: z.object({
       date: z.string().openapi({ example: "2027-01-12", description: "Trip's local date" }),
       photosLeft: z.number().int().openapi({

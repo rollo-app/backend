@@ -16,7 +16,8 @@ export const TripSummarySchema = z
     totalUploaded: z.number().int(),
     momentMode: z.enum(["off", "photo", "photo_selfie"]).openapi({ description: "Daily moment: off, a photo, or a photo plus a selfie" }),
     type: z.enum(["trip", "event"]),
-    coverUrl: z.string().nullable().openapi({ description: "Public path of the event cover; null if none" }),
+    coverUrl: z.string().nullable().openapi({ description: "Public path of the cover; null if none" }),
+    coverFocusY: z.number().nullable().openapi({ description: "Which vertical part of the cover shows in the wide card: 0 = top, 1 = bottom; null = middle" }),
     coverThumbhash: z.string().nullable().openapi({
       description:
         "ThumbHash of the most recently taken uploaded photo or video of the rollo (null if none); the app derives the rollo's color from it",
@@ -70,6 +71,7 @@ export const NotificationSettingsSchema = z
     dailyMoment: z.boolean().openapi({ description: "It is your moment of the day in a rollo with the daily moment on" }),
     momentPosted: z.boolean().openapi({ description: "Someone in a rollo you are in uploaded their daily moment" }),
     originalsExpiring: z.boolean().openapi({ description: "The full-quality originals of a rollo you are in will be deleted in 5 days (the display versions stay)" }),
+    contestResult: z.boolean().openapi({ description: "Photo contest of an event: the organizers can pick the finalists, a reminder, a tie or a cancelled contest (organizers), and the winner (everyone)" }),
   })
   .openapi("NotificationSettings");
 

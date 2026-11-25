@@ -139,12 +139,78 @@ describe("GET /events/{code}", () => {
     expect((await api("GET", `/events/${ev.code.toLowerCase()}`)).status).toBe(200);
   });
 
-  it("answers 404 for a trip code and for an unknown code", async () => {
+  it("the event preview now also carries type and dates", async () => {
+    const ev = await newEvent();
+    const res = await api("GET", `/events/${ev.code}`);
+    expect(res.body.type).toBe("event");
+    expect(res.body.timezone).toBe(TZ);
+    expect(typeof res.body.startsAt).toBe("number");
+    expect(typeof res.body.endsAt).toBe("number");
+  });
+
+  it("previews a regular trip by code without a session", async () => {
+    const { code, tripId } = await newTrip();
+    await env.DB.prepare("UPDATE trips SET description = ? WHERE id = ?").bind("Un viaje", tripId).run();
+    const row = await env.DB.prepare("SELECT name, starts_at, ends_at, timezone FROM trips WHERE id = ?").bind(tripId).first<{ name: string; starts_at: number; ends_at: number; timezone: string }>();
+    const res = await api("GET", `/events/${code}?any=1`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      type: "trip",
+      groups: [],
+      name: row!.name,
+      coverUrl: null,
+      description: "Un viaje",
+      revealed: false,
+      startsAt: row!.starts_at,
+      endsAt: row!.ends_at,
+      timezone: row!.timezone,
+    });
+  });
+
+  it("a regular trip with fewer than 5 members hides the count", async () => {
+    const { code } = await newTrip();
+    const res = await api("GET", `/events/${code}?any=1`);
+    expect(res.body.memberCount).toBeNull();
+  });
+
+  it("a revealed regular trip previews as revealed", async () => {
+    const { code, tripId } = await newTrip();
+    await env.DB.prepare("UPDATE trips SET reveal_at = ? WHERE id = ?").bind(Date.now() - DAY, tripId).run();
+    const res = await api("GET", `/events/${code}?any=1`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ type: "trip", revealed: true });
+  });
+
+  it("without any=1 a regular trip is still 404 (old builds)", async () => {
     const { code } = await newTrip();
     const res = await api("GET", `/events/${code}`);
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: "Código inválido" });
-    expect((await api("GET", "/events/ZZZZZZ")).status).toBe(404);
+    expect((await api("GET", `/events/${code}?any=0`)).status).toBe(404);
+  });
+
+  it("with any=1 a regular trip previews, and an event answers the same with or without it", async () => {
+    const { code } = await newTrip();
+    expect((await api("GET", `/events/${code}?any=1`)).body.type).toBe("trip");
+    const ev = await newEvent();
+    const plain = await api("GET", `/events/${ev.code}`);
+    const wide = await api("GET", `/events/${ev.code}?any=1`);
+    expect(plain.status).toBe(200);
+    expect(wide.body).toEqual(plain.body);
+  });
+
+  it("pins the exact keys of the public preview (privacy decision)", async () => {
+    const keys = ["coverFocusY", "coverUrl", "description", "endsAt", "groups", "memberCount", "name", "revealed", "startsAt", "timezone", "type"];
+    const { code } = await newTrip();
+    expect(Object.keys((await api("GET", `/events/${code}?any=1`)).body).sort()).toEqual(keys);
+    const ev = await newEvent();
+    expect(Object.keys((await api("GET", `/events/${ev.code}`)).body).sort()).toEqual(keys);
+  });
+
+  it("answers 404 only for an unknown code", async () => {
+    const res = await api("GET", "/events/ZZZZZZ");
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "Código inválido" });
   });
 
   it("is limited by IP with its own roomy budget, not RL_SEARCH nor RL_GLOBAL", async () => {
@@ -189,6 +255,53 @@ describe("GET /events/{code}", () => {
     expect(res.body.revealed).toBe(true);
   });
 
+  describe("memberCount", () => {
+    const joinGuests = async (ev: Awaited<ReturnType<typeof newEvent>>, n: number) => {
+      const ids: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const guest = await signUp(undefined, `Invitado ${i}`);
+        await api("POST", "/trips/join", { token: guest.token, body: { code: ev.code, groupIds: [ev.a] } });
+        ids.push(guest.userId);
+      }
+      return ids;
+    };
+
+    it("is null below 5 active members, the organizer counting as one", async () => {
+      const ev = await newEvent();
+      await joinGuests(ev, 3); // organizer + 3 = 4
+      const res = await api("GET", `/events/${ev.code}`);
+      expect(res.status).toBe(200);
+      expect(res.body.memberCount).toBeNull();
+    });
+
+    it("is the exact number from 5 members on", async () => {
+      const ev = await newEvent();
+      await joinGuests(ev, 4); // organizer + 4 = 5
+      expect((await api("GET", `/events/${ev.code}`)).body.memberCount).toBe(5);
+      await joinGuests(ev, 2);
+      expect((await api("GET", `/events/${ev.code}`)).body.memberCount).toBe(7);
+    });
+
+    it("does not count people who left or were removed", async () => {
+      const ev = await newEvent();
+      const ids = await joinGuests(ev, 6); // 7 active
+      const now = Date.now();
+      await env.DB.prepare("UPDATE members SET left_at = ? WHERE trip_id = ? AND user_id = ?").bind(now, ev.tripId, ids[0]).run();
+      await env.DB.prepare("UPDATE members SET removed_at = ? WHERE trip_id = ? AND user_id = ?").bind(now, ev.tripId, ids[1]).run();
+      expect((await api("GET", `/events/${ev.code}`)).body.memberCount).toBe(5);
+      await env.DB.prepare("UPDATE members SET left_at = ? WHERE trip_id = ? AND user_id = ?").bind(now, ev.tripId, ids[2]).run();
+      expect((await api("GET", `/events/${ev.code}`)).body.memberCount).toBeNull();
+    });
+
+    it("keeps the same rule once the event is revealed", async () => {
+      const ev = await newEvent();
+      await joinGuests(ev, 4);
+      await env.DB.prepare("UPDATE trips SET reveal_at = ? WHERE id = ?").bind(Date.now() - DAY, ev.tripId).run();
+      const res = await api("GET", `/events/${ev.code}`);
+      expect(res.body).toMatchObject({ revealed: true, memberCount: 5 });
+    });
+  });
+
   it("allows the website origins to read it from the browser (CORS, GET only)", async () => {
     const ev = await newEvent();
     for (const origin of ["https://rolloproject.com", "https://www.rolloproject.com"]) {
@@ -206,6 +319,38 @@ describe("GET /events/{code}", () => {
     // No other route is open to the website.
     const trips = await api("GET", "/", { headers: { origin: "https://rolloproject.com" } });
     expect(trips.headers.get("access-control-allow-origin")).toBeNull();
+  });
+});
+
+describe("GET /trips/{tripId} memberCount", () => {
+  it("is the whole rollo's active total even when a guest only sees part of the members", async () => {
+    const ev = await newEvent();
+    const join = async (name: string, groupId: string) => {
+      const u = await signUp(undefined, name);
+      await api("POST", "/trips/join", { token: u.token, body: { code: ev.code, groupIds: [groupId] } });
+      return u;
+    };
+    const guestA = await join("Invitado A", ev.a);
+    const guestB = await join("Invitado B", ev.b);
+    const leaver = await join("Se fue", ev.b);
+    const removed = await join("Sacado", ev.b);
+    const now = Date.now();
+    await env.DB.prepare("UPDATE members SET left_at = ? WHERE trip_id = ? AND user_id = ?").bind(now, ev.tripId, leaver.userId).run();
+    await env.DB.prepare("UPDATE members SET removed_at = ? WHERE trip_id = ? AND user_id = ?").bind(now, ev.tripId, removed.userId).run();
+
+    const res = await api("GET", `/trips/${ev.tripId}`, { token: guestA.token });
+    expect(res.status).toBe(200);
+    expect(res.body.memberCount).toBe(3); // organizer + A + B
+    expect(res.body.members.length).toBeLessThan(res.body.memberCount);
+    // Same number for everyone.
+    expect((await api("GET", `/trips/${ev.tripId}`, { token: guestB.token })).body.memberCount).toBe(3);
+    expect((await api("GET", `/trips/${ev.tripId}`, { token: ev.org.token })).body.memberCount).toBe(3);
+  });
+
+  it("also counts for a regular trip", async () => {
+    const { tripId, adminToken: token } = await newTrip();
+    const res = await api("GET", `/trips/${tripId}`, { token });
+    expect(res.body.memberCount).toBe(res.body.members.length);
   });
 });
 

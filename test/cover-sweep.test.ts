@@ -38,6 +38,17 @@ describe("sweepOrphanCovers", () => {
     expect(await exists(orphan)).toBe(false);
   });
 
+  it("the sweep removes an orphan cover of a regular trip", async () => {
+    const org = await signUp(undefined, "Reg");
+    const { tripId } = await createTrip(org.token);
+    const [cover, orphan] = [key(tripId), key(tripId)];
+    for (const k of [cover, orphan]) await put(k);
+    await env.DB.prepare("UPDATE trips SET cover_key = ? WHERE id = ?").bind(cover, tripId).run();
+    await sweepOrphanCovers(env, Date.now() + 2 * HOUR);
+    expect(await exists(cover)).toBe(true);
+    expect(await exists(orphan)).toBe(false);
+  });
+
   it("keeps a fresh unreferenced cover until it is older than 1 hour", async () => {
     const tripId = await newEvent();
     const fresh = key(tripId);
@@ -57,16 +68,16 @@ describe("sweepOrphanCovers", () => {
     await env.MEDIA.delete(media);
   });
 
-  it("walks the event trips in slices and starts over after reaching the end", async () => {
+  it("walks the trips in slices and starts over after reaching the end", async () => {
     for (let i = 0; i < 3; i++) await newEvent();
     // Orphans in the first and in the last event trip (ordered by id), whatever else the file created.
     const [first, last] = [
-      (await env.DB.prepare("SELECT MIN(id) AS id FROM trips WHERE type = 'event'").first<{ id: string }>())!.id,
-      (await env.DB.prepare("SELECT MAX(id) AS id FROM trips WHERE type = 'event'").first<{ id: string }>())!.id,
+      (await env.DB.prepare("SELECT MIN(id) AS id FROM trips").first<{ id: string }>())!.id,
+      (await env.DB.prepare("SELECT MAX(id) AS id FROM trips").first<{ id: string }>())!.id,
     ];
     const [early, late] = [key(first), key(last)];
     for (const k of [early, late]) await put(k);
-    const total = (await env.DB.prepare("SELECT COUNT(*) AS n FROM trips WHERE type = 'event'").first<{ n: number }>())!.n;
+    const total = (await env.DB.prepare("SELECT COUNT(*) AS n FROM trips").first<{ n: number }>())!.n;
     const later = Date.now() + 2 * HOUR;
     const state = () => env.DB.prepare("SELECT value FROM cron_state WHERE key = 'cover_sweep_after'").first<{ value: string }>();
 

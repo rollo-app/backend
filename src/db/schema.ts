@@ -36,6 +36,16 @@ export const trips = sqliteTable("trips", {
   type: text("type", { enum: ["trip", "event"] }).notNull().default("trip"),
   coverKey: text("cover_key"),
   pendingCoverKey: text("pending_cover_key"),
+  coverFocusY: real("cover_focus_y"),
+  description: text("description"),
+  contestEnabled: integer("contest_enabled").notNull().default(0),
+  contestVotingHours: integer("contest_voting_hours").notNull().default(72),
+  contestSelectNotifiedAt: integer("contest_select_notified_at"),
+  contestReminderNotifiedAt: integer("contest_reminder_notified_at"),
+  contestCancelledAt: integer("contest_cancelled_at"),
+  contestTieNotifiedAt: integer("contest_tie_notified_at"),
+  contestClosedAt: integer("contest_closed_at"),
+  contestWinnerMediaId: text("contest_winner_media_id"),
 }, (t) => [check("trips_type_check", sql`${t.type} IN ('trip', 'event')`)]);
 
 export const users = sqliteTable(
@@ -321,6 +331,7 @@ export const userSettings = sqliteTable("user_settings", {
   notifyDailyMoment: integer("notify_daily_moment").notNull().default(1),
   notifyMomentPosted: integer("notify_moment_posted").notNull().default(1),
   notifyOriginalsExpiring: integer("notify_originals_expiring").notNull().default(1),
+  notifyContestResult: integer("notify_contest_result").notNull().default(1),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -585,4 +596,27 @@ export const mediaGroups = sqliteTable(
     groupId: text("group_id").notNull().references(() => eventGroups.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.mediaId, t.groupId] }), index("idx_media_groups_group").on(t.groupId)],
+);
+
+export const contestFinalists = sqliteTable(
+  "contest_finalists",
+  {
+    tripId: text("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    mediaId: text("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tripId, t.mediaId] })],
+);
+
+export const contestVotes = sqliteTable(
+  "contest_votes",
+  {
+    tripId: text("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    mediaId: text("media_id").notNull().references(() => media.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tripId, t.userId] }), index("idx_contest_votes_media").on(t.tripId, t.mediaId)],
 );

@@ -144,6 +144,10 @@ describe("file downloads", () => {
     // RL_EXPENSIVE is not involved: with a roomy RL_FILES it gets past the limiter (403: not revealed yet).
     expect((await api("GET", url, { token, env: { RL_FILES: fakeLimiter(5), RL_EXPENSIVE: fakeLimiter(0) } })).status).toBe(403);
     expect((await api("GET", `/featured/${trip.adminUserId}/${mediaId}/thumb`, { token, env: { RL_FILES: fakeLimiter(0) } })).status).toBe(429);
+    // The contest's finalist files count in RL_FILES too, not in RL_GLOBAL / RL_IP.
+    const contestUrl = `/trips/${trip.tripId}/contest/finalists/${mediaId}/display`;
+    expect((await api("GET", contestUrl, { token, env: { RL_FILES: fakeLimiter(0) } })).status).toBe(429);
+    expect((await api("GET", contestUrl, { token, env: { RL_FILES: fakeLimiter(5), RL_GLOBAL: fakeLimiter(0), RL_IP: fakeLimiter(0) } })).status).toBe(404);
   });
 });
 

@@ -19,6 +19,7 @@ import * as repo from "./featured.repository";
  *  3. a photo of someone else only if the author is a current friend of the viewer;
  *  4. and the photo (`media.feature_blocked_at`), the author's membership (`members.allow_featuring`)
  *     and the author's account (`user_settings.allow_featuring`) must all allow it.
+ * Sharing outside the rollo (Instagram Stories collage) is the same rule without level 3 (friendship): see `canShare`.
  * Turning a level off, ending the friendship or blocking also deletes what it now blocks from the profiles (see `featured.repository`).
  */
 export type FeaturingFacts = {
@@ -47,6 +48,11 @@ export function featuringDenial(f: FeaturingFacts): FeaturingDenial {
 }
 
 export const canFeature = (f: FeaturingFacts): boolean => featuringDenial(f) === null;
+
+export type SharingFacts = Omit<FeaturingFacts, "authorIsFriend">;
+
+/** Whether the viewer may share the photo outside the rollo: the featuring rule without the friendship level. */
+export const canShare = (f: SharingFacts): boolean => !f.rolloPrivate && (f.viewerIsAuthor || (!f.photoBlocked && f.memberAllows && f.accountAllows));
 
 /**
  * Featured photos: photos from revealed rollos that a user pins to their profile.
