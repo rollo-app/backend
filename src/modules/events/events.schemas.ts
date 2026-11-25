@@ -20,6 +20,9 @@ export const EventPreviewSchema = z
     type: z.enum(["trip", "event"]).openapi({ description: "Kind of rollo; a regular trip has no groups" }),
     name: z.string(),
     coverUrl: z.string().nullable().openapi({ description: "Path of the cover (prefix the API base URL), null if none" }),
+    coverFocusY: z.number().nullable().openapi({
+      description: "Which vertical part of the cover to show when it is cropped wider (0 = top, 1 = bottom); null = middle. The website's link image uses it",
+    }),
     description: z.string().nullable().openapi({ description: "Cover text set by the organizers; null if none" }),
     startsAt: z.number().int().openapi({ description: "Start of the rollo, ms since epoch" }),
     endsAt: z.number().int().openapi({ description: "End of the rollo, ms since epoch" }),

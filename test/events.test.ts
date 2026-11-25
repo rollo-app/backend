@@ -200,7 +200,7 @@ describe("GET /events/{code}", () => {
   });
 
   it("pins the exact keys of the public preview (privacy decision)", async () => {
-    const keys = ["coverUrl", "description", "endsAt", "groups", "memberCount", "name", "revealed", "startsAt", "timezone", "type"];
+    const keys = ["coverFocusY", "coverUrl", "description", "endsAt", "groups", "memberCount", "name", "revealed", "startsAt", "timezone", "type"];
     const { code } = await newTrip();
     expect(Object.keys((await api("GET", `/events/${code}?any=1`)).body).sort()).toEqual(keys);
     const ev = await newEvent();
