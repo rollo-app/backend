@@ -1,4 +1,4 @@
-import { canFeature } from "../featured/featured.service";
+import { canFeature, canShare } from "../featured/featured.service";
 import type { RouteHandler } from "@hono/zod-openapi";
 import { deferPush } from "../../lib/push";
 import { serveMediaFile } from "../../lib/r2";
@@ -93,6 +93,14 @@ function presentFeedItem(r: FeedRow, tripId: string, revealed: boolean, filesVis
       canFeature: r.momentDay === null && !r.archived && canFeature({
         viewerIsAuthor: r.authorUserId === viewerId,
         authorIsFriend: r.authorIsFriend,
+        rolloPrivate,
+        photoBlocked: r.featureBlockedAt !== null,
+        memberAllows: r.memberAllowsFeaturing,
+        accountAllows: r.accountAllowsFeaturing,
+      }),
+      // Outside the rollo (Stories collage): same rule without friendship, photos only (no videos, moments or archived).
+      shareable: r.type === "photo" && r.momentDay === null && !r.archived && canShare({
+        viewerIsAuthor: r.authorUserId === viewerId,
         rolloPrivate,
         photoBlocked: r.featureBlockedAt !== null,
         memberAllows: r.memberAllowsFeaturing,
