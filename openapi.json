@@ -955,6 +955,20 @@
             "type": "integer",
             "description": "How many friends this user has (always public)"
           },
+          "rollCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Revealed rolls where this user is an active member; null without canSee"
+          },
+          "featuredCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Featured photos you can see on this profile; null without canSee"
+          },
           "mutualCount": {
             "type": "integer",
             "description": "How many of your friends are also this user's friends (0 for yourself)"
@@ -977,6 +991,8 @@
           "profileVisibility",
           "canSee",
           "friendCount",
+          "rollCount",
+          "featuredCount",
           "mutualCount",
           "friendRequest"
         ]

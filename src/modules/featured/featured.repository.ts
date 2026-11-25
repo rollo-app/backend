@@ -164,6 +164,18 @@ export async function listVisibleFeatured(db: D1Database, viewerId: string, owne
   return results;
 }
 
+/** How many photos `listVisibleFeatured` returns for the same arguments (same FROM/WHERE, so they never differ). */
+export async function countVisibleFeatured(db: D1Database, viewerId: string, ownerId: string, now: number): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM ${VISIBLE_FROM} JOIN users u ON u.id = author.user_id
+     WHERE ${VISIBLE_WHERE} AND f.user_id = ? AND ${hiddenMediaSql("m", "author")}`,
+    )
+    .bind(now, ownerId, viewerId, viewerId)
+    .first<{ n: number }>();
+  return row!.n;
+}
+
 export function findVisibleFeaturedKeys(
   db: D1Database,
   viewerId: string,

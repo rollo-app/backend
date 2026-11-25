@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { areFriends } from "../src/modules/friends/friends.service";
 import { canSeeProfile } from "../src/modules/users/users.service";
-import { api, befriend, signUp } from "./helpers";
+import { api, befriend, join, joinAs, newTrip, signUp, uploadMedia } from "./helpers";
 
 async function setVisibility(token: string, profileVisibility: "friends" | "public") {
   const res = await api("PATCH", "/me", { token, body: { profileVisibility } });
@@ -71,6 +71,8 @@ describe("GET /users/{userId}", () => {
       profileVisibility: "friends",
       canSee: true,
       friendCount: 0,
+      rollCount: 0,
+      featuredCount: 0,
       mutualCount: 0,
       friendRequest: "none",
     });
@@ -99,6 +101,8 @@ describe("GET /users/{userId}", () => {
       profileVisibility: "friends",
       canSee: false,
       friendCount: 0,
+      rollCount: null,
+      featuredCount: null,
       mutualCount: 0,
       friendRequest: "none",
     });
@@ -131,6 +135,90 @@ describe("GET /users/{userId}", () => {
     await befriend(o.token, f.token);
     const res = await api("GET", `/users/${o.userId}`, { token: o.token });
     expect(res.body).toMatchObject({ friendCount: 1, mutualCount: 0 });
+  });
+
+  describe("rollCount and featuredCount", () => {
+    /** A trip with an admin and `member` (the profile owner); revealed unless `reveal` is false. */
+    async function tripWithMember(reveal = true) {
+      const trip = await newTrip({ dailyPhotoLimit: 10 });
+      const member = await joinAs(trip.code, "Cami");
+      if (reveal) expect((await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken })).status).toBe(200);
+      return { trip, member };
+    }
+    const counts = async (viewerToken: string, userId: string) => {
+      const res = await api("GET", `/users/${userId}`, { token: viewerToken });
+      expect(res.status).toBe(200);
+      return { rollCount: res.body.rollCount, featuredCount: res.body.featuredCount, friendCount: res.body.friendCount };
+    };
+
+    it("counts revealed rolls where the owner is an active member", async () => {
+      const { member } = await tripWithMember(true);
+      await tripWithMember(false);
+      const unrevealed = await newTrip();
+      await join(unrevealed.code, member.token);
+      expect((await counts(member.token, member.userId)).rollCount).toBe(1);
+    });
+
+    it("does not count a roll the owner left or was removed from", async () => {
+      const left = await tripWithMember();
+      expect((await api("DELETE", `/trips/${left.trip.tripId}/members/me`, { token: left.member.token })).status).toBe(204);
+      expect((await counts(left.member.token, left.member.userId)).rollCount).toBe(0);
+
+      const removed = await tripWithMember();
+      await api("PATCH", "/me", { token: removed.member.token, body: { profileVisibility: "public" } });
+      expect(
+        (await api("DELETE", `/trips/${removed.trip.tripId}/members/${removed.member.memberId}`, { token: removed.trip.adminToken })).status,
+      ).toBe(204);
+      expect((await counts(removed.trip.adminToken, removed.member.userId)).rollCount).toBe(0);
+    });
+
+    it("counts an archived roll", async () => {
+      const { trip, member } = await tripWithMember();
+      const res = await api("PATCH", `/trips/${trip.tripId}/members/me`, { token: member.token, body: { archived: true } });
+      expect(res.status).toBe(200);
+      expect((await counts(member.token, member.userId)).rollCount).toBe(1);
+    });
+
+    it("does not count a deleted roll", async () => {
+      const { trip, member } = await tripWithMember();
+      expect((await counts(member.token, member.userId)).rollCount).toBe(1);
+      expect((await api("DELETE", `/trips/${trip.tripId}`, { token: trip.adminToken })).status).toBe(204);
+      expect((await counts(member.token, member.userId)).rollCount).toBe(0);
+    });
+
+    it("counts the featured photos the viewer can see", async () => {
+      const { trip, member } = await tripWithMember(false);
+      const a = await uploadMedia(trip.tripId, member.token);
+      const b = await uploadMedia(trip.tripId, member.token);
+      expect((await api("POST", `/trips/${trip.tripId}/reveal`, { token: trip.adminToken })).status).toBe(200);
+      for (const id of [a, b]) expect((await api("PUT", `/me/featured/${id}`, { token: member.token })).status).toBe(204);
+      const viewer = await signUp();
+      await befriend(member.token, viewer.token);
+      expect((await counts(viewer.token, member.userId)).featuredCount).toBe(2);
+      expect((await api("POST", `/media/${a}/archive`, { token: member.token })).status).toBe(204);
+      expect((await counts(viewer.token, member.userId)).featuredCount).toBe(1);
+    });
+
+    it("returns null counts when the viewer cannot see the profile", async () => {
+      const { member } = await tripWithMember();
+      const stranger = await signUp();
+      expect(await counts(stranger.token, member.userId)).toEqual({ rollCount: null, featuredCount: null, friendCount: 0 });
+    });
+
+    it("returns null counts when blocked", async () => {
+      const { member } = await tripWithMember();
+      await api("PATCH", "/me", { token: member.token, body: { profileVisibility: "public" } });
+      const viewer = await signUp();
+      expect((await counts(viewer.token, member.userId)).rollCount).toBe(1);
+      expect((await api("PUT", `/blocks/${member.userId}`, { token: viewer.token })).status).toBe(204);
+      expect(await counts(viewer.token, member.userId)).toMatchObject({ rollCount: null, featuredCount: null });
+      expect(await counts(member.token, viewer.userId)).toMatchObject({ rollCount: null, featuredCount: null });
+    });
+
+    it("returns counts on your own profile", async () => {
+      const { member } = await tripWithMember();
+      expect(await counts(member.token, member.userId)).toMatchObject({ rollCount: 1, featuredCount: 0 });
+    });
   });
 
   it("shows a public profile to a stranger", async () => {

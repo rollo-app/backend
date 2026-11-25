@@ -1,4 +1,5 @@
 import { isBlockedEitherWay } from "../blocks/blocks.service";
+import { countVisibleFeatured } from "../featured/featured.repository";
 import { areFriends } from "../friends/friends.service";
 import { normalizeSearchQuery, SEARCH_MAX, SEARCH_MIN } from "../../lib/search-text";
 import { badRequest, notFound } from "../../shared/errors";
@@ -13,6 +14,10 @@ export type UserProfile = {
   reportedByMe: boolean;
   canSee: boolean;
   friendCount: number;
+  /** Revealed rolls the user is an active member of; null without `canSee`. */
+  rollCount: number | null;
+  /** Featured photos the viewer can see; null without `canSee`. */
+  featuredCount: number | null;
   mutualCount: number;
   friendRequest: "none" | "sent" | "received";
 };
@@ -31,6 +36,10 @@ export async function getProfile(db: D1Database, viewerId: string, userId: strin
   const canSee = !blocked && (await canSeeProfile(db, viewerId, owner));
   const isFriend = !blocked && (await areFriends(db, viewerId, owner.id));
   const friendRequest = blocked || isFriend || viewerId === owner.id ? "none" : await repo.friendRequestState(db, viewerId, owner.id);
+  const now = Date.now();
+  const [rollCount, featuredCount] = canSee
+    ? await Promise.all([repo.rollCount(db, owner.id, now), countVisibleFeatured(db, viewerId, owner.id, now)])
+    : [null, null];
   return {
     owner,
     isFriend,
@@ -39,6 +48,8 @@ export async function getProfile(db: D1Database, viewerId: string, userId: strin
     reportedByMe,
     canSee,
     friendCount: counts.friendCount,
+    rollCount,
+    featuredCount,
     mutualCount: blocked || viewerId === owner.id ? 0 : counts.mutualCount,
   };
 }
