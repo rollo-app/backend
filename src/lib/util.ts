@@ -73,6 +73,7 @@ export function publicTrip(trip: TripRow, now = Date.now(), createdBy: { userId:
     createdBy,
     type: trip.type,
     coverUrl: coverUrl(trip),
+    coverFocusY: trip.cover_focus_y,
     groups,
     description: trip.description,
     contest: trip.type === "event" ? { enabled: trip.contest_enabled !== 0, votingHours: trip.contest_voting_hours } : null,

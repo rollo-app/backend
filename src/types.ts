@@ -92,6 +92,8 @@ export type TripRow = {
   cover_key: string | null;
   /** Cover being uploaded, not yet confirmed. */
   pending_cover_key: string | null;
+  /** Vertical focus of the cover in the rollos list (0 top .. 1 bottom); null = middle. */
+  cover_focus_y: number | null;
   /** Event cover text (up to 300 characters, 6 lines); null if none. Any trip type may store one. */
   description: string | null;
   /** Photo contest (events only): 0/1, voting window in hours and the lifecycle timestamps the cron claims. */
