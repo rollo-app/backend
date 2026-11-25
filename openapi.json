@@ -2767,6 +2767,10 @@
             "type": "boolean",
             "description": "Only after the reveal: whether you can feature it on your profile now (false if its rollo is private, if its author is neither you nor one of your friends, or if its author, their rollo membership or their account does not let others; its author can unless the rollo is private; always false for the photos of a daily moment)"
           },
+          "shareable": {
+            "type": "boolean",
+            "description": "Only after the reveal: whether you may share it outside the rollo (Instagram Stories collage). Same levels as canFeature without the friendship requirement: false if the rollo is private, if its author blocked it or does not let others (rollo membership or account); always false for videos, archived photos and the photos of a daily moment"
+          },
           "likeCount": {
             "type": "integer",
             "description": "Only after the reveal: how many people like it (one counter, also likes from profiles that feature it). Always 0 for videos"
